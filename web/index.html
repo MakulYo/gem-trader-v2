@@ -7,10 +7,6 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script src="/libs/waxjs.js"></script>
-    <script src="/libs/anchor-link.js"></script>
-    <script src="/libs/anchor-link-browser-transport.js"></script>
-
     <style>
     .hidden { display: none !important; }
     #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
@@ -996,7 +992,7 @@
     </script>
 
     <!-- Your main wallet logic -->
-    <script src="wallet.js"></script>
+    <script type="module" src="wallet.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
