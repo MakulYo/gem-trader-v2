@@ -7,6 +7,20 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- WAX Cloud Wallet (global: window.waxjs.WaxJS) -->
+    <script src="https://unpkg.com/@waxio/waxjs@1.1.3/dist/waxjs.min.js"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Anchor Link UMD bundles (globals: window.AnchorLink, window.AnchorLinkBrowserTransport) -->
+    <script src="https://unpkg.com/anchor-link@3.6.3/dist/anchor-link.umd.min.js"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://unpkg.com/anchor-link-browser-transport@3.3.0/dist/anchor-link-browser-transport.umd.min.js"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script defer src="wallet.js"></script>
+    <style>
+    .hidden { display: none !important; }
+    #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
+    </style>
+
 </head>
 <body>
     <!-- Navigation -->
@@ -84,9 +98,44 @@
                     </div>
                 </div>
             </div>
-            <div class="nav-wallet">
-                <span class="wallet-balance">0.00 TSD</span>
-                <button class="connect-wallet-btn">Connect Wallet</button>
+
+            <div class="nav-wallet" id="nav-wallet" data-auth="signed-out">
+              <span id="wallet-address" class="wallet-address hidden" title="Wallet address"></span>
+              <span id="wallet-balance" class="wallet-balance hidden" data-token="TSD">0.00 TSD</span>
+
+              <button id="connect-wallet" class="connect-wallet-btn" data-action="connect">
+                  Connect Wallet
+              </button>
+
+              <button id="disconnect-wallet" class="connect-wallet-btn hidden" data-action="disconnect">
+                  Disconnect
+              </button>
+            </div>
+
+            <!-- Choose Wallet Modal -->
+            <div id="wallet-modal" class="modal-overlay hidden" aria-hidden="true">
+              <div class="modal">
+                <div class="modal-header">
+                  <h3>Connect Wallet</h3>
+                  <button class="modal-close" data-close-wallet-modal>
+                      <i class="fas fa-times"></i>
+                  </button>
+                </div>
+                <div class="modal-body">
+                  <div class="wallet-grid">
+                      <button class="action-btn primary" data-provider="cloud">
+                        <i class="fas fa-cloud"></i> WAX Cloud Wallet
+                      </button>
+                      <button class="action-btn secondary" data-provider="anchor">
+                        <i class="fas fa-anchor"></i> Anchor
+                      </button>
+                      <button class="action-btn tertiary" data-provider="wombat" disabled title="Coming soon">
+                        <i class="fas fa-paw"></i> Wombat (coming soon)
+                      </button>
+                  </div>
+                  <p id="wallet-error" class="text-danger hidden"></p>
+                </div>
+              </div>
             </div>
         </div>
     </nav>
@@ -917,7 +966,7 @@
 
     <!-- Mining Animations Container -->
     <div id="mining-animations" class="mining-animations"></div>
-
     <script src="script.js"></script>
 </body>
 </html>
+

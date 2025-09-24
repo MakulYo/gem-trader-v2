@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "site": "<tsdgems-trading>",
+    "site": "tsdgems-trading",
     "public": "web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [{ "source": "**", "destination": "/index.html" }]
