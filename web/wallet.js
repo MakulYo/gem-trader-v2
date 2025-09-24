@@ -1,269 +1,201 @@
-/* wallet.js - TSDGEMS wallet orchestrator (WAX Cloud, Anchor, Wombat) */
+/* wallet.js — WAX Cloud Wallet + Anchor, auto-login, TSDM balance display
+   Token: contract 'lucas3333555', symbol 'TSDM', precision 4
+*/
 
-/* ----------------- Config ----------------- */
-const WAX_RPC = 'https://wax.greymass.com';
-const WAX_CHAIN_ID = '1064487b3cd1a897ce03ae5b6a865651747e2e152090f99c1d19d44e01aea5a4';
+(function () {
+  // --- Config ---
+  const RPC_ENDPOINT = 'https://wax.greymass.com';
+  const CHAIN_ID     = '1064487b3cd1a897...a8c6e5d' // WAX mainnet
+    .replace('...', ''); // keep as single string
+  const TOKEN = {
+    contract: 'lucas3333555',
+    symbol:   'TSDM',
+    precision: 4
+  };
 
-const TSDM = {
-  contract: 'lucas3333555',
-  symbol: 'TSDM',
-  decimals: 4,
-  table: 'accounts'
-};
+  // --- UI helpers ---
+  const $ = (s, r=document) => r.querySelector(s);
+  const els = {
+    wrap: $('#nav-wallet'),
+    addr: $('#wallet-address'),
+    bal:  $('#wallet-balance'),
+    connect: $('#connect-wallet'),
+    disconnect: $('#disconnect-wallet'),
+    modal: $('#wallet-modal'),
+    error: $('#wallet-error')
+  };
+  const show  = el => el?.classList.remove('hidden');
+  const hide  = el => el?.classList.add('hidden');
+  const setText = (el, t) => { if (el) el.textContent = t; };
 
-const LS_LAST_PROVIDER = 'tsd:lastProvider'; // 'cloud' | 'anchor' | 'wombat'
-
-/* ----------------- DOM helpers ----------------- */
-const $ = (s, r = document) => r.querySelector(s);
-const nav = {
-  address: $('#wallet-address'),
-  navBalance: $('#wallet-balance'),   // top-right balance text
-  dashBalance: $('#tsd-balance'),     // big dashboard stat
-  connectBtn: $('#connect-wallet'),
-  disconnectBtn: $('#disconnect-wallet'),
-  modal: $('#wallet-modal'),
-  err: $('#wallet-error')
-};
-
-function show(el){ el && el.classList.remove('hidden'); }
-function hide(el){ el && el.classList.add('hidden'); }
-function setText(el, t){ el && (el.textContent = t); }
-
-/* Hide sensitive stuff until authenticated */
-hide(nav.navBalance);
-hide(nav.dashBalance);
-
-/* ----------------- Lib detection ----------------- */
-function libsAvailable(){
-  const hasWax   = !!(window.waxjs && window.waxjs.WaxJS);
-  const hasAL    = !!(window.AnchorLink && window.AnchorLinkBrowserTransport);
-  const hasTransitScatter =
-    !!(window.transit && typeof window.transit.initAccessContext === 'function' && window.scatter);
-  console.log('[wallet] libs:', { hasWax, hasAnchor: hasAL, hasWombat: hasTransitScatter });
-  return { hasWax, hasAnchor: hasAL, hasWombat: hasTransitScatter };
-}
-
-/* ----------------- State ----------------- */
-const state = {
-  provider: null,          // 'cloud' | 'anchor' | 'wombat'
-  account: null,           // wax account name
-  wax: null,               // WaxJS instance
-  anchor: { link: null, session: null },
-  wombat: { access: null, wallet: null }
-};
-
-/* ----------------- Balance fetch ----------------- */
-async function fetchTsdmBalance(account, rpc){
-  // rpc = eosjs JsonRpc (must have .get_table_rows)
-  try{
-    const rows = await rpc.get_table_rows({
-      code: TSDM.contract,
-      scope: account,
-      table: TSDM.table,
-      limit: 10,
-      json: true
-    });
-    // look for "X.XXXX TSDM"
-    const row = rows.rows?.find(r => (r.balance || '').endsWith(' ' + TSDM.symbol));
-    if(!row){ return 0; }
-    const [amount] = row.balance.split(' ');
-    return Number(amount); // already scaled to decimals
-  }catch(err){
-    console.error('[wallet] balance error', err);
-    return 0;
-  }
-}
-
-/* ----------------- UI updates ----------------- */
-async function onAuthenticated(provider){
-  localStorage.setItem(LS_LAST_PROVIDER, provider);
-  state.provider = provider;
-
-  setText(nav.address, state.account);
-  nav.address?.setAttribute('title', state.account);
-  show(nav.address);
-  hide(nav.connectBtn);
-  show(nav.disconnectBtn);
-
-  // pick an rpc
-  let rpc = null;
-  if(provider === 'cloud'){
-    rpc = state.wax?.rpc; // WaxJS carries a JsonRpc
-  }else{
-    // fall back to eosjs JsonRpc global
-    const JR = window.eosjs_jsonrpc?.JsonRpc;
-    rpc = new JR(WAX_RPC);
-  }
-  const bal = await fetchTsdmBalance(state.account, rpc);
-  const fmt = (n) => n.toFixed(TSDM.decimals) + ' ' + TSDM.symbol;
-  setText(nav.navBalance, fmt(bal));
-  setText(nav.dashBalance, String(bal.toFixed(2)));
-  show(nav.navBalance);
-  show(nav.dashBalance);
-
-  // close modal if open
-  if(nav.modal){ nav.modal.classList.add('hidden'); nav.modal.setAttribute('aria-hidden','true'); }
-}
-
-function onSignedOut(){
-  state.provider = null;
-  state.account = null;
-  hide(nav.address);
-  hide(nav.navBalance);
-  hide(nav.dashBalance);
-  show(nav.connectBtn);
-  hide(nav.disconnectBtn);
-  setText(nav.address, '');
-  setText(nav.navBalance, '0.0000 ' + TSDM.symbol);
-  setText(nav.dashBalance, '0.00');
-  localStorage.removeItem(LS_LAST_PROVIDER);
-}
-
-/* ----------------- WAX Cloud Wallet ----------------- */
-async function loginWithCloud(){
-  const { hasWax } = libsAvailable();
-  if(!hasWax){ throw new Error('WAX library not loaded'); }
-  state.wax = new window.waxjs.WaxJS({ rpcEndpoint: WAX_RPC });
-
-  // Try auto first; if not available, login() will prompt
-  try{
-    const user = await state.wax.login();
-    state.account = user; // user is the account name
-    await onAuthenticated('cloud');
-  }catch(err){
-    console.error('[wallet] cloud login failed', err);
-    throw err;
-  }
-}
-
-async function tryCloudAuto(){
-  const { hasWax } = libsAvailable();
-  if(!hasWax) return false;
-  state.wax = new window.waxjs.WaxJS({ rpcEndpoint: WAX_RPC });
-  try{
-    if(await state.wax.isAutoLoginAvailable()){
-      const user = await state.wax.login();
-      state.account = user;
-      await onAuthenticated('cloud');
-      return true;
+  function setAuthUI(signedIn, account = '') {
+    if (signedIn) {
+      els.wrap?.setAttribute('data-auth', 'signed-in');
+      setText(els.addr, account);
+      show(els.addr);
+      show(els.bal);
+      hide(els.connect);
+      show(els.disconnect);
+    } else {
+      els.wrap?.setAttribute('data-auth', 'signed-out');
+      setText(els.addr, '');
+      setText(els.bal, `0.0000 ${TOKEN.symbol}`);
+      hide(els.addr);
+      hide(els.bal);
+      show(els.connect);
+      hide(els.disconnect);
     }
-  }catch(e){/* ignore */}
-  return false;
-}
+  }
 
-/* ----------------- Anchor (Anchor-Link) ----------------- */
-function ensureAnchorLink(){
-  if(!state.anchor.link){
+  // --- Lib detection (from local /libs) ---
+  const hasWax    = !!(window.waxjs && window.waxjs.WaxJS);
+  const hasAnchor = !!(window.AnchorLink && window.AnchorLinkBrowserTransport);
+  console.log('[wallet] libs:', { hasWax, hasAnchor, hasWombat:false });
+
+  // --- State ---
+  let provider = null;      // 'cloud' | 'anchor'
+  let account  = null;      // string (wax account)
+  let session  = null;      // anchor session
+  let wax      = null;      // waxjs instance
+
+  // --- Balance ---
+  async function fetchTSDMBalance(acct) {
+    try {
+      const res = await fetch(`${RPC_ENDPOINT}/v1/chain/get_table_rows`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          code: TOKEN.contract,
+          table: 'accounts',
+          scope: acct,
+          json: true,
+          limit: 1
+        })
+      });
+      const data = await res.json();
+      const row = data.rows?.[0]?.balance || `0.0000 ${TOKEN.symbol}`;
+      // Format to desired precision (defensive if symbol casing differs)
+      const [num, sym] = row.split(' ');
+      const value = Number(num).toFixed(TOKEN.precision);
+      setText(els.bal, `${value} ${TOKEN.symbol}`);
+    } catch (e) {
+      console.warn('[wallet] balance fetch failed', e);
+      setText(els.bal, `0.0000 ${TOKEN.symbol}`);
+    }
+  }
+
+  // --- Providers ---
+  async function connectCloud() {
+    if (!hasWax) throw new Error('WAX library missing');
+    wax = new window.waxjs.WaxJS({ rpcEndpoint: RPC_ENDPOINT, tryAutoLogin: false });
+    const user = await wax.login();         // opens Cloud Wallet popup
+    account = user || wax.userAccount;
+    provider = 'cloud';
+    session  = null;
+    return account;
+  }
+
+  async function restoreCloud() {
+    if (!hasWax) return null;
+    wax = new window.waxjs.WaxJS({ rpcEndpoint: RPC_ENDPOINT, tryAutoLogin: true });
+    const ok = await wax.isAutoLoginAvailable();
+    if (!ok) return null;
+    account = wax.userAccount;
+    provider = 'cloud';
+    session  = null;
+    return account;
+  }
+
+  async function connectAnchor() {
+    if (!hasAnchor) throw new Error('Anchor libraries missing');
     const transport = new window.AnchorLinkBrowserTransport();
-    state.anchor.link = new window.AnchorLink({
+    const link = new window.AnchorLink({
+      chainId: CHAIN_ID,
       transport,
-      chains: [{ chainId: WAX_CHAIN_ID, nodeUrl: WAX_RPC }]
+      rpc: RPC_ENDPOINT
     });
+    const result = await link.login('tsdgems'); // app identifier (arbitrary)
+    session = result.session;
+    account = session.auth.actor.toString();
+    provider = 'anchor';
+    // persist session
+    window.localStorage.setItem('tsd_anchor_session', JSON.stringify(session.serialize()));
+    return account;
   }
-}
 
-async function loginWithAnchor(){
-  const { hasAnchor } = libsAvailable();
-  if(!hasAnchor){ throw new Error('Anchor-Link not loaded'); }
-  ensureAnchorLink();
-  try{
-    const identity = await state.anchor.link.login('TSDGEMS');
-    state.anchor.session = identity.session;
-    state.account = state.anchor.session.auth.actor.toString();
-    await onAuthenticated('anchor');
-  }catch(err){
-    console.error('[wallet] anchor login failed', err);
-    throw err;
-  }
-}
-
-async function tryAnchorRestore(){
-  const { hasAnchor } = libsAvailable();
-  if(!hasAnchor) return false;
-  ensureAnchorLink();
-  try{
-    const s = await state.anchor.link.restoreSession('TSDGEMS');
-    if(s){
-      state.anchor.session = s;
-      state.account = s.auth.actor.toString();
-      await onAuthenticated('anchor');
-      return true;
+  async function restoreAnchor() {
+    if (!hasAnchor) return null;
+    const raw = window.localStorage.getItem('tsd_anchor_session');
+    if (!raw) return null;
+    try {
+      const transport = new window.AnchorLinkBrowserTransport();
+      const link = new window.AnchorLink({
+        chainId: CHAIN_ID,
+        transport,
+        rpc: RPC_ENDPOINT
+      });
+      session = await link.restoreSession('tsdgems', JSON.parse(raw));
+      if (!session) return null;
+      account = session.auth.actor.toString();
+      provider = 'anchor';
+      return account;
+    } catch {
+      return null;
     }
-  }catch(e){/* ignore */}
-  return false;
-}
+  }
 
-/* ----------------- Wombat (Scatter via eos-transit) ----------------- */
-async function loginWithWombat(){
-  const { hasWombat } = libsAvailable();
-  if(!hasWombat){ throw new Error('eos-transit Scatter provider not loaded'); }
+  async function disconnect() {
+    try {
+      if (provider === 'anchor' && session?.remove) {
+        await session.remove();
+      }
+    } catch {}
+    window.localStorage.removeItem('tsd_anchor_session');
+    provider = null; account = null; session = null; wax = null;
+    setAuthUI(false);
+  }
 
-  const { initAccessContext } = window.transit;
-  state.wombat.access = initAccessContext({
-    appName: 'TSDGEMS',
-    network: { host: 'wax.greymass.com', port: 443, protocol: 'https', chainId: WAX_CHAIN_ID },
-    walletProviders: [ window.scatter() ]
+  // --- Event wiring from the HTML bootstrap ---
+  window.addEventListener('tsd:wallet:connect', async (ev) => {
+    const choice = ev.detail?.provider; // 'cloud' | 'anchor'
+    if (!choice) return;
+    // close modal if open
+    els.modal?.classList.add('hidden');
+    els.modal?.setAttribute('aria-hidden','true');
+    try {
+      if (choice === 'cloud') await connectCloud();
+      else if (choice === 'anchor') await connectAnchor();
+      else throw new Error('Provider not ready');
+
+      setAuthUI(true, account);
+      await fetchTSDMBalance(account);
+    } catch (err) {
+      console.error('[wallet] connect failed', err);
+      if (els.error) {
+        els.error.textContent = err.message || 'Connection failed';
+        els.error.classList.remove('hidden');
+      }
+      setAuthUI(false);
+    }
   });
 
-  const provider = state.wombat.access.getWalletProviders().find(p => p.id === 'scatter');
-  const wallet = state.wombat.access.initWallet(provider);
-  state.wombat.wallet = wallet;
+  window.addEventListener('tsd:wallet:disconnect', () => { disconnect(); });
 
-  await wallet.connect();           // triggers Wombat/Scatter
-  await wallet.login();             // resolves with account info
-  state.account = wallet.auth.accountName;
-  await onAuthenticated('wombat');
-}
-
-/* ----------------- Disconnect ----------------- */
-async function disconnect(){
-  try{
-    if(state.provider === 'anchor' && state.anchor.session){
-      await state.anchor.session.remove();
-      state.anchor.session = null;
+  // --- Auto-login on load ---
+  (async function boot() {
+    setAuthUI(false);
+    // Try Anchor session first, then WAX Cloud
+    const a = await restoreAnchor();
+    if (a) {
+      setAuthUI(true, a);
+      await fetchTSDMBalance(a);
+      return;
     }
-    if(state.provider === 'wombat' && state.wombat.wallet){
-      try{ await state.wombat.wallet.logout(); }catch(_){}
-      try{ await state.wombat.wallet.disconnect(); }catch(_){}
-      state.wombat.wallet = null;
+    const c = await restoreCloud();
+    if (c) {
+      setAuthUI(true, c);
+      await fetchTSDMBalance(c);
+      return;
     }
-  }finally{
-    onSignedOut();
-  }
-}
-
-/* ----------------- Wire up UI events ----------------- */
-// From your index inline bootstrap: chooser buttons dispatch tsd:wallet:connect
-window.addEventListener('tsd:wallet:connect', async (ev) => {
-  const provider = ev.detail?.provider;
-  hide(nav.err);
-  try{
-    if(provider === 'cloud')  return await loginWithCloud();
-    if(provider === 'anchor') return await loginWithAnchor();
-    if(provider === 'wombat') return await loginWithWombat();
-    throw new Error('Unknown provider');
-  }catch(err){
-    setText(nav.err, err.message || String(err));
-    show(nav.err);
-  }
-});
-
-window.addEventListener('tsd:wallet:disconnect', () => disconnect());
-
-/* ----------------- Auto-restore on load ----------------- */
-document.addEventListener('DOMContentLoaded', async () => {
-  const last = localStorage.getItem(LS_LAST_PROVIDER);
-  // Try specific last-used first; fall back to provider-native auto
-  try{
-    if(last === 'anchor' && await tryAnchorRestore()) return;
-    if(last === 'cloud'  && await tryCloudAuto())     return;
-
-    // If no last or it failed, still try a silent restore in this order:
-    if(await tryAnchorRestore()) return;
-    if(await tryCloudAuto())     return;
-
-    // else stay signed out; buttons remain visible
-  }catch(e){
-    console.warn('[wallet] auto-restore failed', e);
-  }
-});
+  })();
+})();

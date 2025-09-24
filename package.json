@@ -1,0 +1,25 @@
+{
+  "name": "gem-trader-v2",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MakulYo/gem-trader-v2.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/MakulYo/gem-trader-v2/issues"
+  },
+  "homepage": "https://github.com/MakulYo/gem-trader-v2#readme",
+  "description": "",
+  "dependencies": {
+    "@waxio/waxjs": "^1.7.0",
+    "anchor-link": "^3.6.0",
+    "anchor-link-browser-transport": "^3.6.1"
+  }
+}

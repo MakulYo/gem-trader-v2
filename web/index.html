@@ -7,15 +7,10 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- WAX Cloud Wallet (global: window.waxjs.WaxJS) -->
-    <script src="https://unpkg.com/@waxio/waxjs@1.1.3/dist/waxjs.min.js"
-            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <!-- Anchor Link UMD bundles (globals: window.AnchorLink, window.AnchorLinkBrowserTransport) -->
-    <script src="https://unpkg.com/anchor-link@3.6.3/dist/anchor-link.umd.min.js"
-            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://unpkg.com/anchor-link-browser-transport@3.3.0/dist/anchor-link-browser-transport.umd.min.js"
-            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script defer src="wallet.js"></script>
+    <script src="/libs/waxjs.js"></script>
+    <script src="/libs/anchor-link.js"></script>
+    <script src="/libs/anchor-link-browser-transport.js"></script>
+
     <style>
     .hidden { display: none !important; }
     #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
@@ -966,6 +961,42 @@
 
     <!-- Mining Animations Container -->
     <div id="mining-animations" class="mining-animations"></div>
+    <script>
+    (() => {
+    const $ = (s, r=document) => r.querySelector(s);
+    const connectBtn   = $('#connect-wallet');
+    const disconnectBtn= $('#disconnect-wallet');
+    const walletModal  = $('#wallet-modal');
+    const walletError  = $('#wallet-error');
+
+    connectBtn?.addEventListener('click', () => {
+        walletError?.classList.add('hidden');
+        walletModal?.classList.remove('hidden');
+        walletModal?.setAttribute('aria-hidden','false');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (e.target.matches('[data-close-wallet-modal]') || e.target === walletModal) {
+        walletModal?.classList.add('hidden');
+        walletModal?.setAttribute('aria-hidden','true');
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-provider]');
+        if (!btn) return;
+        const provider = btn.getAttribute('data-provider');
+        window.dispatchEvent(new CustomEvent('tsd:wallet:connect', { detail: { provider } }));
+    });
+
+    disconnectBtn?.addEventListener('click', () => {
+        window.dispatchEvent(new Event('tsd:wallet:disconnect'));
+    });
+    })();
+    </script>
+
+    <!-- Your main wallet logic -->
+    <script src="wallet.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
