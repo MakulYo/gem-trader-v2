@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TSDGEMS - Diamond Trading Simulator</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fas fa-gem"></i>
+                <span>TSDGEMS</span>
+            </div>
+            
+            <!-- Mobile Menu Toggle -->
+            <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            
+            <div class="nav-menu" id="nav-menu">
+                <a href="#dashboard" class="nav-link active">Dashboard</a>
+                
+                <!-- Mining Group -->
+                <div class="nav-dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">
+                        Mining <i class="fas fa-chevron-down"></i>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#mining" class="dropdown-item">Mining Operations</a>
+                        <a href="#mining-slots" class="dropdown-item">Mining Slots</a>
+                        <a href="#nft-mining" class="dropdown-item">NFT Mining</a>
+                    </div>
+                </div>
+                
+                <!-- Management Group -->
+                <div class="nav-dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">
+                        Management <i class="fas fa-chevron-down"></i>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#workers-management" class="dropdown-item">Workers</a>
+                        <a href="#staking" class="dropdown-item">Staking</a>
+                        <a href="#inventory" class="dropdown-item">Inventory</a>
+                    </div>
+                </div>
+                
+                <!-- Crafting Group -->
+                <div class="nav-dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">
+                        Crafting <i class="fas fa-chevron-down"></i>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#crafting" class="dropdown-item">Crafting</a>
+                        <a href="#fusion" class="dropdown-item">Fusion</a>
+                        <a href="#upgrades" class="dropdown-item">Upgrades</a>
+                    </div>
+                </div>
+                
+                <!-- Progress Group -->
+                <div class="nav-dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">
+                        Progress <i class="fas fa-chevron-down"></i>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#achievements" class="dropdown-item">Achievements</a>
+                        <a href="#events" class="dropdown-item">Events</a>
+                        <a href="#quests" class="dropdown-item">Quests</a>
+                    </div>
+                </div>
+                
+                <!-- Economy Group -->
+                <div class="nav-dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">
+                        Economy <i class="fas fa-chevron-down"></i>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#marketplace" class="dropdown-item">Marketplace</a>
+                        <a href="#leaderboard" class="dropdown-item">Leaderboard</a>
+                    </div>
+                </div>
+            </div>
+            <div class="nav-wallet">
+                <span class="wallet-balance">0.00 TSD</span>
+                <button class="connect-wallet-btn">Connect Wallet</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Dashboard Section -->
+        <section id="dashboard" class="section active">
+            <div class="dashboard-header">
+                <h1>Welcome to TSDGEMS</h1>
+                <p>The ultimate blockchain-based diamond trading simulator</p>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-gem"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Gems</h3>
+                        <p class="stat-value" id="total-gems">0</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-coins"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>TSD Balance</h3>
+                        <p class="stat-value" id="tsd-balance">0.00</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-tools"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Mining Power</h3>
+                        <p class="stat-value" id="mining-power">0</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Active Workers</h3>
+                        <p class="stat-value" id="active-workers">0</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Mining Slots</h3>
+                        <p class="stat-value" id="mining-slots-count">0/10</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-fire"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>NFT Mining</h3>
+                        <p class="stat-value" id="nft-mining-count">0</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Staked TSD</h3>
+                        <p class="stat-value" id="dashboard-staked-tsd">0</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-gem"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Staked Gems</h3>
+                        <p class="stat-value" id="dashboard-staked-gems">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <button class="action-btn primary" onclick="startMining()">
+                    <i class="fas fa-play"></i>
+                    Start Mining
+                </button>
+                <button class="action-btn secondary" onclick="openMarketplace()">
+                    <i class="fas fa-store"></i>
+                    Buy Equipment
+                </button>
+                <button class="action-btn secondary" onclick="hireWorkers()">
+                    <i class="fas fa-user-plus"></i>
+                    Hire Workers
+                </button>
+                <button class="action-btn secondary" onclick="openMiningSlots()">
+                    <i class="fas fa-map-marker-alt"></i>
+                    Mining Slots
+                </button>
+            </div>
+        </section>
+
+        <!-- Mining Section -->
+        <section id="mining" class="section">
+            <div class="section-header">
+                <h2>Mining Operations</h2>
+                <p>Manage your mining equipment and workers</p>
+            </div>
+
+            <div class="mining-container">
+                <div class="mining-controls">
+                    <div class="mining-status">
+                        <h3>Mining Status</h3>
+                        <div class="status-indicator" id="mining-status">
+                            <span class="status-dot"></span>
+                            <span class="status-text">Stopped</span>
+                        </div>
+                        <button class="mining-toggle-btn" id="mining-toggle">
+                            Start Mining
+                        </button>
+                    </div>
+
+                    <div class="mining-stats">
+                        <div class="mining-stat">
+                            <label>Mining Rate:</label>
+                            <span id="hash-rate">0 H/s</span>
+                        </div>
+                        <div class="mining-stat">
+                            <label>Difficulty:</label>
+                            <span id="difficulty">1.0</span>
+                        </div>
+                        <div class="mining-stat">
+                            <label>Block Reward:</label>
+                            <span id="block-reward">0.01 TSD</span>
+                        </div>
+                        <div class="mining-stat">
+                            <label>Active Slots:</label>
+                            <span id="active-slots">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="equipment-grid">
+                    <h3>Mining Equipment</h3>
+                    <div class="equipment-list" id="equipment-list">
+                        <!-- Equipment will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <div class="workers-grid">
+                    <h3>Mining Workers</h3>
+                    <div class="workers-list" id="workers-list">
+                        <!-- Workers will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <div class="offline-mining-grid">
+                    <h3>Offline Mining</h3>
+                    <div class="offline-mining-container">
+                        <div class="offline-mining-status">
+                            <div class="offline-status-indicator">
+                                <span class="offline-status-dot"></span>
+                                <span class="offline-status-text">Inactive</span>
+                            </div>
+                                                    <div class="offline-mining-info">
+                            <div class="offline-stat">
+                                <label>Current Earnings:</label>
+                                <span id="offline-earnings">0 TSD</span>
+                            </div>
+                            <div class="offline-stat">
+                                <label>Time Remaining:</label>
+                                <span id="offline-time-remaining">0:00:00</span>
+                            </div>
+                            <div class="offline-stat">
+                                <label>Max Duration:</label>
+                                <span id="offline-max-duration">2:00:00</span>
+                            </div>
+                            <div class="offline-stat">
+                                <label>Upgrade Level:</label>
+                                <span id="offline-upgrade-level">1</span>
+                            </div>
+                        </div>
+                        <div class="offline-mining-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="offline-progress-fill"></div>
+                            </div>
+                            <div class="progress-text" id="offline-progress-text">0% Complete</div>
+                        </div>
+                        <div class="offline-mining-bonuses">
+                            <div class="bonus-info">
+                                <label>Staking Bonus:</label>
+                                <span id="offline-staking-bonus">1.0x</span>
+                            </div>
+                            <div class="bonus-info">
+                                <label>Current Rate:</label>
+                                <span id="offline-current-rate">0 TSD/h</span>
+                            </div>
+                        </div>
+                        </div>
+                        <div class="offline-mining-controls">
+                            <button class="action-btn primary" id="start-offline-mining">
+                                <i class="fas fa-play"></i>
+                                Start Offline Mining
+                            </button>
+                            <button class="action-btn secondary" id="claim-offline-earnings" disabled>
+                                <i class="fas fa-coins"></i>
+                                Claim Earnings
+                            </button>
+                            <button class="action-btn tertiary" id="upgrade-offline-mining">
+                                <i class="fas fa-arrow-up"></i>
+                                Upgrade Duration
+                            </button>
+                        </div>
+                        
+                        <div class="offline-mining-history">
+                            <h4>Recent Offline Mining Sessions</h4>
+                            <div class="history-list" id="offline-mining-history-list">
+                                <!-- History will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Mining Slots Section -->
+        <section id="mining-slots" class="section">
+            <div class="section-header">
+                <h2>Mining Slots</h2>
+                <p>Rent and manage mining locations for better rewards</p>
+            </div>
+
+            <div class="slots-container">
+                <div class="slots-info">
+                    <div class="slot-stats">
+                        <div class="slot-stat">
+                            <label>Available Slots:</label>
+                            <span id="available-slots">3</span>
+                        </div>
+                        <div class="slot-stat">
+                            <label>Rented Slots:</label>
+                            <span id="rented-slots">0</span>
+                        </div>
+                        <div class="slot-stat">
+                            <label>Total Cost:</label>
+                            <span id="total-slot-cost">0 TSD</span>
+                        </div>
+                        <div class="slot-stat">
+                            <label>Max Slots:</label>
+                            <span id="max-slots">10</span>
+                        </div>
+                        <div class="slot-stat">
+                            <label>Status:</label>
+                            <span id="slot-status" class="slot-status">Ready to rent slots</span>
+                        </div>
+                    </div>
+                    <button class="action-btn primary" onclick="rentNewSlot()">
+                        <i class="fas fa-plus"></i>
+                        Rent New Slot
+                    </button>
+                </div>
+
+                <div class="slots-grid" id="slots-grid">
+                    <!-- Mining slots will be populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Workers Management Section -->
+        <section id="workers-management" class="section">
+            <div class="section-header">
+                <h2>Workers Management</h2>
+                <p>Manage your workforce, hire overseers, and train workers</p>
+            </div>
+
+            <div class="workers-management-container">
+                <div class="workers-overview">
+                    <div class="worker-stats">
+                        <div class="worker-stat">
+                            <label>Current Workers:</label>
+                            <span id="current-workers">0</span>
+                        </div>
+                        <div class="worker-stat">
+                            <label>Max Workers:</label>
+                            <span id="max-workers">10</span>
+                        </div>
+                        <div class="worker-stat">
+                            <label>Overseers:</label>
+                            <span id="overseers-count">0</span>
+                        </div>
+                        <div class="worker-stat">
+                            <label>Status:</label>
+                            <span id="worker-status" class="worker-status">Ready to hire workers</span>
+                        </div>
+                    </div>
+                    <button class="action-btn primary" onclick="hireOverseer()">
+                        <i class="fas fa-user-tie"></i>
+                        Hire Overseer (500 TSD)
+                    </button>
+                </div>
+
+                <div class="training-center">
+                    <h3>Training Center</h3>
+                    <div class="training-programs">
+                        <div class="training-program">
+                            <h4>Machine Operator</h4>
+                            <p>Train workers to operate mining machines efficiently</p>
+                            <div class="training-details">
+                                <span>Cost: 100 TSD</span>
+                                <span>Duration: 24h</span>
+                                <span>Boost: +20% Mining</span>
+                            </div>
+                        </div>
+                        <div class="training-program">
+                            <h4>Site Overseer</h4>
+                            <p>Advanced leadership and management skills</p>
+                            <div class="training-details">
+                                <span>Cost: 300 TSD</span>
+                                <span>Duration: 48h</span>
+                                <span>Boost: +50% Efficiency</span>
+                            </div>
+                        </div>
+                        <div class="training-program">
+                            <h4>Gems Polishing</h4>
+                            <p>Reduce gem breakage during processing</p>
+                            <div class="training-details">
+                                <span>Cost: 200 TSD</span>
+                                <span>Duration: 36h</span>
+                                <span>Boost: -30% Break Chance</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="workers-list" id="workers-management-list">
+                    <!-- Workers will be populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Staking Section -->
+        <section id="staking" class="section">
+            <div class="section-header">
+                <h2>Staking & Rewards</h2>
+                <p>Stake TSD and gems to unlock mining slots and earn bonuses</p>
+            </div>
+
+            <div class="staking-container">
+                <div class="staking-overview">
+                    <div class="staking-stats">
+                        <div class="staking-stat">
+                            <label>TSD Staked:</label>
+                            <span id="tsd-staked">0</span>
+                        </div>
+                        <div class="staking-stat">
+                            <label>Gems Staked:</label>
+                            <span id="gems-staked">0</span>
+                        </div>
+                        <div class="staking-stat">
+                            <label>Total Boost:</label>
+                            <span id="total-staking-boost">1.0x</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="staking-actions">
+                    <div class="staking-input">
+                        <h4>Stake TSD</h4>
+                        <input type="number" id="tsd-stake-amount" placeholder="Amount to stake" min="1">
+                        <button onclick="stakeTSD()" class="action-btn primary">Stake TSD</button>
+                    </div>
+                    <div class="staking-input">
+                        <h4>Stake Gems</h4>
+                        <input type="number" id="gems-stake-amount" placeholder="Amount to stake" min="1">
+                        <button onclick="stakeGems()" class="action-btn primary">Stake Gems</button>
+                    </div>
+                </div>
+
+                <div class="unstaking-actions">
+                    <div class="staking-input">
+                        <h4>Unstake TSD</h4>
+                        <input type="number" id="tsd-unstake-amount" placeholder="Amount to unstake" min="1">
+                        <button onclick="unstakeTSD()" class="action-btn secondary">Unstake TSD</button>
+                    </div>
+                    <div class="staking-input">
+                        <h4>Unstake Gems</h4>
+                        <input type="number" id="gems-unstake-amount" placeholder="Amount to unstake" min="1">
+                        <button onclick="unstakeGems()" class="action-btn secondary">Unstake Gems</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- NFT Mining Section -->
+        <section id="nft-mining" class="section">
+            <div class="section-header">
+                <h2>NFT Mining</h2>
+                <p>Mine special NFTs and rare collectibles</p>
+            </div>
+
+            <div class="nft-mining-container">
+                <div class="nft-mining-info">
+                    <div class="nft-stats">
+                        <div class="nft-stat">
+                            <label>NFTs Mined:</label>
+                            <span id="nfts-mined">0</span>
+                        </div>
+                        <div class="nft-stat">
+                            <label>Rare NFTs:</label>
+                            <span id="rare-nfts">0</span>
+                        </div>
+                        <div class="nft-stat">
+                            <label>NFT Value:</label>
+                            <span id="nft-value">0 TSD</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="nft-mining-grid" id="nft-mining-grid">
+                    <!-- NFT mining areas will be populated by JavaScript -->
+                </div>
+
+                <div class="nft-collection">
+                    <h3>Your NFT Collection</h3>
+                    <div class="nft-collection-grid" id="nft-collection-grid">
+                        <!-- NFT collection will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Marketplace Section -->
+        <section id="marketplace" class="section">
+            <div class="section-header">
+                <h2>Marketplace</h2>
+                <p>Buy and sell mining equipment, workers, and gems</p>
+            </div>
+
+            <div class="marketplace-tabs">
+                <button class="tab-btn active" data-tab="equipment">Equipment</button>
+                <button class="tab-btn" data-tab="workers">Workers</button>
+                <button class="tab-btn" data-tab="gems">Gems</button>
+                <button class="tab-btn" data-tab="repairs">Repairs</button>
+            </div>
+
+            <div class="marketplace-content">
+                <div id="equipment-tab" class="tab-content active">
+                    <div class="marketplace-grid" id="equipment-market">
+                        <!-- Equipment marketplace items -->
+                    </div>
+                </div>
+
+                <div id="workers-tab" class="tab-content">
+                    <div class="marketplace-grid" id="workers-market">
+                        <!-- Workers marketplace items -->
+                    </div>
+                </div>
+
+                <div id="gems-tab" class="tab-content">
+                    <div class="marketplace-grid" id="gems-market">
+                        <!-- Gems marketplace items -->
+                    </div>
+                </div>
+
+                <div id="repairs-tab" class="tab-content">
+                    <div class="marketplace-grid" id="repairs-market">
+                        <!-- Repair services -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Leaderboard Section -->
+        <section id="leaderboard" class="section">
+            <div class="section-header">
+                <h2>Monthly Leaderboard</h2>
+                <p>Top miners and traders - Resets every month</p>
+                <div class="leaderboard-info">
+                    <span class="reset-timer">Next reset: <span id="reset-countdown">--</span></span>
+                    <span class="current-month">Current Month: <span id="current-month">--</span></span>
+                </div>
+            </div>
+
+            <div class="leaderboard-container">
+                <div class="leaderboard-content">
+                    <div id="mining-leaderboard" class="leaderboard-tab active">
+                        <div class="leaderboard-table">
+                            <div class="table-header">
+                                <div class="header-cell">Rank</div>
+                                <div class="header-cell">Player</div>
+                                <div class="header-cell">Mining Rate</div>
+                                <div class="header-cell">Total Gems</div>
+                                <div class="header-cell">Level</div>
+                            </div>
+                            <div class="table-body" id="mining-leaderboard-body">
+                                <!-- Mining leaderboard entries -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Inventory Section -->
+        <section id="inventory" class="section">
+            <div class="section-header">
+                <h2>Inventory</h2>
+                <p>Manage your gems, equipment, and workers</p>
+            </div>
+
+            <div class="inventory-container">
+                <div class="inventory-tabs">
+                    <button class="tab-btn active" data-inventory="gems">Gems</button>
+                    <button class="tab-btn" data-inventory="equipment">Equipment</button>
+                    <button class="tab-btn" data-inventory="workers">Workers</button>
+                    <button class="tab-btn" data-inventory="nfts">NFTs</button>
+                </div>
+
+                <div class="inventory-content">
+                    <div id="gems-inventory" class="inventory-tab active">
+                        <div class="inventory-grid" id="gems-inventory-grid">
+                            <!-- Gems inventory -->
+                        </div>
+                    </div>
+
+                    <div id="equipment-inventory" class="inventory-tab">
+                        <div class="inventory-grid" id="equipment-inventory-grid">
+                            <!-- Equipment inventory -->
+                        </div>
+                    </div>
+
+                    <div id="workers-inventory" class="inventory-tab">
+                        <div class="inventory-grid" id="workers-inventory-grid">
+                            <!-- Workers inventory -->
+                        </div>
+                    </div>
+
+                    <div id="nfts-inventory" class="inventory-tab">
+                        <div class="inventory-grid" id="nfts-inventory-grid">
+                            <!-- NFTs inventory -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Crafting Section -->
+        <section id="crafting" class="section">
+            <div class="section-header">
+                <h2>Crafting Workshop</h2>
+                <p>Create powerful equipment and tools</p>
+            </div>
+
+            <div class="crafting-container">
+                <div class="crafting-info">
+                    <div class="crafting-stats">
+                        <div class="stat">
+                            <label>Level:</label>
+                            <span id="crafting-level">1</span>
+                        </div>
+                        <div class="stat">
+                            <label>Experience:</label>
+                            <span id="crafting-exp">0</span>
+                        </div>
+                        <div class="stat">
+                            <label>Efficiency:</label>
+                            <span id="crafting-efficiency">100%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="crafting-recipes">
+                    <h3>Available Recipes</h3>
+                    <div class="recipe-grid" id="recipe-grid">
+                        <!-- Recipes will be populated here -->
+                    </div>
+                </div>
+
+                <div class="crafting-queue">
+                    <h3>Crafting Queue</h3>
+                    <div class="queue-list" id="crafting-queue">
+                        <!-- Crafting queue will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Fusion Section -->
+        <section id="fusion" class="section">
+            <div class="section-header">
+                <h2>Gem Fusion Lab</h2>
+                <p>Combine gems to create rarer and more valuable ones</p>
+            </div>
+
+            <div class="fusion-container">
+                <div class="fusion-info">
+                    <div class="fusion-stats">
+                        <div class="stat">
+                            <label>Level:</label>
+                            <span id="fusion-level">1</span>
+                        </div>
+                        <div class="stat">
+                            <label>Success Rate:</label>
+                            <span id="fusion-success-rate">80%</span>
+                        </div>
+                        <div class="stat">
+                            <label>Critical Chance:</label>
+                            <span id="fusion-critical-chance">2%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="fusion-recipes">
+                    <h3>Fusion Recipes</h3>
+                    <div class="fusion-grid" id="fusion-grid">
+                        <!-- Fusion recipes will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Achievements Section -->
+        <section id="achievements" class="section">
+            <div class="section-header">
+                <h2>Achievements</h2>
+                <p>Unlock achievements and earn rewards</p>
+            </div>
+
+            <div class="achievements-container">
+                <div class="achievements-summary">
+                    <div class="achievement-stat">
+                        <label>Total Points:</label>
+                        <span id="achievement-points">0</span>
+                    </div>
+                    <div class="achievement-stat">
+                        <label>Unlocked:</label>
+                        <span id="achievements-unlocked">0</span>
+                    </div>
+                </div>
+
+                <div class="achievements-grid" id="achievements-grid">
+                    <!-- Achievements will be populated here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Events Section -->
+        <section id="events" class="section">
+            <div class="section-header">
+                <h2>Events & Challenges</h2>
+                <p>Participate in daily, weekly, and seasonal events</p>
+            </div>
+
+            <div class="events-container">
+                <div class="events-tabs">
+                    <button class="tab-btn active" data-events="daily">Daily</button>
+                    <button class="tab-btn" data-events="weekly">Weekly</button>
+                    <button class="tab-btn" data-events="seasonal">Seasonal</button>
+                </div>
+
+                <div class="events-content">
+                    <div id="daily-events" class="events-tab active">
+                        <div class="events-grid" id="daily-events-grid">
+                            <!-- Daily events -->
+                        </div>
+                    </div>
+
+                    <div id="weekly-events" class="events-tab">
+                        <div class="events-grid" id="weekly-events-grid">
+                            <!-- Weekly events -->
+                        </div>
+                    </div>
+
+                    <div id="seasonal-events" class="events-tab">
+                        <div class="events-grid" id="seasonal-events-grid">
+                            <!-- Seasonal events -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+
+
+
+
+
+        <!-- Quests Section -->
+        <section id="quests" class="section">
+            <div class="section-header">
+                <h2>Quests & Missions</h2>
+                <p>Complete quests for rewards and progression</p>
+            </div>
+
+            <div class="quests-container">
+                <div class="quests-tabs">
+                    <button class="tab-btn active" data-quests="story">Story</button>
+                    <button class="tab-btn" data-quests="daily">Daily</button>
+                    <button class="tab-btn" data-quests="weekly">Weekly</button>
+                </div>
+
+                <div class="quests-content">
+                    <div id="story-quests" class="quests-tab active">
+                        <div class="quests-grid" id="story-quests-grid">
+                            <!-- Story quests -->
+                        </div>
+                    </div>
+
+                    <div id="daily-quests" class="quests-tab">
+                        <div class="quests-grid" id="daily-missions-list">
+                            <!-- Daily missions will be populated by JavaScript -->
+                        </div>
+                    </div>
+
+                    <div id="weekly-quests" class="quests-tab">
+                        <div class="quests-grid" id="weekly-missions-list">
+                            <!-- Weekly missions will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Upgrades Section -->
+        <section id="upgrades" class="section">
+            <div class="section-header">
+                <h2>Skill Upgrades</h2>
+                <p>Improve your mining, crafting, and fusion skills</p>
+            </div>
+
+            <div class="upgrades-container">
+                <div class="upgrades-tabs">
+                    <button class="tab-btn active" data-upgrades="mining">Mining</button>
+                    <button class="tab-btn" data-upgrades="crafting">Crafting</button>
+                    <button class="tab-btn" data-upgrades="fusion">Fusion</button>
+                </div>
+
+                <div class="upgrades-content">
+                    <div id="mining-upgrades" class="upgrades-tab active">
+                        <div class="upgrades-grid" id="mining-upgrades-grid">
+                            <!-- Mining upgrades -->
+                        </div>
+                    </div>
+
+                    <div id="crafting-upgrades" class="upgrades-tab">
+                        <div class="upgrades-grid" id="crafting-upgrades-grid">
+                            <!-- Crafting upgrades -->
+                        </div>
+                    </div>
+
+                    <div id="fusion-upgrades" class="upgrades-tab">
+                        <div class="upgrades-grid" id="fusion-upgrades-grid">
+                            <!-- Fusion upgrades -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+    </main>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal" id="modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Modal Title</h3>
+                <button class="modal-close" onclick="closeModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Modal content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Equipment Repair Modal -->
+    <div id="repair-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Repair Equipment</h3>
+                <button class="modal-close" onclick="closeRepairModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="repair-content">
+                    <!-- Repair content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Worker Motivation Modal -->
+    <div id="motivation-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Motivate Worker</h3>
+                <button class="modal-close" onclick="closeMotivationModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="motivation-content">
+                    <!-- Motivation content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="notifications" class="notifications"></div>
+
+    <!-- Mining Animations Container -->
+    <div id="mining-animations" class="mining-animations"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
