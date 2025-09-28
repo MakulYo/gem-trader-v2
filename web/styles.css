@@ -1,3 +1,83 @@
+section#gallery .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+section#gallery .gallery-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+section#gallery .gallery-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 18px 40px rgba(0, 212, 255, 0.25);
+    border-color: rgba(0, 212, 255, 0.35);
+}
+
+section#gallery .gallery-image {
+    width: 100%;
+    height: 220px;
+    background: rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+section#gallery .gallery-image img {
+    max-width: 80%;
+    max-height: 80%;
+    object-fit: contain;
+}
+
+section#gallery .gallery-content {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+section#gallery .gallery-content h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+section#gallery .gallery-content p {
+    color: #a0a0a0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+section#gallery .gallery-link {
+    align-self: flex-start;
+    padding: 0.6rem 1.25rem;
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    border-radius: 999px;
+    color: #ffffff;
+    font-weight: 600;
+    text-decoration: none;
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+section#gallery .gallery-link:hover {
+    box-shadow: 0 12px 28px rgba(0, 212, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+section#gallery .shop-actions {
+    margin-top: 1rem;
+}
+.hidden {
+    display: none !important;
+}
+
 /* Reset and Base Styles */
 * {
     margin: 0;
@@ -11,6 +91,11 @@ body {
     color: #ffffff;
     line-height: 1.6;
     overflow-x: hidden;
+}
+
+.scale-wrapper {
+    transform: scale(0.75);
+    transform-origin: top center;
 }
 
 /* Navigation Styles */
@@ -44,6 +129,23 @@ body {
     flex-shrink: 0;
 }
 
+.nav-status-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.nav-game-dollar {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #ffffff;
+    padding: 0.4rem 0.75rem;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 999px;
+}
+
 .nav-logo i {
     font-size: 2rem;
     color: #00d4ff;
@@ -71,7 +173,6 @@ body {
 .nav-link:hover {
     background: rgba(0, 212, 255, 0.1);
     color: #00d4ff;
-    transform: translateY(-1px);
 }
 
 .nav-link.active {
@@ -214,7 +315,6 @@ body {
 }
 
 .connect-wallet-btn:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
 }
 
@@ -226,7 +326,7 @@ body {
 
 .section {
     display: none;
-    padding: 2rem;
+    padding: 1rem;
     max-width: 1200px;
     margin: 0 auto;
 }
@@ -235,14 +335,167 @@ body {
     display: block;
 }
 
-.section-header {
-    text-align: center;
-    margin-bottom: 3rem;
+/* City Boost Section */
+.city-boost-container {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    backdrop-filter: blur(10px);
 }
 
-.section-header h2 {
-    font-size: 2.5rem;
+.matrix-sell-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, auto));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    align-items: end;
+}
+
+.matrix-control label {
+    display: block;
+    font-size: 0.85rem;
+    color: #a0a0a0;
+    margin-bottom: 0.5rem;
+}
+
+.matrix-control select,
+.matrix-control input {
+    width: 100%;
+    padding: 0.6rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.3);
+    color: #ffffff;
+    outline: none;
+    transition: border 0.2s ease;
+}
+
+.matrix-control select:focus,
+.matrix-control input:focus {
+    border-color: rgba(0, 212, 255, 0.6);
+}
+
+.matrix-control.action {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.matrix-summary {
+    display: flex;
+    gap: 2rem;
     margin-bottom: 1rem;
+    font-size: 0.95rem;
+    color: #a0f1ff;
+}
+
+.matrix-summary span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+#city-boost-matrix {
+    max-height: none;
+    overflow: visible;
+}
+
+#city-boost-matrix table {
+    width: 100%;
+    overflow: visible;
+}
+
+#city-boost-matrix td.selected {
+    box-shadow: inset 0 0 0 2px rgba(0, 212, 255, 0.6);
+    background: rgba(0, 212, 255, 0.12);
+}
+
+.section-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+.trading-subpage-toggle {
+    margin-top: 1.25rem;
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 212, 255, 0.08);
+}
+
+.toggle-btn {
+    background: transparent;
+    color: #ffffff;
+    border: none;
+    padding: 0.65rem 1.75rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.toggle-btn:not(.active):hover {
+    background: rgba(0, 212, 255, 0.18);
+}
+
+.toggle-btn.active {
+    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+    box-shadow: 0 12px 32px rgba(0, 212, 255, 0.35);
+}
+
+.trading-subpage {
+    display: none;
+    animation: fadeIn 0.25s ease;
+}
+
+.trading-subpage.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.pricing-container {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.pricing-chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 320px;
+}
+
+.pricing-status {
+    color: #a0f1ff;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+#gem-price-chart {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+
+.section-header h2 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
     background: linear-gradient(45deg, #00d4ff, #ffffff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -251,18 +504,18 @@ body {
 
 .section-header p {
     color: #a0a0a0;
-    font-size: 1.1rem;
+    font-size: 1rem;
 }
 
 /* Dashboard */
 .dashboard-header {
     text-align: center;
-    margin-bottom: 3rem;
+    margin-bottom: 1.5rem;
 }
 
 .dashboard-header h1 {
-    font-size: 3rem;
-    margin-bottom: 1rem;
+    font-size: 2.2rem;
+    margin-bottom: 0.5rem;
     background: linear-gradient(45deg, #00d4ff, #ffffff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -271,46 +524,46 @@ body {
 
 .dashboard-header p {
     color: #a0a0a0;
-    font-size: 1.2rem;
+    font-size: 1rem;
 }
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 2rem;
-    margin-bottom: 3rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
 }
 
 .stat-card {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 2rem;
+    border-radius: 12px;
+    padding: 1rem;
     text-align: center;
     transition: all 0.3s ease;
     backdrop-filter: blur(10px);
 }
 
 .stat-card:hover {
-    transform: translateY(-5px);
     border-color: rgba(0, 212, 255, 0.3);
     box-shadow: 0 10px 30px rgba(0, 212, 255, 0.1);
 }
 
 .stat-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
     color: #00d4ff;
 }
 
 .stat-content h3 {
     color: #a0a0a0;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
     font-weight: 500;
+    font-size: 0.9rem;
 }
 
 .stat-value {
-    font-size: 2rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: #ffffff;
 }
@@ -333,6 +586,23 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.action-btn:hover::before {
+    left: 100%;
 }
 
 .action-btn.primary {
@@ -347,7 +617,6 @@ body {
 }
 
 .action-btn:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
 }
 
@@ -404,7 +673,6 @@ body {
 }
 
 .mining-toggle-btn:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
 }
 
@@ -679,61 +947,66 @@ body {
     50% { opacity: 0.5; }
 }
 
-/* Mining Slots */
-.slots-container {
+/* Mining Operations - Enhanced Design */
+.mining-overview {
+    margin-bottom: 1rem;
+}
+
+.mining-stats {
     display: grid;
-    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
 }
 
-.slots-info {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 2rem;
+.mining-slots-section {
+    margin-top: 1rem;
+}
+
+.section-title {
+    text-align: left;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid rgba(0, 212, 255, 0.2);
+}
+
+.section-title h3 {
+    color: #00d4ff;
+    font-size: 1.4rem;
+    margin-bottom: 0.25rem;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    backdrop-filter: blur(10px);
+    gap: 0.5rem;
 }
 
-.slot-stats {
-    display: flex;
-    gap: 2rem;
+.section-title h3 i {
+    font-size: 1.2rem;
+    color: #00d4ff;
 }
 
-.slot-stat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.slot-stat label {
+.section-title p {
     color: #a0a0a0;
     font-size: 0.9rem;
-    margin-bottom: 0.5rem;
-}
-
-.slot-stat span {
-    color: #00d4ff;
-    font-weight: 600;
-    font-size: 1.2rem;
+    margin: 0;
 }
 
 .slots-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 2rem;
+    gap: 1rem;
+    margin-top: 1rem;
 }
 
 .mining-slot {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    border: 2px solid rgba(0, 212, 255, 0.15);
     border-radius: 16px;
-    padding: 2rem;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
+    padding: 1.5rem;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(20px);
     position: relative;
     overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
 .mining-slot::before {
@@ -743,8 +1016,13 @@ body {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.1), transparent);
-    transition: left 0.5s ease;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.15), transparent);
+    transition: left 0.6s ease;
+}
+
+.mining-slot:hover {
+    border-color: rgba(0, 212, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
 }
 
 .mining-slot.active::before {
@@ -752,48 +1030,71 @@ body {
 }
 
 .mining-slot.rented {
-    border-color: rgba(0, 212, 255, 0.5);
-    box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+    border-color: rgba(0, 212, 255, 0.6);
+    box-shadow: 0 12px 40px rgba(0, 212, 255, 0.25);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 212, 255, 0.03));
 }
 
 .mining-slot.rented::after {
-    content: 'RENTED';
+    content: 'ACTIVE';
     position: absolute;
-    top: 1rem;
-    right: 1rem;
-    background: rgba(0, 212, 255, 0.8);
+    top: 1.5rem;
+    right: 1.5rem;
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
     color: white;
-    padding: 0.25rem 0.75rem;
-    border-radius: 20px;
+    padding: 0.5rem 1rem;
+    border-radius: 25px;
     font-size: 0.8rem;
     font-weight: 600;
+    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
 }
 
 .slot-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .slot-name {
     color: #00d4ff;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 1.2rem;
+    line-height: 1.3;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .slot-cost {
     color: #2ed573;
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 1rem;
+    background: rgba(46, 213, 115, 0.1);
+    padding: 0.25rem 0.75rem;
+    border-radius: 15px;
+    border: 1px solid rgba(46, 213, 115, 0.3);
+}
+
+.slot-content-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
 }
 
 .slot-description {
-    color: #a0a0a0;
-    margin-bottom: 1.5rem;
+    color: #c0c0c0;
+    margin-bottom: 0;
+    line-height: 1.4;
+    font-size: 0.9rem;
+    flex: 1;
 }
 
 .slot-benefits {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .slot-benefit {
@@ -802,27 +1103,302 @@ body {
     gap: 0.5rem;
     margin-bottom: 0.5rem;
     color: #ffffff;
+    font-size: 0.85rem;
+    padding: 0.25rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.slot-benefit:hover {
+    background: rgba(0, 212, 255, 0.05);
 }
 
 .slot-benefit i {
-    color: #2ed573;
-    width: 16px;
+    color: #00d4ff;
+    width: 18px;
+    font-size: 1rem;
 }
 
 .slot-actions {
     display: flex;
-    gap: 1rem;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
 }
 
 .slot-actions .action-btn {
-    flex: 1;
+    width: 100%;
     justify-content: center;
+    padding: 0.7rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    clear: both;
+    margin-bottom: 0.5rem;
 }
 
 .mining-slot.locked {
     border-color: rgba(158, 158, 158, 0.5);
     opacity: 0.7;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(158, 158, 158, 0.1));
+}
+
+.mining-slot.greyed-out {
+    border-color: rgba(158, 158, 158, 0.3);
+    opacity: 0.5;
+    background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
+    filter: grayscale(0.8);
+}
+
+.mining-slot.greyed-out .slot-header,
+.mining-slot.greyed-out .slot-description,
+.mining-slot.greyed-out .slot-benefits {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.slot-staked {
+    background: rgba(0, 212, 255, 0.2);
+    color: #00d4ff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Slot Images */
+.slot-mine-image-container,
+.slot-polishing-image-container {
+    text-align: center;
+    margin-bottom: 0;
+    flex-shrink: 0;
+}
+
+.slot-mine-image,
+.slot-polishing-image {
+    border-radius: 8px;
+    transition: all 0.4s ease;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.slot-mine-image.greyed,
+.slot-polishing-image.greyed {
+    filter: grayscale(100%) brightness(0.5);
+    opacity: 0.7;
+}
+
+.slot-mine-image:not(.greyed),
+.slot-polishing-image:not(.greyed) {
+    filter: none;
+    opacity: 1;
+}
+
+.slot-staking {
+    margin-top: 1rem;
+}
+
+/* Pickaxe Hit Animation */
+.pickaxe-animation-overlay {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 12px;
+}
+
+.pickaxe-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pickaxe-icon {
+    font-size: 2rem;
+    color: #ffd700;
+    animation: pickaxe-hit 1.5s ease-out;
+    filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.7));
+}
+
+@keyframes pickaxe-hit {
+    0% {
+        transform: translateY(-20px) rotate(0deg);
+        opacity: 0;
+    }
+    20% {
+        transform: translateY(-5px) rotate(15deg);
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(0px) rotate(0deg);
+        opacity: 1;
+    }
+    70% {
+        transform: translateY(5px) rotate(-10deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(20px) rotate(0deg);
+        opacity: 0;
+    }
+}
+
+.impact-effect {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ff6600 0%, #ff2200 50%, transparent 70%);
+    animation: impact-explosion 1.5s ease-out;
+    z-index: -1;
+}
+
+@keyframes impact-explosion {
+    0% {
+        transform: scale(0);
+        opacity: 0.8;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+.stake-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.stake-options .action-btn {
+    font-size: 0.9rem;
+    padding: 0.75rem;
+}
+
+.slot-workers {
+    margin-top: 1rem;
+}
+
+.worker-info {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #00d4ff;
+}
+
+.slot-workers .slot-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.slot-workers .slot-actions .action-btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.slot-workers .slot-actions .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mining-power {
+    color: #ffd700;
+    font-weight: 600;
+    margin-left: 1rem;
+}
+
+.mining-trip-timer {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 0.5rem;
+    margin: 0.5rem 0;
+    text-align: center;
+}
+
+.timer-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #00d4ff;
+    margin-bottom: 0.25rem;
+}
+
+.timer-value {
+    display: block;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #00d4ff;
+    font-family: 'Courier New', monospace;
+}
+
+.action-btn.success {
+    background: linear-gradient(135deg, #4caf50, #45a049);
+    border-color: #4caf50;
+}
+
+.action-btn.success:hover {
+    background: linear-gradient(135deg, #45a049, #3d8b40);
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+}
+
+.action-btn.warning {
+    background: linear-gradient(135deg, #ff9800, #f57c00);
+    border-color: #ff9800;
+}
+
+.action-btn.warning:hover {
+    background: linear-gradient(135deg, #f57c00, #ef6c00);
+    box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3);
+}
+
+.rewards-ready {
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 8px;
+    padding: 0.5rem;
+    margin: 0.5rem 0;
+    text-align: center;
+}
+
+.rewards-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #ffd700;
+    margin-bottom: 0.25rem;
+}
+
+.rewards-amount {
+    display: block;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #ffd700;
+}
+
+.mining-in-progress {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem;
+    text-align: center;
+    color: #00d4ff;
+    font-weight: 600;
 }
 
 .slot-locked {
@@ -1006,7 +1582,6 @@ body {
 }
 
 .worker-card:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
 }
 
@@ -1227,7 +1802,6 @@ body {
 }
 
 .nft-mining-area:hover {
-    transform: translateY(-5px);
     border-color: rgba(255, 215, 0, 0.5);
     box-shadow: 0 10px 30px rgba(255, 215, 0, 0.2);
 }
@@ -1330,7 +1904,6 @@ body {
 }
 
 .nft-item:hover {
-    transform: translateY(-3px);
     border-color: rgba(255, 215, 0, 0.3);
     box-shadow: 0 8px 25px rgba(255, 215, 0, 0.1);
 }
@@ -1450,18 +2023,6 @@ body {
 }
 
 /* Leaderboard */
-.leaderboard-info {
-    display: flex;
-    justify-content: center;
-    gap: 2rem;
-    margin-top: 1rem;
-    color: #a0a0a0;
-}
-
-.leaderboard-tab {
-    display: block;
-}
-
 .leaderboard-table {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1472,7 +2033,7 @@ body {
 
 .table-header {
     display: grid;
-    grid-template-columns: 80px 2fr 1fr 1fr 1fr;
+    grid-template-columns: 80px 2fr 1fr;
     background: rgba(0, 212, 255, 0.1);
     padding: 1rem;
     font-weight: 600;
@@ -1488,12 +2049,19 @@ body {
     overflow-y: auto;
 }
 
+#leaderboard .table-body {
+    display: flex;
+    flex-direction: column;
+    max-height: 960px;
+}
+
 .table-row {
     display: grid;
-    grid-template-columns: 80px 2fr 1fr 1fr 1fr;
+    grid-template-columns: 80px 2fr 1fr;
     padding: 1rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     transition: background 0.3s ease;
+    min-height: 64px;
 }
 
 .table-cell {
@@ -1501,6 +2069,10 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+#leaderboard .table-cell {
+    font-size: 0.95rem;
 }
 
 .table-row:hover {
@@ -1518,6 +2090,54 @@ body {
 .table-row:nth-child(3) {
     background: linear-gradient(45deg, rgba(205, 127, 50, 0.1), rgba(205, 127, 50, 0.05));
 }
+
+.player-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.player-info i {
+    color: #ffd700;
+}
+
+.leaderboard-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    color: #a0a0a0;
+    font-size: 0.9rem;
+}
+
+.leaderboard-pagination .page-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.leaderboard-pagination button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.leaderboard-pagination button:hover {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: rgba(0, 212, 255, 0.3);
+}
+
+.leaderboard-pagination button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 
 /* Inventory */
 .inventory-tabs {
@@ -1877,7 +2497,6 @@ body {
 }
 
 .item-card:hover {
-    transform: translateY(-3px);
     border-color: rgba(0, 212, 255, 0.3);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.1);
 }
@@ -2039,7 +2658,6 @@ body {
 }
 
 .recipe-card:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
 }
 
@@ -2116,7 +2734,6 @@ body {
 }
 
 .fusion-recipe:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(255, 193, 7, 0.2);
 }
 
@@ -2253,7 +2870,6 @@ body {
 }
 
 .event-card:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
 }
 
@@ -2341,7 +2957,6 @@ body {
 }
 
 .quest-card:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
 }
 
@@ -2422,7 +3037,6 @@ body {
 }
 
 .upgrade-card:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
 }
 
@@ -2761,7 +3375,6 @@ body {
 }
 
 .mission-item:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
 }
 
@@ -2848,4 +3461,1024 @@ body {
         flex-direction: column;
         gap: 0.5rem;
     }
+}
+
+/* Polishing Section Styles */
+.polishing-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.polishing-overview {
+    margin-bottom: 1rem;
+}
+
+.polishing-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.polishing-slots {
+    margin-top: 1rem;
+}
+
+.polishing-workshop {
+    margin-top: 1rem;
+}
+
+.gems-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.gem-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    border: 2px solid rgba(0, 212, 255, 0.15);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.gem-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.15), transparent);
+    transition: left 0.6s ease;
+}
+
+.gem-card:hover {
+    border-color: rgba(0, 212, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
+}
+
+.gem-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.gem-name {
+    color: #00d4ff;
+    font-weight: 700;
+    font-size: 1.2rem;
+    line-height: 1.3;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.gem-cost {
+    color: #2ed573;
+    font-weight: 700;
+    font-size: 1rem;
+    background: rgba(46, 213, 115, 0.1);
+    padding: 0.25rem 0.75rem;
+    border-radius: 15px;
+    border: 1px solid rgba(46, 213, 115, 0.3);
+}
+
+.gem-type {
+    font-size: 0.9rem;
+    color: #c0c0c0;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.gem-rewards {
+    margin-bottom: 1rem;
+}
+
+.reward-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    color: #ffffff;
+    font-size: 0.85rem;
+    padding: 0.25rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.reward-item:hover {
+    background: rgba(0, 212, 255, 0.05);
+}
+
+.reward-item i {
+    color: #00d4ff;
+    width: 18px;
+    font-size: 1rem;
+}
+
+.gem-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.gem-actions .action-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 0.7rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+.gem-card.insufficient-funds {
+    opacity: 0.6;
+    border-color: rgba(158, 158, 158, 0.5);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(158, 158, 158, 0.05));
+}
+
+.gem-card.insufficient-funds .action-btn {
+    background: rgba(158, 158, 158, 0.3);
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.gem-image {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.1));
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: #00d4ff;
+    margin-bottom: 0.5rem;
+}
+
+/* Polishing specific rewards styling */
+.reward-diamond {
+    color: #c0c0c0;
+}
+
+.reward-ruby {
+    color: #e74c3c;
+}
+
+.reward-sapphire {
+    color: #3498db;
+}
+
+.reward-emerald {
+    color: #27ae60;
+}
+
+.reward-jade {
+    color: #95c5f7;
+}
+
+.reward-tanzanite {
+    color: #9353d9;
+}
+
+.reward-opal {
+    color: #f39c12;
+}
+
+.reward-aquamarine {
+    color: #17a2b8;
+}
+
+.reward-topaz {
+    color: #ffc107;
+}
+
+.reward-amethyst {
+    color: #8e44ad;
+}
+
+/* Polishing Slots Styles */
+.slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.polishing-slot {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    border: 2px solid rgba(0, 212, 255, 0.15);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    min-height: 280px;
+}
+
+.polishing-slot::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.15), transparent);
+    transition: left 0.6s ease;
+}
+
+.polishing-slot:hover {
+    border-color: rgba(0, 212, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
+}
+
+.polishing-slot.empty {
+    border: 2px dashed rgba(0, 212, 255, 0.3);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.05), rgba(0, 212, 255, 0.02));
+}
+
+.polishing-slot.staked {
+    border-color: rgba(46, 213, 115, 0.5);
+    background: linear-gradient(135deg, rgba(46, 213, 115, 0.1), rgba(46, 213, 115, 0.05));
+}
+
+.polishing-slot.processing {
+    border-color: rgba(255, 193, 7, 0.5);
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 193, 7, 0.05));
+    /* Removed animation: polishing-pulse 2s infinite; */
+}
+
+.stake-button, .start-polishing-btn, .claim-btn {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border-radius: 12px;
+    border: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    margin-bottom: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.stake-button {
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.stake-button:hover {
+    background: linear-gradient(135deg, #0099cc, #0077aa);
+    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+}
+
+.start-polishing-btn {
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+    color: white;
+}
+
+.start-polishing-btn:hover {
+    background: linear-gradient(135deg, #27ae60, #219a52);
+    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+}
+
+.start-polishing-btn:disabled {
+    background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.claim-btn {
+    background: linear-gradient(135deg, #e67e22, #d35400);
+    color: white;
+}
+
+.claim-btn:hover {
+    background: linear-gradient(135deg, #d35400, #ba4a00);
+    box-shadow: 0 4px 15px rgba(230, 126, 34, 0.3);
+}
+
+.slot-status {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.slot-status.empty {
+    color: #c0c0c0;
+}
+
+.slot-status.staked {
+    color: #2ecc71;
+}
+
+.slot-status.processing {
+    color: #f39c12;
+}
+
+.slot-status.ready {
+    color: #e74c3c;
+}
+
+.gem-count {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    text-align: center;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.slot-progress {
+    margin-top: 1rem;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    text-align: center;
+    color: #c0c0c0;
+    font-size: 0.85rem;
+}
+
+/* Gem Inventory Styles */
+.gem-inventory {
+    margin-top: 2rem;
+}
+
+.distribution-table {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.gem-distribution-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #ffffff;
+}
+
+.gem-distribution-table th,
+.gem-distribution-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.gem-distribution-table th {
+    background: rgba(0, 212, 255, 0.1);
+    color: #00d4ff;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.85rem;
+}
+
+.gem-distribution-table td {
+    font-size: 0.9rem;
+}
+
+.gem-type-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.chance-cell {
+    color: #2ecc71;
+    font-weight: 600;
+}
+
+.owned-cell {
+    color: #f39c12;
+    font-weight: 600;
+}
+
+.rarity-cell {
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.rarity-legendary {
+    background: linear-gradient(135deg, #ffd700, #ffb347);
+    color: #000000;
+}
+
+.rarity-epic {
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+    color: #ffffff;
+}
+
+.rarity-rare {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: #ffffff;
+}
+
+.rarity-uncommon {
+    background: linear-gradient(135deg, #27ae60, #229954);
+    color: #ffffff;
+}
+
+.rarity-common {
+    background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+    color: #ffffff;
+}
+
+/* Manual Gem Adding Styles */
+.gem-input-section {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.gem-input-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.gem-amount-input {
+    flex: 1;
+    min-width: 80px;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 0.9rem;
+}
+
+.gem-amount-input:focus {
+    outline: none;
+    border-color: rgba(0, 212, 255, 0.5);
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+}
+
+.gem-input-info {
+    color: #a0a0a0;
+    font-size: 0.8rem;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.add-gems-btn, .max-gems-btn {
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.add-gems-btn {
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+}
+
+.max-gems-btn {
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+}
+
+.add-gems-btn:hover {
+    background: linear-gradient(135deg, #0099cc, #0077aa) !important;
+    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
+}
+
+.max-gems-btn:hover {
+    background: linear-gradient(135deg, #27ae60, #219a52) !important;
+    box-shadow: 0 2px 8px rgba(46, 204, 113, 0.3);
+}
+
+/* Timer styling improvements */
+.slot-progress {
+    margin-top: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.progress-bar {
+    width: 100%;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    border-radius: 6px;
+    transition: width 0.3s ease;
+    box-shadow: 0 2px 8px rgba(243, 156, 18, 0.3);
+}
+
+.progress-text {
+    text-align: center;
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+/* Trading Section Styles */
+.trading-container {
+    width: 100%;
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 0;
+}
+
+.benefits-overview {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    margin-bottom: 2rem;
+}
+
+.benefits-overview h3 {
+    color: #ffffff;
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.active-benefits-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.benefit-item {
+    background: rgba(0, 212, 255, 0.15);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.benefit-gem {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.benefit-bonus {
+    color: #00d4ff;
+    font-weight: 500;
+}
+
+.no-benefits {
+    color: #a0a0a0;
+    font-style: italic;
+    text-align: center;
+    margin: 0;
+}
+
+.trading-overview {
+    margin-bottom: 2rem;
+}
+
+.trading-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.trading-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.trading-menu {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+.trading-menu h3 {
+    color: #ffffff;
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.city-selection {
+    margin-bottom: 1.5rem;
+}
+
+.city-selection label {
+    color: #c0c0c0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.city-selection select {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.city-selection select:focus {
+    outline: none;
+    border-color: #00d4ff;
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.2);
+}
+
+.gem-selling-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.gem-selling-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+}
+
+.gem-selling-card:hover {
+    border-color: rgba(0, 212, 255, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.gem-selling-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.gem-icon {
+    font-size: 1.5rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 212, 255, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.gem-selling-details {
+    flex: 1;
+}
+
+.gem-selling-name {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.gem-selling-price {
+    color: #00d4ff;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.gem-selling-owned {
+    color: #c0c0c0;
+    font-size: 0.8rem;
+}
+
+.gem-selling-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+
+.staking-benefits {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+.section-title h3 {
+    color: #ffffff;
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.section-title p {
+    color: #c0c0c0;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.base-price-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.35);
+    color: #a0f1ff;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.staking-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.staking-slot {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+}
+
+.staking-slot.active {
+    border-color: rgba(46, 204, 113, 0.5);
+    background: rgba(46, 204, 113, 0.05);
+}
+
+.staking-slot.empty {
+    border-color: rgba(158, 158, 158, 0.3);
+    opacity: 0.8;
+}
+
+.staking-gem-image {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin: 0 auto 0.75rem;
+    display: block;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.staking-gem-image.greyed {
+    filter: grayscale(100%) brightness(0.5);
+    opacity: 0.6;
+}
+
+.staking-gem-image.colored {
+    filter: none;
+    opacity: 1;
+    border-color: rgba(0, 212, 255, 0.6);
+}
+
+.staking-info {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.staking-info h4 {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.staking-info p {
+    color: #c0c0c0;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.stake-btn {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.stake-btn:hover {
+    background: linear-gradient(135deg, #2980b9, #3498db);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.unstake-btn {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.unstake-btn:hover {
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+}
+
+/* Image Selection Staking Styles */
+.staking-image-selection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    align-items: center;
+}
+
+.gem-selection-item {
+    padding: 0.5rem;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 140px;
+}
+
+.gem-selection-item:hover {
+    border-color: rgba(0, 212, 255, 0.3);
+    background: rgba(0, 212, 255, 0.05);
+}
+
+.gem-selection-item.selected {
+    border-color: #00d4ff;
+    background: rgba(0, 212, 255, 0.1);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+.gem-selection-item.selected .staking-gem-image {
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+}
+
+.selection-benefit {
+    margin-top: 0.5rem;
+    text-align: center;
+}
+
+.benefit-text {
+    background: rgba(0, 212, 255, 0.15);
+    color: #00d4ff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.staking-gem-image.greyed-disabled {
+    filter: grayscale(100%) brightness(0.3);
+    opacity: 0.3;
+}
+
+.availability-text {
+    color: #666;
+    font-size: 0.7rem;
+    margin-top: 0.25rem;
+    font-style: italic;
+}
+
+@media (max-width: 768px) {
+    .trading-panel {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .gem-selling-grid {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+    
+    .staking-grid {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+}
+
+.matrix-cell {
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: center;
+    font-size: 0.9rem;
+}
+.matrix-cell .matrix-boost {
+    display: inline-block;
+    margin-left: 0;
+    padding: 0.2rem 0.6rem;
+    background: rgba(0, 212, 255, 0.18);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: #00d4ff;
+    font-weight: 600;
+}
+
+
+.matrix-cell .matrix-boost.increase {
+    background: rgba(46, 213, 115, 0.22);
+    color: #2ed573;
+}
+
+.matrix-cell .matrix-boost.decrease {
+    background: rgba(255, 71, 87, 0.22);
+    color: #ff4757;
+}
+
+.matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+.matrix-table th,
+.matrix-table td {
+    width: calc(100% / 11);
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: center;
+    font-size: 0.9rem;
 }

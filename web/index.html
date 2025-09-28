@@ -10,16 +10,21 @@
     <style>
     .hidden { display: none !important; }
     #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
+    .gallery-category { margin-bottom: 2.5rem; }
     </style>
-
 </head>
 <body>
+    <div class="scale-wrapper">
     <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-logo">
                 <i class="fas fa-gem"></i>
                 <span>TSDGEMS</span>
+            </div>
+
+            <div class="nav-status-group">
+                <span class="nav-game-dollar" id="header-game-dollars">Game $: 0</span>
             </div>
             
             <!-- Mobile Menu Toggle -->
@@ -29,65 +34,11 @@
             
             <div class="nav-menu" id="nav-menu">
                 <a href="#dashboard" class="nav-link active">Dashboard</a>
-                
-                <!-- Mining Group -->
-                <div class="nav-dropdown">
-                    <a href="#" class="nav-link dropdown-toggle">
-                        Mining <i class="fas fa-chevron-down"></i>
-                    </a>
-                    <div class="dropdown-menu">
-                        <a href="#mining" class="dropdown-item">Mining Operations</a>
-                        <a href="#mining-slots" class="dropdown-item">Mining Slots</a>
-                        <a href="#nft-mining" class="dropdown-item">NFT Mining</a>
-                    </div>
-                </div>
-                
-                <!-- Management Group -->
-                <div class="nav-dropdown">
-                    <a href="#" class="nav-link dropdown-toggle">
-                        Management <i class="fas fa-chevron-down"></i>
-                    </a>
-                    <div class="dropdown-menu">
-                        <a href="#workers-management" class="dropdown-item">Workers</a>
-                        <a href="#staking" class="dropdown-item">Staking</a>
-                        <a href="#inventory" class="dropdown-item">Inventory</a>
-                    </div>
-                </div>
-                
-                <!-- Crafting Group -->
-                <div class="nav-dropdown">
-                    <a href="#" class="nav-link dropdown-toggle">
-                        Crafting <i class="fas fa-chevron-down"></i>
-                    </a>
-                    <div class="dropdown-menu">
-                        <a href="#crafting" class="dropdown-item">Crafting</a>
-                        <a href="#fusion" class="dropdown-item">Fusion</a>
-                        <a href="#upgrades" class="dropdown-item">Upgrades</a>
-                    </div>
-                </div>
-                
-                <!-- Progress Group -->
-                <div class="nav-dropdown">
-                    <a href="#" class="nav-link dropdown-toggle">
-                        Progress <i class="fas fa-chevron-down"></i>
-                    </a>
-                    <div class="dropdown-menu">
-                        <a href="#achievements" class="dropdown-item">Achievements</a>
-                        <a href="#events" class="dropdown-item">Events</a>
-                        <a href="#quests" class="dropdown-item">Quests</a>
-                    </div>
-                </div>
-                
-                <!-- Economy Group -->
-                <div class="nav-dropdown">
-                    <a href="#" class="nav-link dropdown-toggle">
-                        Economy <i class="fas fa-chevron-down"></i>
-                    </a>
-                    <div class="dropdown-menu">
-                        <a href="#marketplace" class="dropdown-item">Marketplace</a>
-                        <a href="#leaderboard" class="dropdown-item">Leaderboard</a>
-                    </div>
-                </div>
+                <a href="#mining" class="nav-link">Mining</a>
+                <a href="#polishing" class="nav-link">Polishing</a>
+                <a href="#trading" class="nav-link">Trading</a>
+                <a href="#leaderboard" class="nav-link">Leaderboard</a>
+                <a href="#gallery" class="nav-link">Shop</a>
             </div>
 
             <div class="nav-wallet" id="nav-wallet" data-auth="signed-out">
@@ -143,31 +94,11 @@
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon">
-                        <i class="fas fa-gem"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Total Gems</h3>
-                        <p class="stat-value" id="total-gems">0</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
                         <i class="fas fa-coins"></i>
                     </div>
                     <div class="stat-content">
-                        <h3>TSD Balance</h3>
+                        <h3>Ingame $</h3>
                         <p class="stat-value" id="tsd-balance">0.00</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-tools"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Mining Power</h3>
-                        <p class="stat-value" id="mining-power">0</p>
                     </div>
                 </div>
                 
@@ -176,7 +107,7 @@
                         <i class="fas fa-users"></i>
                     </div>
                     <div class="stat-content">
-                        <h3>Active Workers</h3>
+                        <h3>Hired Workers</h3>
                         <p class="stat-value" id="active-workers">0</p>
                     </div>
                 </div>
@@ -193,52 +124,13 @@
                 
                 <div class="stat-card">
                     <div class="stat-icon">
-                        <i class="fas fa-fire"></i>
+                        <i class="fas fa-wallet"></i>
                     </div>
                     <div class="stat-content">
-                        <h3>NFT Mining</h3>
-                        <p class="stat-value" id="nft-mining-count">0</p>
+                        <h3>TSDM Balance</h3>
+                        <p class="stat-value" id="tsdm-balance">0.00</p>
                     </div>
                 </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-lock"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Staked TSD</h3>
-                        <p class="stat-value" id="dashboard-staked-tsd">0</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-gem"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Staked Gems</h3>
-                        <p class="stat-value" id="dashboard-staked-gems">0</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="quick-actions">
-                <button class="action-btn primary" onclick="startMining()">
-                    <i class="fas fa-play"></i>
-                    Start Mining
-                </button>
-                <button class="action-btn secondary" onclick="openMarketplace()">
-                    <i class="fas fa-store"></i>
-                    Buy Equipment
-                </button>
-                <button class="action-btn secondary" onclick="hireWorkers()">
-                    <i class="fas fa-user-plus"></i>
-                    Hire Workers
-                </button>
-                <button class="action-btn secondary" onclick="openMiningSlots()">
-                    <i class="fas fa-map-marker-alt"></i>
-                    Mining Slots
-                </button>
             </div>
         </section>
 
@@ -246,367 +138,207 @@
         <section id="mining" class="section">
             <div class="section-header">
                 <h2>Mining Operations</h2>
-                <p>Manage your mining equipment and workers</p>
+                <p>Manage your mining infrastructure and equipment</p>
             </div>
 
             <div class="mining-container">
-                <div class="mining-controls">
-                    <div class="mining-status">
-                        <h3>Mining Status</h3>
-                        <div class="status-indicator" id="mining-status">
-                            <span class="status-dot"></span>
-                            <span class="status-text">Stopped</span>
+                <div class="mining-slots-grid">
+                    <div class="mining-overview">
+                        <div class="mining-stats">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-mountain"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3>Active Mining Sites</h3>
+                                    <p class="stat-value" id="active-mining-sites">0</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-users"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3>Workforce</h3>
+                                    <p class="stat-value" id="total-workforce">0</p>
+                                </div>
+                            </div>
                         </div>
-                        <button class="mining-toggle-btn" id="mining-toggle">
-                            Start Mining
-                        </button>
                     </div>
+                    
+                    <div class="mining-slots-section">
+                        <div class="section-title">
+                            <h3><i class="fas fa-gem"></i> Mining Properties</h3>
+                            <p>Discover, acquire, and develop profitable mining locations</p>
+                        </div>
+                        <div class="slots-grid" id="slots-grid">
+                            <!-- Mining slots will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-                    <div class="mining-stats">
-                        <div class="mining-stat">
-                            <label>Mining Rate:</label>
-                            <span id="hash-rate">0 H/s</span>
+        <!-- Polishing Section -->
+        <section id="polishing" class="section">
+            <div class="section-header">
+                <h2>Gem Polishing</h2>
+                <p>Stake polishing table NFTs and polish gems in automated slots</p>
+            </div>
+
+            <div class="polishing-container">
+                <div class="polishing-overview">
+                    <div class="polishing-stats">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-gem"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Total Polished Gems</h3>
+                                <p class="stat-value" id="polished-gems-count">0</p>
+                            </div>
                         </div>
-                        <div class="mining-stat">
-                            <label>Difficulty:</label>
-                            <span id="difficulty">1.0</span>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-trophy"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Total Rewards Earned</h3>
+                                <p class="stat-value" id="polishing-rewards">0</p>
+                            </div>
                         </div>
-                        <div class="mining-stat">
-                            <label>Block Reward:</label>
-                            <span id="block-reward">0.01 TSD</span>
-                        </div>
-                        <div class="mining-stat">
-                            <label>Active Slots:</label>
-                            <span id="active-slots">0</span>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-box"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Gem Inventory</h3>
+                                <p class="stat-value" id="total-inventory-gems">0</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                <div class="equipment-grid">
-                    <h3>Mining Equipment</h3>
-                    <div class="equipment-list" id="equipment-list">
-                        <!-- Equipment will be populated by JavaScript -->
+                
+                <div class="polishing-slots">
+                    <div class="section-title">
+                        <h3><i class="fas fa-table"></i> Polishing Slot System</h3>
+                        <p>Stake Polishing Table NFTs in slots and polish gems automatically</p>
+                    </div>
+                    
+                    <div class="slots-grid" id="polishing-slots-grid">
+                        <!-- Polishing slots will be populated by JavaScript -->
                     </div>
                 </div>
 
-                <div class="workers-grid">
-                    <h3>Mining Workers</h3>
-                    <div class="workers-list" id="workers-list">
-                        <!-- Workers will be populated by JavaScript -->
+                <div class="gem-inventory" id="gem-inventory">
+                    <div class="section-title">
+                        <h3><i class="fas fa-gem"></i> Gem Distribution Table</h3>
+                        <p>Chance distribution for obtaining gems through polishing</p>
+                    </div>
+                    
+                    <div class="distribution-table">
+                        <table class="gem-distribution-table">
+                            <thead>
+                                <tr>
+                                    <th>Gem Type</th>
+                                    <th>Chance</th>
+                                    <th>Owned</th>
+                                    <th>Rarity</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-table-body">
+                                <!-- Inventory display will be populated by JavaScript -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
+            </div>
+        </section>
 
-                <div class="offline-mining-grid">
-                    <h3>Offline Mining</h3>
-                    <div class="offline-mining-container">
-                        <div class="offline-mining-status">
-                            <div class="offline-status-indicator">
-                                <span class="offline-status-dot"></span>
-                                <span class="offline-status-text">Inactive</span>
-                            </div>
-                                                    <div class="offline-mining-info">
-                            <div class="offline-stat">
-                                <label>Current Earnings:</label>
-                                <span id="offline-earnings">0 TSD</span>
-                            </div>
-                            <div class="offline-stat">
-                                <label>Time Remaining:</label>
-                                <span id="offline-time-remaining">0:00:00</span>
-                            </div>
-                            <div class="offline-stat">
-                                <label>Max Duration:</label>
-                                <span id="offline-max-duration">2:00:00</span>
-                            </div>
-                            <div class="offline-stat">
-                                <label>Upgrade Level:</label>
-                                <span id="offline-upgrade-level">1</span>
-                            </div>
+        <!-- Trading Section -->
+        <section id="trading" class="section">
+            <div class="section-header">
+                <h2>Gem Trading</h2>
+                <p>Trade your gems in different cities and unlock trading benefits</p>
+            <div class="trading-subpage-toggle" id="trading-subpage-toggle">
+                <button class="toggle-btn active" data-target="overview">Trading Overview</button>
+                <button class="toggle-btn" data-target="staking">Gem Staking</button>
+                <button class="toggle-btn" data-target="pricing">Gem Base Prices</button>
+            </div>
+            </div>
+
+            <div id="trading-subpage-overview" class="trading-subpage active">
+                <div class="city-boost-container" id="city-boost">
+                    <div class="section-title">
+                        <h3>
+                            <i class="fas fa-bolt"></i> City Boost Data Matrix
+                            <span class="base-price-chip" id="matrix-base-price">Base price: loading…</span>
+                        </h3>
+                        <p>Analyse the hourly trading boost values across global trading hubs.</p>
+                    </div>
+                    <div class="matrix-sell-controls">
+                        <div class="matrix-control">
+                            <label for="matrix-city-select">City</label>
+                            <select id="matrix-city-select"></select>
                         </div>
-                        <div class="offline-mining-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="offline-progress-fill"></div>
-                            </div>
-                            <div class="progress-text" id="offline-progress-text">0% Complete</div>
+                        <div class="matrix-control">
+                            <label for="matrix-gem-select">Gem Type</label>
+                            <select id="matrix-gem-select"></select>
                         </div>
-                        <div class="offline-mining-bonuses">
-                            <div class="bonus-info">
-                                <label>Staking Bonus:</label>
-                                <span id="offline-staking-bonus">1.0x</span>
-                            </div>
-                            <div class="bonus-info">
-                                <label>Current Rate:</label>
-                                <span id="offline-current-rate">0 TSD/h</span>
-                            </div>
+                        <div class="matrix-control">
+                            <label for="matrix-sell-amount">Amount</label>
+                            <input type="number" id="matrix-sell-amount" min="1" value="1">
                         </div>
-                        </div>
-                        <div class="offline-mining-controls">
-                            <button class="action-btn primary" id="start-offline-mining">
-                                <i class="fas fa-play"></i>
-                                Start Offline Mining
+                        <div class="matrix-control action">
+                            <label>&nbsp;</label>
+                            <button id="matrix-sell-btn" class="action-btn primary">
+                                <i class="fas fa-coins"></i> Sell Gems
                             </button>
-                            <button class="action-btn secondary" id="claim-offline-earnings" disabled>
-                                <i class="fas fa-coins"></i>
-                                Claim Earnings
-                            </button>
-                            <button class="action-btn tertiary" id="upgrade-offline-mining">
-                                <i class="fas fa-arrow-up"></i>
-                                Upgrade Duration
-                            </button>
                         </div>
-                        
-                        <div class="offline-mining-history">
-                            <h4>Recent Offline Mining Sessions</h4>
-                            <div class="history-list" id="offline-mining-history-list">
-                                <!-- History will be populated by JavaScript -->
-                            </div>
+                    </div>
+                    <div class="matrix-summary" id="matrix-summary">
+                        <span id="matrix-summary-boost">Boost: +0%</span>
+                        <span id="matrix-summary-staking">Staking Bonus: +0%</span>
+                        <span id="matrix-summary-price">Est. Payout: 0 Game $</span>
+                    </div>
+                    <div id="city-boost-matrix-wrapper"></div>
+                </div>
+
+                <div class="trading-container">
+                    <!-- Trading Benefits Overview -->
+                    <div class="benefits-overview">
+                        <h3><i class="fas fa-star"></i> Active Benefits</h3>
+                        <div id="benefits-display">
+                            <!-- Benefits display will be populated by JavaScript -->
                         </div>
+                    </div>
+                    <div class="trading-panel">
+                        <!-- Trading panel content -->
                     </div>
                 </div>
             </div>
-        </section>
 
-        <!-- Mining Slots Section -->
-        <section id="mining-slots" class="section">
-            <div class="section-header">
-                <h2>Mining Slots</h2>
-                <p>Rent and manage mining locations for better rewards</p>
-            </div>
-
-            <div class="slots-container">
-                <div class="slots-info">
-                    <div class="slot-stats">
-                        <div class="slot-stat">
-                            <label>Available Slots:</label>
-                            <span id="available-slots">3</span>
-                        </div>
-                        <div class="slot-stat">
-                            <label>Rented Slots:</label>
-                            <span id="rented-slots">0</span>
-                        </div>
-                        <div class="slot-stat">
-                            <label>Total Cost:</label>
-                            <span id="total-slot-cost">0 TSD</span>
-                        </div>
-                        <div class="slot-stat">
-                            <label>Max Slots:</label>
-                            <span id="max-slots">10</span>
-                        </div>
-                        <div class="slot-stat">
-                            <label>Status:</label>
-                            <span id="slot-status" class="slot-status">Ready to rent slots</span>
-                        </div>
+            <div id="trading-subpage-staking" class="trading-subpage">
+                <div class="staking-benefits">
+                    <div class="section-title">
+                        <h3><i class="fas fa-gem"></i> Gem Staking</h3>
+                        <p>Stake gems to unlock increased selling prices</p>
                     </div>
-                    <button class="action-btn primary" onclick="rentNewSlot()">
-                        <i class="fas fa-plus"></i>
-                        Rent New Slot
-                    </button>
-                </div>
-
-                <div class="slots-grid" id="slots-grid">
-                    <!-- Mining slots will be populated by JavaScript -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Workers Management Section -->
-        <section id="workers-management" class="section">
-            <div class="section-header">
-                <h2>Workers Management</h2>
-                <p>Manage your workforce, hire overseers, and train workers</p>
-            </div>
-
-            <div class="workers-management-container">
-                <div class="workers-overview">
-                    <div class="worker-stats">
-                        <div class="worker-stat">
-                            <label>Current Workers:</label>
-                            <span id="current-workers">0</span>
-                        </div>
-                        <div class="worker-stat">
-                            <label>Max Workers:</label>
-                            <span id="max-workers">10</span>
-                        </div>
-                        <div class="worker-stat">
-                            <label>Overseers:</label>
-                            <span id="overseers-count">0</span>
-                        </div>
-                        <div class="worker-stat">
-                            <label>Status:</label>
-                            <span id="worker-status" class="worker-status">Ready to hire workers</span>
-                        </div>
-                    </div>
-                    <button class="action-btn primary" onclick="hireOverseer()">
-                        <i class="fas fa-user-tie"></i>
-                        Hire Overseer (500 TSD)
-                    </button>
-                </div>
-
-                <div class="training-center">
-                    <h3>Training Center</h3>
-                    <div class="training-programs">
-                        <div class="training-program">
-                            <h4>Machine Operator</h4>
-                            <p>Train workers to operate mining machines efficiently</p>
-                            <div class="training-details">
-                                <span>Cost: 100 TSD</span>
-                                <span>Duration: 24h</span>
-                                <span>Boost: +20% Mining</span>
-                            </div>
-                        </div>
-                        <div class="training-program">
-                            <h4>Site Overseer</h4>
-                            <p>Advanced leadership and management skills</p>
-                            <div class="training-details">
-                                <span>Cost: 300 TSD</span>
-                                <span>Duration: 48h</span>
-                                <span>Boost: +50% Efficiency</span>
-                            </div>
-                        </div>
-                        <div class="training-program">
-                            <h4>Gems Polishing</h4>
-                            <p>Reduce gem breakage during processing</p>
-                            <div class="training-details">
-                                <span>Cost: 200 TSD</span>
-                                <span>Duration: 36h</span>
-                                <span>Boost: -30% Break Chance</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="workers-list" id="workers-management-list">
-                    <!-- Workers will be populated by JavaScript -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Staking Section -->
-        <section id="staking" class="section">
-            <div class="section-header">
-                <h2>Staking & Rewards</h2>
-                <p>Stake TSD and gems to unlock mining slots and earn bonuses</p>
-            </div>
-
-            <div class="staking-container">
-                <div class="staking-overview">
-                    <div class="staking-stats">
-                        <div class="staking-stat">
-                            <label>TSD Staked:</label>
-                            <span id="tsd-staked">0</span>
-                        </div>
-                        <div class="staking-stat">
-                            <label>Gems Staked:</label>
-                            <span id="gems-staked">0</span>
-                        </div>
-                        <div class="staking-stat">
-                            <label>Total Boost:</label>
-                            <span id="total-staking-boost">1.0x</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="staking-actions">
-                    <div class="staking-input">
-                        <h4>Stake TSD</h4>
-                        <input type="number" id="tsd-stake-amount" placeholder="Amount to stake" min="1">
-                        <button onclick="stakeTSD()" class="action-btn primary">Stake TSD</button>
-                    </div>
-                    <div class="staking-input">
-                        <h4>Stake Gems</h4>
-                        <input type="number" id="gems-stake-amount" placeholder="Amount to stake" min="1">
-                        <button onclick="stakeGems()" class="action-btn primary">Stake Gems</button>
-                    </div>
-                </div>
-
-                <div class="unstaking-actions">
-                    <div class="staking-input">
-                        <h4>Unstake TSD</h4>
-                        <input type="number" id="tsd-unstake-amount" placeholder="Amount to unstake" min="1">
-                        <button onclick="unstakeTSD()" class="action-btn secondary">Unstake TSD</button>
-                    </div>
-                    <div class="staking-input">
-                        <h4>Unstake Gems</h4>
-                        <input type="number" id="gems-unstake-amount" placeholder="Amount to unstake" min="1">
-                        <button onclick="unstakeGems()" class="action-btn secondary">Unstake Gems</button>
+                    <div class="staking-grid" id="staking-grid">
+                        <!-- Staking slots will be populated by JavaScript -->
                     </div>
                 </div>
             </div>
-        </section>
 
-        <!-- NFT Mining Section -->
-        <section id="nft-mining" class="section">
-            <div class="section-header">
-                <h2>NFT Mining</h2>
-                <p>Mine special NFTs and rare collectibles</p>
-            </div>
-
-            <div class="nft-mining-container">
-                <div class="nft-mining-info">
-                    <div class="nft-stats">
-                        <div class="nft-stat">
-                            <label>NFTs Mined:</label>
-                            <span id="nfts-mined">0</span>
-                        </div>
-                        <div class="nft-stat">
-                            <label>Rare NFTs:</label>
-                            <span id="rare-nfts">0</span>
-                        </div>
-                        <div class="nft-stat">
-                            <label>NFT Value:</label>
-                            <span id="nft-value">0 TSD</span>
-                        </div>
+            <div id="trading-subpage-pricing" class="trading-subpage">
+                <div class="pricing-container">
+                    <div class="section-title">
+                        <h3><i class="fas fa-chart-area"></i> Gem Base Price Chart</h3>
+                        <p>Live gem base price derived from BTC market data.</p>
                     </div>
-                </div>
-
-                <div class="nft-mining-grid" id="nft-mining-grid">
-                    <!-- NFT mining areas will be populated by JavaScript -->
-                </div>
-
-                <div class="nft-collection">
-                    <h3>Your NFT Collection</h3>
-                    <div class="nft-collection-grid" id="nft-collection-grid">
-                        <!-- NFT collection will be populated by JavaScript -->
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Marketplace Section -->
-        <section id="marketplace" class="section">
-            <div class="section-header">
-                <h2>Marketplace</h2>
-                <p>Buy and sell mining equipment, workers, and gems</p>
-            </div>
-
-            <div class="marketplace-tabs">
-                <button class="tab-btn active" data-tab="equipment">Equipment</button>
-                <button class="tab-btn" data-tab="workers">Workers</button>
-                <button class="tab-btn" data-tab="gems">Gems</button>
-                <button class="tab-btn" data-tab="repairs">Repairs</button>
-            </div>
-
-            <div class="marketplace-content">
-                <div id="equipment-tab" class="tab-content active">
-                    <div class="marketplace-grid" id="equipment-market">
-                        <!-- Equipment marketplace items -->
-                    </div>
-                </div>
-
-                <div id="workers-tab" class="tab-content">
-                    <div class="marketplace-grid" id="workers-market">
-                        <!-- Workers marketplace items -->
-                    </div>
-                </div>
-
-                <div id="gems-tab" class="tab-content">
-                    <div class="marketplace-grid" id="gems-market">
-                        <!-- Gems marketplace items -->
-                    </div>
-                </div>
-
-                <div id="repairs-tab" class="tab-content">
-                    <div class="marketplace-grid" id="repairs-market">
-                        <!-- Repair services -->
+                    <div class="pricing-status" id="pricing-status">Loading latest prices…</div>
+                    <div class="pricing-chart-wrapper">
+                        <canvas id="gem-price-chart"></canvas>
                     </div>
                 </div>
             </div>
@@ -615,291 +347,390 @@
         <!-- Leaderboard Section -->
         <section id="leaderboard" class="section">
             <div class="section-header">
-                <h2>Monthly Leaderboard</h2>
-                <p>Top miners and traders - Resets every month</p>
-                <div class="leaderboard-info">
-                    <span class="reset-timer">Next reset: <span id="reset-countdown">--</span></span>
-                    <span class="current-month">Current Month: <span id="current-month">--</span></span>
-                </div>
+                <h2>Top Tycoons</h2>
+                <p>The wealthiest traders in the game – ranked by in-game dollars.</p>
             </div>
 
             <div class="leaderboard-container">
-                <div class="leaderboard-content">
-                    <div id="mining-leaderboard" class="leaderboard-tab active">
-                        <div class="leaderboard-table">
-                            <div class="table-header">
-                                <div class="header-cell">Rank</div>
-                                <div class="header-cell">Player</div>
-                                <div class="header-cell">Mining Rate</div>
-                                <div class="header-cell">Total Gems</div>
-                                <div class="header-cell">Level</div>
-                            </div>
-                            <div class="table-body" id="mining-leaderboard-body">
-                                <!-- Mining leaderboard entries -->
-                            </div>
+                <div class="leaderboard-table">
+                    <div class="table-header">
+                        <div class="header-cell">Rank</div>
+                        <div class="header-cell">Player</div>
+                        <div class="header-cell">In-game $</div>
+                    </div>
+                    <div class="table-body" id="leaderboard-body"></div>
+                    <div class="leaderboard-pagination">
+                        <div class="page-info" id="leaderboard-page-info">Showing 1-15 of 20 entries</div>
+                        <div class="page-controls">
+                            <button type="button" id="leaderboard-prev" disabled>
+                                <i class="fas fa-angle-left"></i>
+                            </button>
+                            <span id="leaderboard-page-summary">Page 1 of 1</span>
+                            <button type="button" id="leaderboard-next">
+                                <i class="fas fa-angle-right"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Inventory Section -->
-        <section id="inventory" class="section">
+        <!-- Shop Section -->
+        <section id="gallery" class="section">
             <div class="section-header">
-                <h2>Inventory</h2>
-                <p>Manage your gems, equipment, and workers</p>
+                <h2>TSDGEMS Shop</h2>
+                <p>Discover curated TSDGEMS NFTs and secure your favorite assets on NeftyBlocks.</p>
+                <div class="shop-actions">
+                    <a class="action-btn primary" href="https://neftyblocks.com/collection/tsdmediagems" target="_blank" rel="noopener">
+                        <i class="fas fa-shopping-cart"></i> Buy NFTs
+                    </a>
+                </div>
+            </div>
+            <div class="gallery-category">
+                <div class="section-title">
+                    <h3><i class="fas fa-star"></i> Polished Gems</h3>
+                    <p>The final, beautifully polished gemstones ready for collection.</p>
+                </div>
+                <div class="gallery-grid">
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(1).png" alt="TSDMEDIAGEMS Diamond NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Diamond #894387</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894387" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(2).png" alt="TSDMEDIAGEMS Ruby NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Ruby #894388</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894388" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(3).png" alt="TSDMEDIAGEMS Sapphire NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Sapphire #894389</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894389" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(4).png" alt="TSDMEDIAGEMS Emerald NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Emerald #894390</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894390" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(5).png" alt="TSDMEDIAGEMS Jade NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Jade #894391</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894391" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(6).png" alt="TSDMEDIAGEMS Tanzanite NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Tanzanite #894392</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894392" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(7).png" alt="TSDMEDIAGEMS Opal NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Opal #894393</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894393" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(8).png" alt="TSDMEDIAGEMS Aquamarine NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Aquamarine #894394</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894394" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(9).png" alt="TSDMEDIAGEMS Topaz NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Topaz #894395</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894395" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(10).png" alt="TSDMEDIAGEMS Amethyst NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Amethyst #894396</h3>
+                            <p>Polished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894396" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="inventory-container">
-                <div class="inventory-tabs">
-                    <button class="tab-btn active" data-inventory="gems">Gems</button>
-                    <button class="tab-btn" data-inventory="equipment">Equipment</button>
-                    <button class="tab-btn" data-inventory="workers">Workers</button>
-                    <button class="tab-btn" data-inventory="nfts">NFTs</button>
+            <div class="gallery-category">
+                <div class="section-title">
+                    <h3><i class="fas fa-gem"></i> Unpolished Gems</h3>
+                    <p>Raw, uncut gemstones ready to be polished into masterpieces.</p>
                 </div>
-
-                <div class="inventory-content">
-                    <div id="gems-inventory" class="inventory-tab active">
-                        <div class="inventory-grid" id="gems-inventory-grid">
-                            <!-- Gems inventory -->
+            <div class="gallery-grid">
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(11).png" alt="TSDMEDIAGEMS Unpolished Diamond NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Diamond #894397</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894397" target="_blank" rel="noopener">View on NeftyBlocks</a>
                         </div>
                     </div>
-
-                    <div id="equipment-inventory" class="inventory-tab">
-                        <div class="inventory-grid" id="equipment-inventory-grid">
-                            <!-- Equipment inventory -->
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(12).png" alt="TSDMEDIAGEMS Unpolished Ruby NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Ruby #894398</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894398" target="_blank" rel="noopener">View on NeftyBlocks</a>
                         </div>
                     </div>
-
-                    <div id="workers-inventory" class="inventory-tab">
-                        <div class="inventory-grid" id="workers-inventory-grid">
-                            <!-- Workers inventory -->
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(13).png" alt="TSDMEDIAGEMS Unpolished Sapphire NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Sapphire #894399</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894399" target="_blank" rel="noopener">View on NeftyBlocks</a>
                         </div>
                     </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(14).png" alt="TSDMEDIAGEMS Unpolished Emerald NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Emerald #894400</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894400" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(15).png" alt="TSDMEDIAGEMS Unpolished Jade NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Jade #894401</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894401" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(16).png" alt="TSDMEDIAGEMS Unpolished Tanzanite NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Tanzanite #894402</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894402" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(17).png" alt="TSDMEDIAGEMS Unpolished Opal NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Opal #894403</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894403" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(18).png" alt="TSDMEDIAGEMS Unpolished Aquamarine NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Aquamarine #894404</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894404" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                    <div class="gallery-image">
+                            <img src="gallery_images/(19).png" alt="TSDMEDIAGEMS Unpolished Topaz NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Unpolished Topaz #894405</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894405" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/(20).png" alt="TSDMEDIAGEMS Unpolished Amethyst NFT">
+                    </div>
+                    <div class="gallery-content">
+                            <h3>Unpolished Amethyst #894406</h3>
+                            <p>Unpolished Gem</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894406" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                    <div id="nfts-inventory" class="inventory-tab">
-                        <div class="inventory-grid" id="nfts-inventory-grid">
-                            <!-- NFTs inventory -->
+            <div class="gallery-category">
+                <div class="section-title">
+                    <h3><i class="fas fa-industry"></i> Mining Equipment</h3>
+                    <p>Essential tools and machinery for your mining operations.</p>
+                </div>
+                <div class="gallery-grid">
+                    <div class="gallery-card">
+                    <div class="gallery-image">
+                            <img src="gallery_images/41.png" alt="TSDMEDIAGEMS Pickaxe Worker NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Pickaxe Worker #894928</h3>
+                            <p>Worker Equipment</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894928" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/42.png" alt="TSDMEDIAGEMS Hammer Drill Worker NFT">
+                    </div>
+                    <div class="gallery-content">
+                            <h3>Hammer Drill Worker #894929</h3>
+                            <p>Worker Equipment</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894929" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                    <div class="gallery-image">
+                            <img src="gallery_images/43.jpg" alt="TSDMEDIAGEMS Mini Excavator Worker NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Mini Excavator Worker #894930</h3>
+                            <p>Worker Equipment</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894930" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/44.png" alt="TSDMEDIAGEMS Excavator NFT">
+                    </div>
+                    <div class="gallery-content">
+                            <h3>Excavator #894931</h3>
+                            <p>Machinery</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894931" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                    <div class="gallery-image">
+                            <img src="gallery_images/45.png" alt="TSDMEDIAGEMS Dump Truck NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Dump Truck #894932</h3>
+                            <p>Machinery</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894932" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/46.png" alt="TSDMEDIAGEMS Small Mine NFT">
+                    </div>
+                    <div class="gallery-content">
+                            <h3>Small Mine #894933</h3>
+                            <p>Mining Site</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894933" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                    <div class="gallery-image">
+                            <img src="gallery_images/47.png" alt="TSDMEDIAGEMS Medium Mine NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Medium Mine #894934</h3>
+                            <p>Mining Site</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894934" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/48.png" alt="TSDMEDIAGEMS Large Mine NFT">
+                    </div>
+                    <div class="gallery-content">
+                            <h3>Large Mine #894935</h3>
+                            <p>Mining Site</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/894935" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gallery-category">
+                <div class="section-title">
+                    <h3><i class="fas fa-tools"></i> Polishing Tools</h3>
+                    <p>The essential tool to transform rough gems into polished masterpieces.</p>
+                </div>
+                <div class="gallery-grid">
+                    <div class="gallery-card">
+                    <div class="gallery-image">
+                            <img src="gallery_images/polishingtable.jpg" alt="TSDMEDIAGEMS Polishing Table NFT">
+                        </div>
+                        <div class="gallery-content">
+                            <h3>Polishing Table #896279</h3>
+                            <p>Polishing Equipment</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/896279" target="_blank" rel="noopener">View on NeftyBlocks</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gallery-category">
+                <div class="section-title">
+                    <h3><i class="fas fa-shapes"></i> Shards</h3>
+                    <p>The unfortunate result when gems break during polishing (10% chance).</p>
+                </div>
+                <div class="gallery-grid">
+                    <div class="gallery-card">
+                        <div class="gallery-image">
+                            <img src="gallery_images/60f21764-2fe2-461f-8475-47e2ab106c41.png" alt="TSDMEDIAGEMS Pile of Shards NFT">
+                    </div>
+                    <div class="gallery-content">
+                            <h3>Pile of Shards #896283</h3>
+                            <p>Shard Collection</p>
+                            <a class="gallery-link" href="https://neftyblocks.com/templates/tsdmediagems/896283" target="_blank" rel="noopener">View on NeftyBlocks</a>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
-
-        <!-- Crafting Section -->
-        <section id="crafting" class="section">
-            <div class="section-header">
-                <h2>Crafting Workshop</h2>
-                <p>Create powerful equipment and tools</p>
-            </div>
-
-            <div class="crafting-container">
-                <div class="crafting-info">
-                    <div class="crafting-stats">
-                        <div class="stat">
-                            <label>Level:</label>
-                            <span id="crafting-level">1</span>
-                        </div>
-                        <div class="stat">
-                            <label>Experience:</label>
-                            <span id="crafting-exp">0</span>
-                        </div>
-                        <div class="stat">
-                            <label>Efficiency:</label>
-                            <span id="crafting-efficiency">100%</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="crafting-recipes">
-                    <h3>Available Recipes</h3>
-                    <div class="recipe-grid" id="recipe-grid">
-                        <!-- Recipes will be populated here -->
-                    </div>
-                </div>
-
-                <div class="crafting-queue">
-                    <h3>Crafting Queue</h3>
-                    <div class="queue-list" id="crafting-queue">
-                        <!-- Crafting queue will be populated here -->
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Fusion Section -->
-        <section id="fusion" class="section">
-            <div class="section-header">
-                <h2>Gem Fusion Lab</h2>
-                <p>Combine gems to create rarer and more valuable ones</p>
-            </div>
-
-            <div class="fusion-container">
-                <div class="fusion-info">
-                    <div class="fusion-stats">
-                        <div class="stat">
-                            <label>Level:</label>
-                            <span id="fusion-level">1</span>
-                        </div>
-                        <div class="stat">
-                            <label>Success Rate:</label>
-                            <span id="fusion-success-rate">80%</span>
-                        </div>
-                        <div class="stat">
-                            <label>Critical Chance:</label>
-                            <span id="fusion-critical-chance">2%</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="fusion-recipes">
-                    <h3>Fusion Recipes</h3>
-                    <div class="fusion-grid" id="fusion-grid">
-                        <!-- Fusion recipes will be populated here -->
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Achievements Section -->
-        <section id="achievements" class="section">
-            <div class="section-header">
-                <h2>Achievements</h2>
-                <p>Unlock achievements and earn rewards</p>
-            </div>
-
-            <div class="achievements-container">
-                <div class="achievements-summary">
-                    <div class="achievement-stat">
-                        <label>Total Points:</label>
-                        <span id="achievement-points">0</span>
-                    </div>
-                    <div class="achievement-stat">
-                        <label>Unlocked:</label>
-                        <span id="achievements-unlocked">0</span>
-                    </div>
-                </div>
-
-                <div class="achievements-grid" id="achievements-grid">
-                    <!-- Achievements will be populated here -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Events Section -->
-        <section id="events" class="section">
-            <div class="section-header">
-                <h2>Events & Challenges</h2>
-                <p>Participate in daily, weekly, and seasonal events</p>
-            </div>
-
-            <div class="events-container">
-                <div class="events-tabs">
-                    <button class="tab-btn active" data-events="daily">Daily</button>
-                    <button class="tab-btn" data-events="weekly">Weekly</button>
-                    <button class="tab-btn" data-events="seasonal">Seasonal</button>
-                </div>
-
-                <div class="events-content">
-                    <div id="daily-events" class="events-tab active">
-                        <div class="events-grid" id="daily-events-grid">
-                            <!-- Daily events -->
-                        </div>
-                    </div>
-
-                    <div id="weekly-events" class="events-tab">
-                        <div class="events-grid" id="weekly-events-grid">
-                            <!-- Weekly events -->
-                        </div>
-                    </div>
-
-                    <div id="seasonal-events" class="events-tab">
-                        <div class="events-grid" id="seasonal-events-grid">
-                            <!-- Seasonal events -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-
-
-
-
-
-
-        <!-- Quests Section -->
-        <section id="quests" class="section">
-            <div class="section-header">
-                <h2>Quests & Missions</h2>
-                <p>Complete quests for rewards and progression</p>
-            </div>
-
-            <div class="quests-container">
-                <div class="quests-tabs">
-                    <button class="tab-btn active" data-quests="story">Story</button>
-                    <button class="tab-btn" data-quests="daily">Daily</button>
-                    <button class="tab-btn" data-quests="weekly">Weekly</button>
-                </div>
-
-                <div class="quests-content">
-                    <div id="story-quests" class="quests-tab active">
-                        <div class="quests-grid" id="story-quests-grid">
-                            <!-- Story quests -->
-                        </div>
-                    </div>
-
-                    <div id="daily-quests" class="quests-tab">
-                        <div class="quests-grid" id="daily-missions-list">
-                            <!-- Daily missions will be populated by JavaScript -->
-                        </div>
-                    </div>
-
-                    <div id="weekly-quests" class="quests-tab">
-                        <div class="quests-grid" id="weekly-missions-list">
-                            <!-- Weekly missions will be populated by JavaScript -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Upgrades Section -->
-        <section id="upgrades" class="section">
-            <div class="section-header">
-                <h2>Skill Upgrades</h2>
-                <p>Improve your mining, crafting, and fusion skills</p>
-            </div>
-
-            <div class="upgrades-container">
-                <div class="upgrades-tabs">
-                    <button class="tab-btn active" data-upgrades="mining">Mining</button>
-                    <button class="tab-btn" data-upgrades="crafting">Crafting</button>
-                    <button class="tab-btn" data-upgrades="fusion">Fusion</button>
-                </div>
-
-                <div class="upgrades-content">
-                    <div id="mining-upgrades" class="upgrades-tab active">
-                        <div class="upgrades-grid" id="mining-upgrades-grid">
-                            <!-- Mining upgrades -->
-                        </div>
-                    </div>
-
-                    <div id="crafting-upgrades" class="upgrades-tab">
-                        <div class="upgrades-grid" id="crafting-upgrades-grid">
-                            <!-- Crafting upgrades -->
-                        </div>
-                    </div>
-
-                    <div id="fusion-upgrades" class="upgrades-tab">
-                        <div class="upgrades-grid" id="fusion-upgrades-grid">
-                            <!-- Fusion upgrades -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
 
     </main>
 
@@ -957,43 +788,9 @@
 
     <!-- Mining Animations Container -->
     <div id="mining-animations" class="mining-animations"></div>
-    <script>
-    (() => {
-    const $ = (s, r=document) => r.querySelector(s);
-    const connectBtn   = $('#connect-wallet');
-    const disconnectBtn= $('#disconnect-wallet');
-    const walletModal  = $('#wallet-modal');
-    const walletError  = $('#wallet-error');
-
-    connectBtn?.addEventListener('click', () => {
-        walletError?.classList.add('hidden');
-        walletModal?.classList.remove('hidden');
-        walletModal?.setAttribute('aria-hidden','false');
-    });
-
-    document.addEventListener('click', (e) => {
-        if (e.target.matches('[data-close-wallet-modal]') || e.target === walletModal) {
-        walletModal?.classList.add('hidden');
-        walletModal?.setAttribute('aria-hidden','true');
-        }
-    });
-
-    document.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-provider]');
-        if (!btn) return;
-        const provider = btn.getAttribute('data-provider');
-        window.dispatchEvent(new CustomEvent('tsd:wallet:connect', { detail: { provider } }));
-    });
-
-    disconnectBtn?.addEventListener('click', () => {
-        window.dispatchEvent(new Event('tsd:wallet:disconnect'));
-    });
-    })();
-    </script>
-
-    <!-- Your main wallet logic -->
     <script type="module" src="wallet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <script src="script.js"></script>
+    </div>
 </body>
 </html>
-
