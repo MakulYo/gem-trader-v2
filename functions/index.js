@@ -13,6 +13,8 @@ const gems     = require('./modules/gems');
 const market   = require('./modules/market');
 const snapshot = require('./modules/snapshot');
 const pricing  = require('./modules/pricing');
+const players  = require('./modules/players');
+
 
 // Avoid object spread — use Object.assign for max compatibility
 module.exports = Object.assign(
@@ -21,5 +23,6 @@ module.exports = Object.assign(
   gems,
   market,
   snapshot,
-  pricing
+  pricing,
+  players
 );

@@ -1,6 +1,9 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
-const db = admin.firestore();
+const { getFirestore } = require('firebase-admin/firestore');
+try { admin.app(); } catch { admin.initializeApp(); }
+
+const db = getFirestore(undefined, 'tsdgems'); // <-- IMPORTANT
 
 const MARKET_DOC = 'game_config/gems';
 const BOOSTS_COL = 'city_boosts'; // docs keyed by city id (nyc, ldn, ...)

@@ -1,61 +1,114 @@
-// wallet.js (module)
+// web/wallet.js
+// WharfKit SessionKit + WebRenderer + Cloud/Anchor/Wombat (CDN ESM, no bundler)
+import { apiInitPlayer, apiGetDashboard } from './api.js';
+import { SessionKit } from 'https://esm.sh/@wharfkit/session@1';
+import { WebRenderer } from 'https://esm.sh/@wharfkit/web-renderer@1';
+import { WalletPluginAnchor } from 'https://esm.sh/@wharfkit/wallet-plugin-anchor@1';
+import { WalletPluginCloudWallet } from 'https://esm.sh/@wharfkit/wallet-plugin-cloudwallet@1';
+import { WalletPluginWombat } from 'https://esm.sh/@wharfkit/wallet-plugin-wombat@1';
 
-// ---- CDN versions that actually exist ----
-const VERSIONS = {
-  waxjs: '1.1.3',
-  anchor: '3.3.0',
-  transport: '3.3.0'
+// ---- Config (WAX mainnet) ----
+const CHAIN = {
+  id: '1064487b3cd1a897ce03ae5b6a865651747e2e152090f99c1d19d44e01aea5a4',
+  url: 'https://wax.greymass.com',
 };
+const APP_NAME = 'TSDGEMS';
 
-// Prefer jsDelivr; Skypack and esm.sh as fallbacks for Anchor
-const urls = {
-  waxjs: [
-    `https://cdn.jsdelivr.net/npm/@waxio/waxjs@${VERSIONS.waxjs}/dist/waxjs.min.js`,
-  ],
-  anchor: [
-    `https://cdn.jsdelivr.net/npm/anchor-link@${VERSIONS.anchor}/dist/anchor-link.min.js`,
-    `https://cdn.skypack.dev/anchor-link@${VERSIONS.anchor}`
-  ],
-  transport: [
-    `https://cdn.jsdelivr.net/npm/anchor-link-browser-transport@${VERSIONS.transport}/dist/anchor-link-browser-transport.min.js`,
-    `https://cdn.skypack.dev/anchor-link-browser-transport@${VERSIONS.transport}`
-  ]
-};
+// ---- State ----
+let sessionKit;
+let session;
 
-// try each url until one loads
-async function importWithFallback(list) {
-  let lastErr;
-  for (const u of list) {
-    try {
-      return await import(/* @vite-ignore */ u);
-    } catch (e) {
-      lastErr = e;
-      console.warn('[wallet] failed', u, e?.message || e);
+// ---- Tiny helpers ----
+const $ = (s) => document.querySelector(s);
+const connectBtn = $('#connectWalletBtn');
+const logoutBtn  = $('#logoutBtn');
+const statusEl   = $('#walletStatus');
+
+function setStatus(text) {
+  if (statusEl) statusEl.textContent = text || '';
+}
+
+async function updateUI() {
+  if (!connectBtn) return;
+  if (session) {
+    const actor = session.actor?.toString?.() ?? '';
+    connectBtn.textContent = `Connected: ${actor}`;
+    connectBtn.disabled = true;
+    if (logoutBtn) logoutBtn.classList.remove('hidden');
+  } else {
+    connectBtn.textContent = 'Connect Wallet';
+    connectBtn.disabled = false;
+    if (logoutBtn) logoutBtn.classList.add('hidden');;
+    setStatus('');
+  }
+}
+
+// ---- Init once ----
+function initSessionKit() {
+  if (sessionKit) return sessionKit;
+
+  const ui = new WebRenderer();
+  sessionKit = new SessionKit({
+    appName: APP_NAME,
+    chains: [CHAIN],
+    ui,
+    walletPlugins: [
+      new WalletPluginCloudWallet(), // WAX Cloud Wallet
+      new WalletPluginAnchor(),      // Anchor
+      new WalletPluginWombat(),      // Wombat
+    ],
+  });
+
+  return sessionKit;
+}
+
+// ---- Flows ----
+async function login() {
+  try {
+    initSessionKit();
+    const { session: s } = await sessionKit.login(); // opens WharfKit UI/modal
+    session = s;
+    // after: session = s;
+try {
+  const actor = session.actor?.toString?.();
+  if (actor) {
+    await apiInitPlayer(actor);
+    const dash = await apiGetDashboard(actor);
+    const el = document.getElementById('header-game-dollars');
+    if (el && dash?.profile?.ingameCurrency != null) {
+      el.textContent = `Game $: ${dash.profile.ingameCurrency.toLocaleString()}`;
     }
   }
-  throw lastErr;
+} catch (e) {
+  console.warn('dashboard hydrate failed', e);
 }
 
-// ---- Load once, to unique local names ----
-const Wax = (await importWithFallback(urls.waxjs)).default;        // class
-const Anchor = (await importWithFallback(urls.anchor)).default;    // class
-const AnchorTransport = (await importWithFallback(urls.transport)).default;
+  } catch (err) {
+    console.error('[login] error:', err);
+    setStatus(err?.message || 'Wallet login cancelled/failed.');
+  } finally {
+    await updateUI();
+  }
+}
 
-// expose globally (optional)
-window.WaxJS = Wax;
-window.AnchorLink = Anchor;
-window.AnchorLinkBrowserTransport = AnchorTransport;
+async function logout() {
+  try {
+    if (sessionKit && session) {
+      await sessionKit.logout(session);
+    }
+  } catch (err) {
+    console.warn('[logout] error:', err);
+  } finally {
+    session = undefined;
+    await updateUI();
+  }
+}
 
-console.log('[wallet] libs:', {
-  hasWax: !!window.WaxJS,
-  hasAnchor: !!window.AnchorLink,
-  hasTransport: !!window.AnchorLinkBrowserTransport
+// ---- Wire up DOM once it exists ----
+document.addEventListener('DOMContentLoaded', async () => {
+  initSessionKit();
+  try { session = await sessionKit.restore(); } catch {}
+  if (connectBtn) connectBtn.addEventListener('click', login);
+  if (logoutBtn)  logoutBtn.addEventListener('click', logout);
+  await updateUI();
 });
-
-// ---- (optional) simple connect handler you can call later ----
-export async function connectWaxCloud(appName = 'TSDGEMS') {
-  const wax = new Wax({ rpcEndpoint: 'https://wax.greymass.com', tryAutoLogin: true, appName });
-  // try autologin; if fails, prompt login
-  const logged = await wax.isAutoLoginAvailable() || await wax.login();
-  return logged ? { account: wax.userAccount, api: wax.api, wax } : null;
-}

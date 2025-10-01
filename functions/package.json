@@ -1,16 +1,15 @@
 {
   "name": "functions",
-  "private": true,
   "main": "index.js",
   "type": "commonjs",
   "engines": { "node": "20" },
   "scripts": {
-    "serve": "firebase emulators:start --only functions,firestore",
-    "deploy": "firebase deploy --only functions",
-    "lint": "echo \"nolint\""
+    "lint": "echo \"skip lint\"",
+    "build": "echo \"no build\""
   },
   "dependencies": {
     "firebase-admin": "^12.6.0",
-    "firebase-functions": "^5.0.1"
+    "firebase-functions": "^5.1.1",
+    "cors": "^2.8.5"
   }
 }

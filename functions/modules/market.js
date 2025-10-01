@@ -1,7 +1,11 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
-const db = admin.firestore();
+const { getFirestore } = require('firebase-admin/firestore');
+try { admin.app(); } catch { admin.initializeApp(); }
+
+const db = getFirestore(undefined, 'tsdgems'); // <-- IMPORTANT
+
 const SEED_TOKEN = process.env.SEED_TOKEN || 'changeme-temp-token';
 
 async function fetchBtcUsd() {

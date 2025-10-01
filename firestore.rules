@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Public reads for config + leaderboard (ok for MVP; tighten later)
+    match /leaderboard_monthly/{month}/entries/{account} { allow read: if true; }
+    match /game_config/{doc}                             { allow read: if true; }
+
+    // Players namespace: reads allowed for now (MVP), writes only by server (Admin)
+    match /players/{account} {
+      allow read: if true;      // TODO: tighten once auth bridge is in place
+      allow write: if false;    // all writes via Cloud Functions
+      match /{sub=**}/{doc} {
+        allow read: if true;
+        allow write: if false;
+      }
+    }
+  }
+}

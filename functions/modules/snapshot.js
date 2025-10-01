@@ -1,6 +1,9 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
-const db = admin.firestore();
+const { getFirestore } = require('firebase-admin/firestore');
+try { admin.app(); } catch { admin.initializeApp(); }
+
+const db = getFirestore(undefined, 'tsdgems'); // <-- IMPORTANT
 
 const city_publicSnapshot = onRequest(async (req, res) => {
   try {
