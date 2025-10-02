@@ -120,6 +120,26 @@
           
           <div class="stat-card">
             <div class="stat-icon">
+              <i class="fas fa-gem"></i>
+            </div>
+            <div class="stat-content">
+              <h3>Rough Gems</h3>
+              <p class="stat-value" id="rough-gems-count">0</p>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i class="fas fa-gem" style="color: #00d4ff; text-shadow: 0 0 10px #00d4ff;"></i>
+            </div>
+            <div class="stat-content">
+              <h3>Polished Gems</h3>
+              <p class="stat-value" id="polished-gems-count">0</p>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
               <i class="fas fa-map-marker-alt"></i>
             </div>
             <div class="stat-content">
@@ -200,17 +220,17 @@
                   <i class="fas fa-gem"></i>
                 </div>
                 <div class="stat-content">
-                  <h3>Total Polished Gems</h3>
-                  <p class="stat-value" id="polished-gems-count">0</p>
+                  <h3>Rough Gems Available</h3>
+                  <p class="stat-value" id="rough-gems-polishing-count">0</p>
                 </div>
               </div>
               <div class="stat-card">
                 <div class="stat-icon">
-                  <i class="fas fa-trophy"></i>
+                  <i class="fas fa-gem" style="color: #00d4ff; text-shadow: 0 0 10px #00d4ff;"></i>
                 </div>
                 <div class="stat-content">
-                  <h3>Total Rewards Earned</h3>
-                  <p class="stat-value" id="polishing-rewards">0</p>
+                  <h3>Polished Gems Created</h3>
+                  <p class="stat-value" id="polished-gems-polishing-count">0</p>
                 </div>
               </div>
               <div class="stat-card">
@@ -218,7 +238,7 @@
                   <i class="fas fa-box"></i>
                 </div>
                 <div class="stat-content">
-                  <h3>Gem Inventory</h3>
+                  <h3>Total Gem Inventory</h3>
                   <p class="stat-value" id="total-inventory-gems">0</p>
                 </div>
               </div>
@@ -394,7 +414,7 @@
         </div>
         <div class="gallery-category">
           <div class="section-title">
-            <h3><i class="fas fa-star"></i> Polished Gems</h3>
+            <h3><i class="fas fa-gem" style="color: #00d4ff; text-shadow: 0 0 10px #00d4ff;"></i> Polished Gems</h3>
             <p>The final, beautifully polished gemstones ready for collection.</p>
           </div>
           <div class="gallery-grid">
@@ -493,6 +513,36 @@
         <div class="modal-body">
           <div id="motivation-content">
             <!-- Motivation content -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Worker Selection Gallery Modal -->
+    <div id="worker-gallery-modal" class="modal-overlay">
+      <div class="modal worker-gallery-modal">
+        <div class="modal-header">
+          <h3>Select Workers</h3>
+          <div class="worker-selection-info">
+            <span id="selected-workers-count">0</span>/<span id="max-workers-count">0</span> selected
+          </div>
+          <button class="modal-close" onclick="closeWorkerGalleryModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="worker-gallery-container">
+            <div class="worker-gallery-grid" id="worker-gallery-grid">
+              <!-- Worker images will be populated by JavaScript -->
+            </div>
+          </div>
+          <div class="worker-gallery-actions">
+            <button id="confirm-worker-selection" class="action-btn primary" disabled>
+              <i class="fas fa-check"></i> Confirm Selection (100 TSDM each)
+            </button>
+            <button onclick="closeWorkerGalleryModal()" class="action-btn secondary">
+              <i class="fas fa-times"></i> Cancel
+            </button>
           </div>
         </div>
       </div>
