@@ -1706,7 +1706,7 @@ class TSDGEMSGame {
                                 <i class="fas fa-plus"></i> Add
                             </button>
                             <button class="max-gems-btn" onclick="game.addMaxGemsToSlot(${slotId})">
-                                <i class="fas fa-trophy"></i> Max
+                                <i class="fas fa-gem"></i> Max
                             </button>
                         </div>
                         <div class="gem-input-info">
@@ -1803,18 +1803,11 @@ class TSDGEMSGame {
             return;
         }
 
-        // Add gems from inventory
-        if (this.canReduceInventory(actualAmount)) {
-            this.reduceFromInventory(actualAmount);
-            slot.currentGems = Math.min(slot.maxGems, slot.currentGems + actualAmount);
-            this.showNotification(`Added ${actualAmount} gems to slot ${slotId} (max capacity)`, 'success');
-            
-            // Update the input field
-            const amountInput = document.getElementById(`gem-amount-${slotId}`);
-            if (amountInput) amountInput.value = actualAmount;
-            this.updateUI();
-        } else {
-            this.showNotification('Not enough gems in inventory!', 'error');
+        // Only update the input field, don't add gems automatically
+        const amountInput = document.getElementById(`gem-amount-${slotId}`);
+        if (amountInput) {
+            amountInput.value = actualAmount;
+            this.showNotification(`Set amount to ${actualAmount} (max available)`, 'success');
         }
     }
 
@@ -1961,7 +1954,6 @@ class TSDGEMSGame {
                 </td>
                 <td class="chance-cell">${gemType.chance.toFixed(2)}%</td>
                 <td class="owned-cell">${ownedCount}</td>
-                <td><span class="rarity-cell rarity-${gemType.rarity}">${gemType.rarity}</span></td>
             `;
             tbody.appendChild(row);
         });
@@ -2036,6 +2028,19 @@ class TSDGEMSGame {
         this.updateTradingMatrixDom();
         this.setupTradingMatrixTimer();
         this.updateTradingMatrixHeaders();
+        this.setupMatrixResizeHandler();
+    }
+
+    setupMatrixResizeHandler() {
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                this.createTradingMatrixDom();
+                this.updateTradingMatrixDom();
+                this.highlightMatrixSelection();
+            }, 250);
+        });
     }
 
     createTradingMatrixDom() {
@@ -2057,6 +2062,13 @@ class TSDGEMSGame {
         this.tradingTableHeaders.clear();
         this.tradingTableCells.clear();
         this.tradingTableCellData.clear();
+
+        // Check if mobile view
+        const isMobile = window.innerWidth <= 768;
+        
+        if (isMobile) {
+            return this.createMobileTradingMatrix();
+        }
 
         const table = document.createElement('table');
         table.className = 'matrix-table';
@@ -2087,6 +2099,67 @@ class TSDGEMSGame {
                 cell.className = 'matrix-cell';
                 cell.dataset.cityId = city.id;
                 cell.innerHTML = '<span class="matrix-boost">--</span>';
+                this.tradingTableCells.set(cellId, cell);
+                this.tradingTableCellData.set(cellId, { previousBoost: null });
+                row.appendChild(cell);
+            });
+
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        return table;
+    }
+
+    createMobileTradingMatrix() {
+        const table = document.createElement('table');
+        table.className = 'mobile-matrix-table';
+
+        // Create header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        
+        // Empty cell for city names column
+        const emptyTh = document.createElement('th');
+        emptyTh.className = 'mobile-city-header';
+        headerRow.appendChild(emptyTh);
+        
+        // Gem headers
+        this.tradingMatrixConfig.gems.forEach(gem => {
+            const th = document.createElement('th');
+            th.className = 'mobile-gem-header';
+            th.innerHTML = `
+                <div class="mobile-gem-name">${gem.name}</div>
+                <div class="mobile-gem-count">${this.getPolishedGemAmount(gem.id)}</div>
+            `;
+            this.tradingTableHeaders.set(gem.id, th);
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+
+        // Create body
+        const tbody = document.createElement('tbody');
+        this.tradingMatrixConfig.cities.forEach(city => {
+            const row = document.createElement('tr');
+            
+            // City name cell
+            const cityCell = document.createElement('td');
+            cityCell.className = 'mobile-city-cell';
+            cityCell.textContent = city.name;
+            cityCell.dataset.cityId = city.id;
+            row.appendChild(cityCell);
+
+            // Gem cells
+            this.tradingMatrixConfig.gems.forEach(gem => {
+                const cell = document.createElement('td');
+                const cellId = `${city.id}-${gem.id}`;
+                cell.id = `matrix-${cellId}`;
+                cell.className = 'mobile-matrix-cell';
+                cell.dataset.cityId = city.id;
+                cell.dataset.gemId = gem.id;
+                cell.innerHTML = '<span class="mobile-matrix-boost">--</span>';
+                
                 this.tradingTableCells.set(cellId, cell);
                 this.tradingTableCellData.set(cellId, { previousBoost: null });
                 row.appendChild(cell);
@@ -2139,6 +2212,69 @@ class TSDGEMSGame {
         sellButton?.addEventListener('click', () => {
             this.sellGems();
         });
+
+        // Add click events for mobile matrix cells
+        this.attachMobileMatrixClickEvents();
+    }
+
+    attachMobileMatrixClickEvents() {
+        // Use event delegation for dynamic content
+        document.addEventListener('click', (e) => {
+            const isMobile = window.innerWidth <= 768;
+            if (!isMobile) return;
+
+            // Check if clicked element is a mobile matrix cell
+            const cell = e.target.closest('.mobile-matrix-cell');
+            if (!cell) return;
+
+            const cityId = cell.dataset.cityId;
+            const gemId = cell.dataset.gemId;
+
+            if (cityId && gemId) {
+                // Update dropdown selections
+                const citySelect = document.getElementById('matrix-city-select');
+                const gemSelect = document.getElementById('matrix-gem-select');
+
+                if (citySelect) {
+                    citySelect.value = cityId;
+                    this.gameState.trading.activeCity = cityId;
+                }
+
+                if (gemSelect) {
+                    gemSelect.value = gemId;
+                }
+
+                // Update matrix summary and highlight selection
+                this.syncMatrixSelections();
+            }
+        });
+    }
+
+    attachMatrixEvents() {
+        const citySelect = document.getElementById('matrix-city-select');
+        const gemSelect = document.getElementById('matrix-gem-select');
+        const amountInput = document.getElementById('matrix-sell-amount');
+        const sellButton = document.getElementById('matrix-sell-btn');
+
+        citySelect?.addEventListener('change', () => {
+            this.gameState.trading.activeCity = citySelect.value;
+            this.syncMatrixSelections();
+        });
+
+        gemSelect?.addEventListener('change', () => {
+            this.syncMatrixSelections();
+        });
+
+        amountInput?.addEventListener('input', () => {
+            this.updateMatrixSummary();
+        });
+
+        sellButton?.addEventListener('click', () => {
+            this.sellGems();
+        });
+
+        // Add click events for mobile matrix cells
+        this.attachMobileMatrixClickEvents();
 
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -2258,6 +2394,7 @@ class TSDGEMSGame {
 
         const matrixBasePriceLabel = document.getElementById('matrix-base-price');
         if (matrixBasePriceLabel) {
+            // Show the latest base price
             matrixBasePriceLabel.textContent = `Base price: ${latestPrice.toFixed(2)} Game $`;
         }
     }
@@ -2280,15 +2417,28 @@ class TSDGEMSGame {
 
         const selectedCity = citySelect.value;
         const selectedGem = gemSelect.value;
+        const isMobile = window.innerWidth <= 768;
 
-        document.querySelectorAll('#city-boost-matrix td').forEach(cell => {
-            cell.classList.toggle('selected', false);
-        });
+        // Remove previous selections
+        if (isMobile) {
+            document.querySelectorAll('.mobile-matrix-cell').forEach(cell => {
+                cell.classList.remove('selected');
+            });
+        } else {
+            document.querySelectorAll('#city-boost-matrix td').forEach(cell => {
+                cell.classList.remove('selected');
+            });
+        }
 
+        // Add selection to target
         const targetCell = document.getElementById(`matrix-${selectedCity}-${selectedGem}`);
         if (targetCell) {
             targetCell.classList.add('selected');
-            targetCell.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+            if (isMobile) {
+                targetCell.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            } else {
+                targetCell.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+            }
         }
     }
 
@@ -2310,19 +2460,28 @@ class TSDGEMSGame {
         const entry = matrix?.[city]?.[gem];
         const boost = entry?.boost ?? 0;
         const gemName = this.findGemNameById(gem);
-        const basePrice = this.gameState.trading.gemPrices[gemName]?.base ?? 0;
-        const dynamicBasePrice = this.latestGemBasePrice ?? 0;
-        const cityBonus = this.gameState.trading.cities.find(c => c.id === city)?.bonus ?? 0;
+        const basePrice = this.latestGemBasePrice ?? 0;
+        // City bonus is not used in the calculation - only boost and staking bonus
 
+        // Get staking bonus only for the specific gem type
         const stakingSlot = this.gameState.trading.stakingSlots.find(s => s.gemType === gemName && s.staked);
         const stakingBonusPercent = stakingSlot ? (stakingSlot.benefit.gameDollarMultiplier || 0) * 100 : 0;
 
-        const totalMultiplier = 1 + (cityBonus + stakingBonusPercent) / 100;
-        const pricePerGem = Math.round((basePrice + dynamicBasePrice) * (1 + boost / 100) * totalMultiplier);
+        // Simple calculation: Base Price + City Boost + Staking Bonus
+        const cityBoostValue = (basePrice * boost) / 100;
+        const stakingBonusValue = (basePrice * stakingBonusPercent) / 100;
+        const pricePerGem = Math.round(basePrice + cityBoostValue + stakingBonusValue);
         const payout = pricePerGem * amount;
 
         boostLabel.textContent = `Boost: +${boost}%`;
-        stakingLabel.textContent = `Staking Bonus: +${stakingBonusPercent.toFixed(0)}%`;
+        
+        // Only show staking bonus if the gem type is actually staked
+        if (stakingSlot && stakingBonusPercent > 0) {
+            stakingLabel.textContent = `Staking Bonus: +${stakingBonusPercent.toFixed(0)}%`;
+        } else {
+            stakingLabel.textContent = `Staking Bonus: +0%`;
+        }
+        
         priceLabel.textContent = `Est. Payout: ${payout} Game $`;
     }
 
@@ -2385,6 +2544,8 @@ class TSDGEMSGame {
 
     updateTradingMatrixDom() {
         const matrix = this.gameState.trading.priceMatrix;
+        const isMobile = window.innerWidth <= 768;
+        
         Object.keys(matrix).forEach(cityId => {
             Object.keys(matrix[cityId]).forEach(gemId => {
                 const entry = matrix[cityId][gemId];
@@ -2394,28 +2555,51 @@ class TSDGEMSGame {
                 if (cell) {
                     const previous = cellData.previousBoost;
 
-                const boostSpan = cell.querySelector('.matrix-boost') || document.createElement('span');
-                boostSpan.className = 'matrix-boost';
-                boostSpan.textContent = `+${entry.boost}%`;
+                    if (isMobile) {
+                        // Mobile table structure
+                        const boostElement = cell.querySelector('.mobile-matrix-boost');
+                        if (boostElement) {
+                            boostElement.textContent = `+${entry.boost}%`;
+                            
+                            // Update boost styling
+                            boostElement.classList.remove('increase', 'decrease', 'neutral');
+                            if (previous !== null) {
+                                if (entry.boost > previous) {
+                                    boostElement.classList.add('increase');
+                                } else if (entry.boost < previous) {
+                                    boostElement.classList.add('decrease');
+                                } else {
+                                    boostElement.classList.add('neutral');
+                                }
+                            } else {
+                                boostElement.classList.add('neutral');
+                            }
+                        }
+                    } else {
+                        // Desktop table structure
+                        const boostSpan = cell.querySelector('.matrix-boost') || document.createElement('span');
+                        boostSpan.className = 'matrix-boost';
+                        boostSpan.textContent = `+${entry.boost}%`;
 
-                if (!boostSpan.parentNode) {
-                    cell.appendChild(boostSpan);
-                }
+                        if (!boostSpan.parentNode) {
+                            cell.appendChild(boostSpan);
+                        }
 
-                    if (previous !== null) {
-                        if (entry.boost > previous) {
-                            boostSpan.classList.remove('decrease');
-                            boostSpan.classList.add('increase');
-                        } else if (entry.boost < previous) {
-                            boostSpan.classList.remove('increase');
-                            boostSpan.classList.add('decrease');
+                        if (previous !== null) {
+                            if (entry.boost > previous) {
+                                boostSpan.classList.remove('decrease');
+                                boostSpan.classList.add('increase');
+                            } else if (entry.boost < previous) {
+                                boostSpan.classList.remove('increase');
+                                boostSpan.classList.add('decrease');
+                            } else {
+                                boostSpan.classList.remove('increase');
+                                boostSpan.classList.remove('decrease');
+                            }
                         } else {
                             boostSpan.classList.remove('increase');
                             boostSpan.classList.remove('decrease');
                         }
-                    } else {
-                        boostSpan.classList.remove('increase');
-                        boostSpan.classList.remove('decrease');
                     }
 
                     cellData.previousBoost = entry.boost;
@@ -2652,17 +2836,17 @@ class TSDGEMSGame {
         }
 
         const gemName = this.findGemNameById(gemId);
-        const basePrice = this.gameState.trading.gemPrices[gemName]?.base ?? 0;
-        const dynamicBasePrice = this.latestGemBasePrice;
+        const basePrice = this.latestGemBasePrice ?? 0;
         const city = this.gameState.trading.cities.find(c => c.id === cityId);
         const cityBonus = city?.bonus ?? 0;
 
         const stakingSlot = this.gameState.trading.stakingSlots.find(s => s.gemType === gemName && s.staked);
         const stakingBonusPercent = stakingSlot ? (stakingSlot.benefit.gameDollarMultiplier || 0) * 100 : 0;
 
-        const totalMultiplier = 1 + (cityBonus + stakingBonusPercent) / 100;
-        const baseWithBoost = (basePrice + dynamicBasePrice) * (1 + matrixEntry.boost / 100);
-        const pricePerGem = Math.round(baseWithBoost * totalMultiplier);
+        // Simple calculation: Base Price + City Boost + Staking Bonus
+        const cityBoostValue = (basePrice * matrixEntry.boost) / 100;
+        const stakingBonusValue = (basePrice * stakingBonusPercent) / 100;
+        const pricePerGem = Math.round(basePrice + cityBoostValue + stakingBonusValue);
         const totalPayout = pricePerGem * amount;
 
         // Check if player has enough polished gems
