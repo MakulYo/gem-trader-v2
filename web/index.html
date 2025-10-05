@@ -841,12 +841,18 @@
     <!-- Mining Animations Container -->
     <div id="mining-animations" class="mining-animations"></div>
 
-    <!-- WharfKit wallet logic (already created in wallet.js) -->
+    <!-- 1) Wallet connects and exposes window.walletConnect -->
     <script type="module" src="wallet.js"></script>
 
+    <!-- 2) API helpers (fetch Firebase Functions) -->
     <script type="module" src="api.js"></script>
+
+    <!-- 3) Bridge wires API data into globals and defines window.hydrateBackend -->
     <script type="module" src="bridge.js"></script>
-    <script src="script.js"></script> <!-- Toxic’s file stays unchanged -->
+
+    <!-- 4) Game engine (non-module) uses walletConnect + hydrateBackend -->
+    <script src="script.js"></script>
+
   </div>
 </body>
 </html>

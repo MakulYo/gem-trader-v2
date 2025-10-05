@@ -117,3 +117,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (logoutBtn)  logoutBtn.addEventListener('click', logout);
   await updateUI();
 });
+
+// --- add at the very bottom of wallet.js ---
+window.walletConnect = async function walletConnect() {
+  try {
+    // ensure SessionKit is ready
+    initSessionKit();
+    const { session: s } = await sessionKit.login(); // opens the WharfKit modal
+    session = s;
+
+    const actor = session?.actor?.toString?.();
+    if (!actor) throw new Error('No actor returned from session');
+
+    // (optional) also keep the button state in wallet.js in sync
+    await updateUI?.();
+
+    return actor;
+  } catch (e) {
+    console.error('[walletConnect] failed:', e);
+    throw e;
+  }
+};

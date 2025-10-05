@@ -1,4 +1,13 @@
 // TSDGEMS Diamond Trading Simulator - Game Logic
+// --- Backend bridge integration ---
+import { hydrateBackend } from './bridge.js';
+
+window.addEventListener('backend:ready', (e) => {
+  console.log('[TSDGEMSGame] Backend ready:', e.detail);
+  if (window.tsdgemsGame) {
+    window.tsdgemsGame.applyBackendData(e.detail);
+  }
+});
 
 class TSDGEMSGame {
     constructor() {
@@ -203,7 +212,54 @@ class TSDGEMSGame {
         this.gemPriceChart = null;
         this.priceRefreshInterval = null;
         this.latestGemBasePrice = null;
+        // Placeholder for backend data
+        this.backendData = {
+            player: null,
+            cities: [],
+            boosts: {}
+        };
         this.init();
+        applyBackendData(data); {
+    console.log('[TSDGEMSGame] Applying backend data...');
+    if (data.player) {
+        this.backendData.player = data.player;
+        // Example: update gameState player name and TSDM balance
+        this.gameState.player.name = data.player.id || this.gameState.player.name;
+        if (data.player.balances?.TSDM != null) {
+            this.gameState.player.tsdBalance = data.player.balances.TSDM;
+        }
+        if (data.player.balances?.WAX != null) {
+            this.gameState.player.walletBalance = data.player.balances.WAX;
+        }
+    }
+
+    if (data.cities && Array.isArray(data.cities)) {
+        this.backendData.cities = data.cities;
+        // Replace static city list with backend cities
+        this.gameState.trading.cities = data.cities.map(c => ({
+            id: c.id,
+            name: c.name,
+            bonus: 0
+        }));
+    }
+
+    if (data.boosts) {
+        this.backendData.boosts = data.boosts;
+        // Merge bonuses into trading.city list if needed
+        for (const c of this.gameState.trading.cities) {
+            const backendBonus = data.boosts[c.id];
+            if (backendBonus) {
+                // Example: average all polished bonuses to one number
+                const avg = Object.values(backendBonus).reduce((a,b)=>a+b,0)/Object.keys(backendBonus).length;
+                c.bonus = Math.round(avg*1000)/10;
+            }
+        }
+    }
+
+    this.updateUI();
+    this.showNotification('Backend data synced successfully!', 'success');
+}
+
     }
 
     init() {
@@ -273,9 +329,18 @@ class TSDGEMSGame {
 
 
         // Wallet connection
-        document.querySelector('.connect-wallet-btn').addEventListener('click', () => {
-            this.connectWallet();
+        document.querySelector('.connect-wallet-btn').addEventListener('click', async () => {
+            // Connect the wallet and wait for it to finish
+            const actor = await this.connectWallet();
+
+            // After wallet connected successfully (actor = wallet address)
+            if (actor) {
+                await hydrateBackend(actor);
+            } else {
+                console.warn('[connect-wallet-btn] Wallet connection failed or actor undefined.');
+            }
         });
+
 
         // Trading subpage toggle
         const subpageToggle = document.getElementById('trading-subpage-toggle');
@@ -293,6 +358,19 @@ class TSDGEMSGame {
                 section.classList.toggle('active', section.id === `trading-subpage-${target}`);
             });
         });
+        
+    }
+        async connectWallet() {
+        try {
+            // call your existing wallet integration here
+            const actor = await walletConnect(); // Replace with your real login function
+            this.gameState.player.name = actor;
+            console.log(`[Wallet] Connected: ${actor}`);
+            return actor; // return the wallet address to caller
+        } catch (err) {
+            console.error('[Wallet] Connection failed:', err);
+            return null;
+        }
     }
 
     // Close mobile navigation
@@ -2921,3 +2999,5 @@ document.addEventListener('DOMContentLoaded', () => {
         game.confirmWorkerSelection();
     });
 });
+window.tsdgemsGame = new TSDGEMSGame();
+

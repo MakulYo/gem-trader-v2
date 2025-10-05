@@ -17,3 +17,24 @@ export async function apiGetDashboard(actor) {
   const r = await fetch(u);
   return r.json();
 }
+export async function apiGetCityMatrix() {
+  const r = await fetch(`${API_BASE}/getCityMatrix`);
+  return r.ok ? r.json() : { cities: [], boosts: [] };
+}
+
+
+// --- add at the very bottom of api.js ---
+window.hydrateBackend = async function hydrateBackend(actor) {
+  try {
+    await apiInitPlayer(actor);
+    const dash = await apiGetDashboard(actor);
+
+    const el = document.getElementById('header-game-dollars');
+    if (el && dash?.profile?.ingameCurrency != null) {
+      el.textContent = `Game $: ${dash.profile.ingameCurrency.toLocaleString()}`;
+    }
+  } catch (e) {
+    console.warn('hydrateBackend failed:', e);
+  }
+};
+

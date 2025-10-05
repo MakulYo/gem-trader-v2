@@ -34,3 +34,7 @@ export async function hydrateBackend(actor) {
     console.warn('[Bridge] Backend unavailable, using local fallbacks', e);
   }
 }
+// Make it callable from non-module script.js:
+window.hydrateBackend = hydrateBackend;
+// (Optional, handy for debugging from console)
+window.apiGetDashboard = apiGetDashboard;
