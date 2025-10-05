@@ -3,6 +3,11 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 try { admin.app(); } catch { admin.initializeApp(); }
+const initPlayer = onRequest((req, res) =>
+  cors(req, res, async () => {
+    // your logic here
+  })
+);
 
 const db = getFirestore(undefined, 'tsdgems'); // <-- IMPORTANT
 

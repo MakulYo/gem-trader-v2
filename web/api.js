@@ -1,5 +1,5 @@
 // web/api.js
-export const API_BASE = 'https://us-central1-tsdm-trading.cloudfunctions.net'; // exact projectId
+export const API_BASE = 'https://us-central1-tsdgems-trading.cloudfunctions.net'; // exact projectId
 
 export async function apiInitPlayer(actor) {
   const r = await fetch(`${API_BASE}/initPlayer`, {
@@ -7,6 +7,7 @@ export async function apiInitPlayer(actor) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ actor })
   });
+    if (!r.ok) throw new Error(`initPlayer ${r.status}`)
   return r.json();
 }
 

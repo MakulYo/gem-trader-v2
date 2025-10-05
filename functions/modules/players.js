@@ -1,15 +1,19 @@
 // functions/modules/players.js
+'use strict';
 
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 
 try { admin.app(); } catch { admin.initializeApp(); }
-const db = getFirestore(undefined, 'tsdgems');   // named DB
+const db = getFirestore(undefined, 'tsdgems'); // named DB
 
-function monthKey(d = new Date()) {
-  return d.toISOString().slice(0, 7).replace('-', ''); // YYYYMM
-}
+const { getWaxBalance, getTsdmBalance, getOwnedNfts } = require('./chain');
+
+// Built-in CORS from v2 (no external 'cors' lib)
+const CORS = { cors: true, region: 'us-central1' };
+
+function monthKey(d = new Date()) { return d.toISOString().slice(0,7).replace('-', ''); }
 
 function requireActor(req, res) {
   const { actor } = req.method === 'GET' ? req.query : (req.body || {});
@@ -20,60 +24,75 @@ function requireActor(req, res) {
   return actor;
 }
 
-// Allow all origins during dev (change to array of origins later)
-const CORS_OPT = { cors: true, region: 'us-central1' };
-
-// POST /initPlayer
-const initPlayer = onRequest(CORS_OPT, async (req, res) => {
-  if (req.method === 'OPTIONS') return res.status(204).end();   // (defensive)
+// POST /initPlayer { actor }
+const initPlayer = onRequest(CORS, async (req, res) => {
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   const actor = requireActor(req, res); if (!actor) return;
 
   const now = admin.firestore.Timestamp.now();
-  const playerRef = db.collection('players').doc(actor);
-  const snap = await playerRef.get();
+  const ref = db.collection('players').doc(actor);
+  const snap = await ref.get();
+
+  const base = {
+    account: actor,
+    ingameCurrency: 0,
+    tsdmBalance: 0,
+    miningSlotsUnlocked: 0,
+    polishingSlotsUnlocked: 0,
+    monthlyScore: 0,
+    nfts: { count: 0, lastSyncAt: now },
+    balances: { WAX: 0, TSDM: 0 }
+  };
 
   if (!snap.exists) {
-    await playerRef.set({
-      account: actor,
-      createdAt: now,
-      lastSeenAt: now,
-      ingameCurrency: 0,
-      tsdmBalance: 0,
-      miningSlotsUnlocked: 0,
-      polishingSlotsUnlocked: 0,
-      monthlyScore: 0,
-      flags: {}
-    });
+    await ref.set({ ...base, createdAt: now, lastSeenAt: now });
   } else {
-    await playerRef.update({ lastSeenAt: now });
+    await ref.update({ lastSeenAt: now });
   }
 
-  const month = monthKey();
-  await db.collection('leaderboard_monthly').doc(month)
-    .collection('entries').doc(actor)
-    .set({ account: actor, score: (snap.data()?.monthlyScore ?? 0), updatedAt: now }, { merge: true });
+  // sync balances + NFTs (read-only on-chain)
+  await syncNowInternal(actor);
 
-  const fresh = await playerRef.get();
+  const fresh = await ref.get();
   res.json({ ok: true, profile: { id: fresh.id, ...fresh.data() } });
 });
 
-// GET /getDashboard?actor=<name>
-const getDashboard = onRequest(CORS_OPT, async (req, res) => {
-  if (req.method === 'OPTIONS') return res.status(204).end();   // (defensive)
+// GET /getDashboard?actor=...
+const getDashboard = onRequest(CORS, async (req, res) => {
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
 
   const actor = requireActor(req, res); if (!actor) return;
 
   const ref = db.collection('players').doc(actor);
   const snap = await ref.get();
-  if (!snap.exists) return res.json({ profile: null, inventory: [] });
-
-  const invSnap = await ref.collection('inventory').limit(250).get();
-  const inventory = invSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-  res.json({ profile: { id: snap.id, ...snap.data() }, inventory });
+  res.json({ profile: snap.exists ? { id: snap.id, ...snap.data() } : null });
 });
 
-module.exports = { initPlayer, getDashboard };
+// POST /syncNow { actor } (manual re-sync)
+const syncNow = onRequest(CORS, async (req, res) => {
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+  const actor = requireActor(req, res); if (!actor) return;
+  await syncNowInternal(actor);
+  res.json({ ok: true });
+});
+
+async function syncNowInternal(actor) {
+  const [wax, tsdm, nfts] = await Promise.all([
+    getWaxBalance(actor).catch(() => 0),
+    getTsdmBalance(actor).catch(() => 0),
+    getOwnedNfts(actor, process.env.ATOMIC_COLLECTION).catch(() => [])
+  ]);
+  const now = admin.firestore.Timestamp.now();
+  await db.collection('players').doc(actor).set({
+    balances: { WAX: wax, TSDM: tsdm },
+    nfts: { count: Number(nfts.length || 0), lastSyncAt: now },
+    lastSeenAt: now,
+  }, { merge: true });
+}
+
+module.exports = { initPlayer, getDashboard, syncNow };

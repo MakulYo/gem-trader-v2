@@ -4,6 +4,11 @@ const { getFirestore } = require('firebase-admin/firestore');
 try { admin.app(); } catch { admin.initializeApp(); }
 
 const db = getFirestore(undefined, 'tsdgems'); // <-- IMPORTANT
+const initPlayer = onRequest((req, res) =>
+  cors(req, res, async () => {
+    // your logic here
+  })
+);
 
 const MARKET_DOC = 'game_config/gems';
 const BOOSTS_COL = 'city_boosts'; // docs keyed by city id (nyc, ldn, ...)
