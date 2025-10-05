@@ -68,6 +68,14 @@ const getDashboard = onRequest(CORS, async (req, res) => {
 
   const ref = db.collection('players').doc(actor);
   const snap = await ref.get();
+  if (!snap.exists) return res.json({ profile: null, inventory: [] });
+      const data = snap.data() || {};
+      // Make sure these exist even if missing in Firestore
+      if (!data.balances) data.balances = { WAX: 0, TSDM: 0 };
+      if (data.ingameCurrency == null) data.ingameCurrency = 0;
+
+      const invSnap = await ref.collection('inventory').limit(250).get();
+      const inventory = invSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   res.json({ profile: snap.exists ? { id: snap.id, ...snap.data() } : null });
 });
 

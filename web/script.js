@@ -1,13 +1,44 @@
 // TSDGEMS Diamond Trading Simulator - Game Logic
 
 window.addEventListener('backend:ready', (e) => {
-  console.log('[TSDGEMSGame] Backend ready:', e.detail);
-  if (window.tsdgemsGame) {
+  if (window.tsdgemsGame && typeof window.tsdgemsGame.applyBackendData === 'function') {
     window.tsdgemsGame.applyBackendData(e.detail);
   }
 });
 
+
 class TSDGEMSGame {
+    applyBackendData(detail = {}) {
+        const { player = {}, cities = [] } = detail;
+
+        // Button label with actor
+        const actor = player.account || player.id || '';
+        const btn = document.querySelector('.connect-wallet-btn');
+        if (btn && actor) {
+            btn.textContent = `Connected: ${actor}`;
+            btn.classList.add('connected');
+        }
+
+        // ---- Update header + dashboard cards ----
+        const dollars = Number(player.ingameCurrency ?? 0);
+        const tsdm    = Number(player.balances?.TSDM ?? 0);
+
+        // Header chip
+        const header = document.getElementById('header-game-dollars');
+        if (header) header.textContent = `Game $: ${dollars.toLocaleString()}`;
+
+        // Dashboard “Ingame $”
+        const tsdEl = document.getElementById('tsd-balance');
+        if (tsdEl) tsdEl.textContent = dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // Dashboard “TSDM Balance”
+        const tsdmEl = document.getElementById('tsdm-balance');
+        if (tsdmEl) tsdmEl.textContent = tsdm.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // (Optional) Keep cities for later
+        this.gameState.trading.citiesFromBackend = cities;
+        }
+
     constructor() {
         this.gameState = {
             player: {
@@ -263,10 +294,35 @@ class TSDGEMSGame {
     init() {
         this.setupEventListeners();
         this.initializeGameData();
+        applyBackendData(detail = {}); {
+        const profile = detail.player || window.PLAYER_PROFILE || {};
+
+        // Ingame $ (from Firestore players/<actor>.ingameCurrency)
+        if (profile.ingameCurrency != null) {
+            this.gameState.trading.totalGameDollars = Number(profile.ingameCurrency) || 0;
+        }
+
+        // TSDM token balance (from Firestore players/<actor>.balances.TSDM)
+        const tsdm =
+            (profile.balances && (profile.balances.TSDM ?? profile.balances.tsdm)) ??
+            profile.TSDM ?? profile.tsdm;
+
+        if (tsdm != null) {
+            this.gameState.player.tsdBalance = Number(tsdm) || 0;
+        }
+
+        // (optional) WAX if you want it later
+        // const wax = profile.balances?.WAX ?? profile.balances?.wax;
+
+        this.updateUI()// Dashboard card — make sure the <span> showing this has id="ingame-currency"
+        const dashIngame = document.getElementById('ingame-currency');
+        if (dashIngame) dashIngame.textContent = this.gameState.trading.totalGameDollars.toFixed(0);
+        ;
+        }
+
         this.initializeLeaderboard();
 
         this.startGameLoop();
-        this.updateUI();
         this.showNotification('Welcome to TSDGEMS! Start mining to earn rewards.', 'info');
     }
 

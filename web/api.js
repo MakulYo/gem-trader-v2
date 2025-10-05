@@ -23,18 +23,46 @@ export async function apiGetCityMatrix() {
 }
 
 
-// --- add at the very bottom of api.js ---
+// --- at the very bottom of api.js ---
+
+const fmt = (n, maxFrac = 6) =>
+  Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: maxFrac });
+
 window.hydrateBackend = async function hydrateBackend(actor) {
   try {
+    // make sure the player doc exists/updated
     await apiInitPlayer(actor);
-    const dash = await apiGetDashboard(actor);
 
-    const el = document.getElementById('header-game-dollars');
-    if (el && dash?.profile?.ingameCurrency != null) {
-      el.textContent = `Game $: ${dash.profile.ingameCurrency.toLocaleString()}`;
+    // fetch latest profile snapshot
+    const dash = await apiGetDashboard(actor);
+    const profile = dash?.profile || {};
+    const balances = profile.balances || {};
+
+    // 1) Navbar "Game $: <amount>"
+    const navEl = document.getElementById('header-game-dollars');
+    if (navEl && profile.ingameCurrency != null) {
+      navEl.textContent = `Game $: ${fmt(profile.ingameCurrency, 0)}`;
     }
+
+    // 2) Dashboard tile "Ingame $" (#tsd-balance)
+    const tsdTile = document.getElementById('tsd-balance');
+    if (tsdTile && profile.ingameCurrency != null) {
+      tsdTile.textContent = fmt(profile.ingameCurrency, 0);
+    }
+
+    // 3) Dashboard tile "TSDM Balance" (#tsdm-balance)
+    //    (field is balances.TSDM in Firestore, but accept lower-case just in case)
+    const tsdmVal = balances.TSDM ?? balances.tsdm ?? 0;
+    const tsdmTile = document.getElementById('tsdm-balance');
+    if (tsdmTile) {
+      tsdmTile.textContent = fmt(tsdmVal, 6);
+    }
+
+    // keep a copy available for anything else
+    window.PLAYER_PROFILE = profile;
   } catch (e) {
     console.warn('hydrateBackend failed:', e);
   }
 };
+
 
