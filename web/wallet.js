@@ -1,5 +1,6 @@
 // web/wallet.js
 // WharfKit SessionKit + WebRenderer + Cloud/Anchor/Wombat (CDN ESM, no bundler)
+import { hydrateBackend } from './bridge.js';
 import { apiInitPlayer, apiGetDashboard } from './api.js';
 import { SessionKit } from 'https://esm.sh/@wharfkit/session@1';
 import { WebRenderer } from 'https://esm.sh/@wharfkit/web-renderer@1';
@@ -89,6 +90,10 @@ try {
   } finally {
     await updateUI();
   }
+  if (actor) {
+  await apiInitPlayer(actor);
+  await hydrateBackend(actor);  // <-- fetch dashboard + cities
+}
 }
 
 async function logout() {
