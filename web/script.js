@@ -1,6 +1,4 @@
 // TSDGEMS Diamond Trading Simulator - Game Logic
-// --- Backend bridge integration ---
-import { hydrateBackend } from './bridge.js';
 
 window.addEventListener('backend:ready', (e) => {
   console.log('[TSDGEMSGame] Backend ready:', e.detail);
