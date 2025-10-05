@@ -16,6 +16,30 @@ class TSDGEMSGame {
                 experienceToNext: 1000,
                 prestige: 0,
                 prestigeMultiplier: 1.0,
+                roughGems: {
+                    diamond: 0,
+                    ruby: 0,
+                    sapphire: 0,
+                    emerald: 0,
+                    amethyst: 0,
+                    topaz: 0,
+                    jade: 0,
+                    opal: 0,
+                    aquamarin: 0,
+                    tanzanite: 0
+                },
+                polishedGems: {
+                    diamond: 0,
+                    ruby: 0,
+                    sapphire: 0,
+                    emerald: 0,
+                    amethyst: 0,
+                    topaz: 0,
+                    jade: 0,
+                    opal: 0,
+                    aquamarin: 0,
+                    tanzanite: 0
+                },
                 inventory: {
                     gems: [],
                     equipment: [],
@@ -200,6 +224,8 @@ class TSDGEMSGame {
                 const href = e.target.getAttribute('href');
                 if (href && href !== '#') {
                     this.navigateToSection(href.substring(1));
+                    // Close mobile navigation after selection
+                    this.closeMobileNavigation();
                 }
             });
         });
@@ -211,6 +237,8 @@ class TSDGEMSGame {
                 const href = e.target.getAttribute('href');
                 if (href) {
                     this.navigateToSection(href.substring(1));
+                    // Close mobile navigation after selection
+                    this.closeMobileNavigation();
                 }
             });
         });
@@ -235,9 +263,7 @@ class TSDGEMSGame {
             const mobileToggle = document.getElementById('mobile-menu-toggle');
             
             if (!navMenu.contains(e.target) && !mobileToggle.contains(e.target)) {
-                navMenu.classList.remove('active');
-                const toggleIcon = document.querySelector('#mobile-menu-toggle i');
-                toggleIcon.className = 'fas fa-bars';
+                this.closeMobileNavigation();
             }
         });
 
@@ -267,6 +293,17 @@ class TSDGEMSGame {
                 section.classList.toggle('active', section.id === `trading-subpage-${target}`);
             });
         });
+    }
+
+    // Close mobile navigation
+    closeMobileNavigation() {
+        const navMenu = document.getElementById('nav-menu');
+        const toggleIcon = document.querySelector('#mobile-menu-toggle i');
+        
+        navMenu.classList.remove('active');
+        if (toggleIcon) {
+            toggleIcon.className = 'fas fa-bars';
+        }
     }
 
     initializeGameData() {
@@ -861,6 +898,9 @@ class TSDGEMSGame {
         document.getElementById('mining-slots-count').textContent = `${this.gameState.miningSlots.rented}/${this.gameState.miningSlots.maxSlots}`;
         document.getElementById('tsdm-balance').textContent = this.gameState.player.tsdBalance.toFixed(2);
         
+        // Update gem statistics
+        this.updateGemStatistics();
+        
         // Update wallet balance
         document.querySelector('.wallet-balance').textContent = `${this.gameState.player.tsdBalance.toFixed(2)} TSDM`;
 
@@ -898,6 +938,33 @@ class TSDGEMSGame {
         this.updateTradingStats();
         this.updateTradingMatrixHeaders();
         this.renderLeaderboardPage(this.leaderboard.currentPage);
+    }
+
+    // Update gem statistics for dashboard and polishing tabs
+    updateGemStatistics() {
+        // Calculate rough gems (from mining trips)
+        const roughGems = this.gameState.player.roughGems || {};
+        const totalRoughGems = Object.values(roughGems).reduce((total, count) => total + count, 0);
+        
+        // Calculate polished gems (from polishing process)
+        const polishedGems = this.gameState.player.polishedGems || {};
+        const totalPolishedGems = Object.values(polishedGems).reduce((total, count) => total + count, 0);
+        
+        // Update dashboard statistics
+        const roughGemsElement = document.getElementById('rough-gems-count');
+        const polishedGemsElement = document.getElementById('polished-gems-count');
+        
+        if (roughGemsElement) roughGemsElement.textContent = totalRoughGems.toString();
+        if (polishedGemsElement) polishedGemsElement.textContent = totalPolishedGems.toString();
+        
+        // Update polishing tab statistics
+        const roughGemsPolishingElement = document.getElementById('rough-gems-polishing-count');
+        const polishedGemsPolishingElement = document.getElementById('polished-gems-polishing-count');
+        const totalInventoryElement = document.getElementById('total-inventory-gems');
+        
+        if (roughGemsPolishingElement) roughGemsPolishingElement.textContent = totalRoughGems.toString();
+        if (polishedGemsPolishingElement) polishedGemsPolishingElement.textContent = totalPolishedGems.toString();
+        if (totalInventoryElement) totalInventoryElement.textContent = (totalRoughGems + totalPolishedGems).toString();
     }
     
 
@@ -1013,12 +1080,17 @@ class TSDGEMSGame {
                                 </div>
                             ` : `
                                 <button onclick="game.addWorker(${slot.id})" class="action-btn primary" ${slot.workers >= slot.maxWorkers ? 'disabled' : ''}>
-                                    <i class="fas fa-plus"></i> Add Worker (50 TSDM)
+                                    <i class="fas fa-plus"></i> Add Worker (100 TSDM)
                                 </button>
                                 <button onclick="game.startMiningTrip(${slot.id})" class="action-btn success" ${slot.workers === 0 ? 'disabled' : ''}>
                                     <i class="fas fa-play"></i> Start Mining Trip
                                 </button>
                             `}
+                            ${!slot.miningTrip.active ? `
+                                <button onclick="game.unstakeMine(${slot.id})" class="action-btn danger">
+                                    <i class="fas fa-times"></i> Unstake Mine
+                                </button>
+                            ` : ''}
                         </div>
                     </div>`;
             }
@@ -1167,7 +1239,7 @@ class TSDGEMSGame {
         }
     }
 
-    // Add worker to staked mine
+    // Open worker selection gallery
     addWorker(slotId) {
         const slot = this.gameState.miningSlots.slots.find(s => s.id === slotId);
         if (!slot || !slot.staked) return;
@@ -1177,16 +1249,203 @@ class TSDGEMSGame {
             return;
         }
 
-        const workerCost = 50; // Cost per worker
-        if (this.gameState.player.tsdBalance >= workerCost) {
-            this.gameState.player.tsdBalance -= workerCost;
-            slot.workers++;
-            slot.miningTrip.miningPower = slot.workers * 50; // 50 MP per worker
-            this.showNotification(`Worker added! Workers: ${slot.workers}/${slot.maxWorkers}`, 'success');
-            this.updateUI();
-        } else {
-            this.showNotification(`Insufficient TSDM balance to hire worker!`, 'error');
+        this.openWorkerGallery(slotId);
+    }
+
+    // Open worker selection gallery modal
+    openWorkerGallery(slotId) {
+        const slot = this.gameState.miningSlots.slots.find(s => s.id === slotId);
+        if (!slot) return;
+
+        const availableSlots = slot.maxWorkers - slot.workers;
+        const maxSelectable = Math.min(availableSlots, Math.floor(this.gameState.player.tsdBalance / 100));
+
+        // Store current slot ID for later use
+        this.currentWorkerSelectionSlotId = slotId;
+
+        // Update modal info
+        document.getElementById('selected-workers-count').textContent = '0';
+        document.getElementById('max-workers-count').textContent = maxSelectable.toString();
+
+        // Generate worker gallery
+        this.generateWorkerGallery(maxSelectable);
+
+        // Show modal
+        document.getElementById('worker-gallery-modal').classList.add('active');
+    }
+
+    // Generate worker gallery with 50 images cycling through 41-45.png
+    generateWorkerGallery(maxSelectable) {
+        const galleryGrid = document.getElementById('worker-gallery-grid');
+        galleryGrid.innerHTML = '';
+
+        const baseImages = ['41.png', '42.png', '43.jpg', '44.png', '45.png'];
+        
+        for (let i = 0; i < 50; i++) {
+            const imageIndex = i % baseImages.length;
+            const imageName = baseImages[imageIndex];
+            
+            const workerItem = document.createElement('div');
+            workerItem.className = 'worker-gallery-item';
+            workerItem.dataset.workerId = i;
+            
+            workerItem.innerHTML = `
+                <img src="gallery_images/${imageName}" alt="Worker ${i + 1}" loading="lazy">
+                <div class="selection-indicator"></div>
+            `;
+
+            // Add click handler
+            workerItem.addEventListener('click', () => {
+                this.toggleWorkerSelection(workerItem, maxSelectable);
+            });
+
+            galleryGrid.appendChild(workerItem);
         }
+
+        // Reset selection state
+        this.selectedWorkers = [];
+        this.updateWorkerSelectionUI();
+    }
+
+    // Toggle worker selection
+    toggleWorkerSelection(workerItem, maxSelectable) {
+        const workerId = parseInt(workerItem.dataset.workerId);
+        const isSelected = workerItem.classList.contains('selected');
+
+        if (isSelected) {
+            // Deselect worker
+            workerItem.classList.remove('selected');
+            this.selectedWorkers = this.selectedWorkers.filter(id => id !== workerId);
+        } else {
+            // Select worker if under limit
+            if (this.selectedWorkers.length < maxSelectable) {
+                workerItem.classList.add('selected');
+                this.selectedWorkers.push(workerId);
+            } else {
+                this.showNotification(`Maximum ${maxSelectable} workers can be selected!`, 'error');
+                return;
+            }
+        }
+
+        this.updateWorkerSelectionUI();
+    }
+
+    // Update worker selection UI
+    updateWorkerSelectionUI() {
+        const selectedCount = this.selectedWorkers.length;
+        document.getElementById('selected-workers-count').textContent = selectedCount.toString();
+        
+        const confirmBtn = document.getElementById('confirm-worker-selection');
+        confirmBtn.disabled = selectedCount === 0;
+
+        // Update selection indicators
+        document.querySelectorAll('.worker-gallery-item').forEach((item, index) => {
+            const indicator = item.querySelector('.selection-indicator');
+            if (this.selectedWorkers.includes(index)) {
+                const position = this.selectedWorkers.indexOf(index) + 1;
+                indicator.textContent = position.toString();
+            }
+        });
+    }
+
+    // Confirm worker selection
+    confirmWorkerSelection() {
+        if (!this.currentWorkerSelectionSlotId || this.selectedWorkers.length === 0) return;
+
+        const slot = this.gameState.miningSlots.slots.find(s => s.id === this.currentWorkerSelectionSlotId);
+        if (!slot) return;
+
+        const workerCost = 100;
+        const totalCost = this.selectedWorkers.length * workerCost;
+
+        if (this.gameState.player.tsdBalance >= totalCost) {
+            this.gameState.player.tsdBalance -= totalCost;
+            slot.workers += this.selectedWorkers.length;
+            slot.miningTrip.miningPower = slot.workers * 50; // 50 MP per worker
+            
+            this.showNotification(`${this.selectedWorkers.length} workers added! Workers: ${slot.workers}/${slot.maxWorkers}`, 'success');
+            this.updateUI();
+            closeWorkerGalleryModal();
+        } else {
+            this.showNotification(`Insufficient TSDM balance! Need ${totalCost} TSDM for ${this.selectedWorkers.length} workers.`, 'error');
+        }
+    }
+
+    // Unstake mine
+    unstakeMine(slotId) {
+        const slot = this.gameState.miningSlots.slots.find(s => s.id === slotId);
+        if (!slot || !slot.staked) return;
+
+        // Check if mining trip is active
+        if (slot.miningTrip.active) {
+            this.showNotification(`Cannot unstake mine while mining trip is active!`, 'error');
+            return;
+        }
+
+        // Show confirmation modal
+        this.showUnstakeConfirmation(slotId, slot);
+    }
+
+    // Show unstake confirmation modal
+    showUnstakeConfirmation(slotId, slot) {
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+
+        modalTitle.textContent = 'Confirm Mine Unstaking';
+        modalBody.innerHTML = `
+            <div class="unstake-confirmation">
+                <div class="warning-box">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h4>Warning: TSDM Not Refunded</h4>
+                    <p>The TSDM paid to stake this mine will <strong>NOT</strong> be returned to your balance.</p>
+                </div>
+                
+                <div class="mine-info">
+                    <h4>Mine Details:</h4>
+                    <ul>
+                        <li><strong>Type:</strong> ${slot.stakeType}</li>
+                        <li><strong>Workers:</strong> ${slot.workers}/${slot.maxWorkers}</li>
+                        <li><strong>Status:</strong> ${slot.miningTrip.active ? 'Mining Trip Active' : 'Idle'}</li>
+                    </ul>
+                </div>
+
+                <div class="unstake-actions">
+                    <button onclick="game.confirmUnstakeMine(${slotId})" class="action-btn danger">
+                        <i class="fas fa-times"></i> Yes, Unstake Mine
+                    </button>
+                    <button onclick="closeModal()" class="action-btn secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('modal-overlay').classList.add('active');
+    }
+
+    // Confirm unstake mine
+    confirmUnstakeMine(slotId) {
+        const slot = this.gameState.miningSlots.slots.find(s => s.id === slotId);
+        if (!slot || !slot.staked) return;
+
+        // Reset slot to unstaked state
+        slot.staked = false;
+        slot.stakeType = null;
+        slot.maxWorkers = 0;
+        slot.workers = 0;
+        slot.miningTrip = {
+            active: false,
+            startTime: null,
+            duration: 0,
+            miningPower: 0,
+            rewards: 0,
+            completed: false
+        };
+
+        this.showNotification(`Mine unstaked successfully! Note: TSDM was not refunded.`, 'success');
+        this.updateUI();
+        closeModal();
     }
 
     // Start mining trip
@@ -1232,11 +1491,25 @@ class TSDGEMSGame {
         const rewards = slot.miningTrip.rewards;
         this.gameState.player.tsdBalance += rewards;
         
+        // Generate rough gems from mining trip
+        this.generateRoughGemsFromMining(slot.miningTrip.miningPower);
+        
         slot.miningTrip.completed = false;
         slot.miningTrip.rewards = 0;
         
-        this.showNotification(`Claimed ${rewards.toFixed(2)} TSDM from mining trip!`, 'success');
+        this.showNotification(`Claimed ${rewards.toFixed(2)} TSDM and rough gems from mining trip!`, 'success');
         this.updateUI();
+    }
+
+    // Generate rough gems from mining trip
+    generateRoughGemsFromMining(miningPower) {
+        const gemTypes = ['diamond', 'ruby', 'sapphire', 'emerald', 'amethyst', 'topaz', 'jade', 'opal', 'aquamarin', 'tanzanite'];
+        const baseGemCount = Math.floor(miningPower / 100); // 1 gem per 100 mining power
+        
+        for (let i = 0; i < baseGemCount; i++) {
+            const randomGem = gemTypes[Math.floor(Math.random() * gemTypes.length)];
+            this.gameState.player.roughGems[randomGem]++;
+        }
     }
 
     // Update mining trip timers
@@ -1433,7 +1706,7 @@ class TSDGEMSGame {
                                 <i class="fas fa-plus"></i> Add
                             </button>
                             <button class="max-gems-btn" onclick="game.addMaxGemsToSlot(${slotId})">
-                                <i class="fas fa-trophy"></i> Max
+                                <i class="fas fa-gem"></i> Max
                             </button>
                         </div>
                         <div class="gem-input-info">
@@ -1530,18 +1803,11 @@ class TSDGEMSGame {
             return;
         }
 
-        // Add gems from inventory
-        if (this.canReduceInventory(actualAmount)) {
-            this.reduceFromInventory(actualAmount);
-            slot.currentGems = Math.min(slot.maxGems, slot.currentGems + actualAmount);
-            this.showNotification(`Added ${actualAmount} gems to slot ${slotId} (max capacity)`, 'success');
-            
-            // Update the input field
-            const amountInput = document.getElementById(`gem-amount-${slotId}`);
-            if (amountInput) amountInput.value = actualAmount;
-            this.updateUI();
-        } else {
-            this.showNotification('Not enough gems in inventory!', 'error');
+        // Only update the input field, don't add gems automatically
+        const amountInput = document.getElementById(`gem-amount-${slotId}`);
+        if (amountInput) {
+            amountInput.value = actualAmount;
+            this.showNotification(`Set amount to ${actualAmount} (max available)`, 'success');
         }
     }
 
@@ -1650,18 +1916,15 @@ class TSDGEMSGame {
         const slot = this.gameState.polishing.slots.find(s => s.id === slotId);
         if (!slot || slot.processState !== 'ready') return;
 
-        // Add gems to inventory
+        // Add polished gems to player inventory
         Object.keys(slot.processedGems).forEach(gemType => {
-            this.gameState.polishing.inventory[gemType] += slot.processedGems[gemType];
+            this.gameState.player.polishedGems[gemType] += slot.processedGems[gemType];
         });
 
         const totalClaimed = Object.values(slot.processedGems).reduce((sum, count) => sum + count, 0);
-        this.gameState.polishing.polishedGems += totalClaimed;
-
-        // Add TSDM reward for completing process
-        const rewardAmount = slot.currentGems * 2; // 2x gem amount as TSD reward
+        const rewardAmount = totalClaimed * 0.1; // 0.1 TSDM per polished gem
+        
         this.gameState.player.tsdBalance += rewardAmount;
-        this.gameState.polishing.totalRewards += rewardAmount;
 
         // Reset slot
         slot.processState = 'staked';
@@ -1670,7 +1933,7 @@ class TSDGEMSGame {
         slot.processedGems = {};
         slot.currentGems = 0;
 
-        this.showNotification(`Claimed ${totalClaimed} gems from slot ${slotId}! (+${rewardAmount.toFixed(2)} TSDM)`, 'success');
+        this.showNotification(`Claimed ${totalClaimed} polished gems! (+${rewardAmount.toFixed(2)} TSDM)`, 'success');
         this.updateUI();
     }
 
@@ -1691,7 +1954,6 @@ class TSDGEMSGame {
                 </td>
                 <td class="chance-cell">${gemType.chance.toFixed(2)}%</td>
                 <td class="owned-cell">${ownedCount}</td>
-                <td><span class="rarity-cell rarity-${gemType.rarity}">${gemType.rarity}</span></td>
             `;
             tbody.appendChild(row);
         });
@@ -1766,6 +2028,19 @@ class TSDGEMSGame {
         this.updateTradingMatrixDom();
         this.setupTradingMatrixTimer();
         this.updateTradingMatrixHeaders();
+        this.setupMatrixResizeHandler();
+    }
+
+    setupMatrixResizeHandler() {
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                this.createTradingMatrixDom();
+                this.updateTradingMatrixDom();
+                this.highlightMatrixSelection();
+            }, 250);
+        });
     }
 
     createTradingMatrixDom() {
@@ -1787,6 +2062,13 @@ class TSDGEMSGame {
         this.tradingTableHeaders.clear();
         this.tradingTableCells.clear();
         this.tradingTableCellData.clear();
+
+        // Check if mobile view
+        const isMobile = window.innerWidth <= 768;
+        
+        if (isMobile) {
+            return this.createMobileTradingMatrix();
+        }
 
         const table = document.createElement('table');
         table.className = 'matrix-table';
@@ -1817,6 +2099,67 @@ class TSDGEMSGame {
                 cell.className = 'matrix-cell';
                 cell.dataset.cityId = city.id;
                 cell.innerHTML = '<span class="matrix-boost">--</span>';
+                this.tradingTableCells.set(cellId, cell);
+                this.tradingTableCellData.set(cellId, { previousBoost: null });
+                row.appendChild(cell);
+            });
+
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        return table;
+    }
+
+    createMobileTradingMatrix() {
+        const table = document.createElement('table');
+        table.className = 'mobile-matrix-table';
+
+        // Create header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        
+        // Empty cell for city names column
+        const emptyTh = document.createElement('th');
+        emptyTh.className = 'mobile-city-header';
+        headerRow.appendChild(emptyTh);
+        
+        // Gem headers
+        this.tradingMatrixConfig.gems.forEach(gem => {
+            const th = document.createElement('th');
+            th.className = 'mobile-gem-header';
+            th.innerHTML = `
+                <div class="mobile-gem-name">${gem.name}</div>
+                <div class="mobile-gem-count">${this.getPolishedGemAmount(gem.id)}</div>
+            `;
+            this.tradingTableHeaders.set(gem.id, th);
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+
+        // Create body
+        const tbody = document.createElement('tbody');
+        this.tradingMatrixConfig.cities.forEach(city => {
+            const row = document.createElement('tr');
+            
+            // City name cell
+            const cityCell = document.createElement('td');
+            cityCell.className = 'mobile-city-cell';
+            cityCell.textContent = city.name;
+            cityCell.dataset.cityId = city.id;
+            row.appendChild(cityCell);
+
+            // Gem cells
+            this.tradingMatrixConfig.gems.forEach(gem => {
+                const cell = document.createElement('td');
+                const cellId = `${city.id}-${gem.id}`;
+                cell.id = `matrix-${cellId}`;
+                cell.className = 'mobile-matrix-cell';
+                cell.dataset.cityId = city.id;
+                cell.dataset.gemId = gem.id;
+                cell.innerHTML = '<span class="mobile-matrix-boost">--</span>';
+                
                 this.tradingTableCells.set(cellId, cell);
                 this.tradingTableCellData.set(cellId, { previousBoost: null });
                 row.appendChild(cell);
@@ -1869,6 +2212,69 @@ class TSDGEMSGame {
         sellButton?.addEventListener('click', () => {
             this.sellGems();
         });
+
+        // Add click events for mobile matrix cells
+        this.attachMobileMatrixClickEvents();
+    }
+
+    attachMobileMatrixClickEvents() {
+        // Use event delegation for dynamic content
+        document.addEventListener('click', (e) => {
+            const isMobile = window.innerWidth <= 768;
+            if (!isMobile) return;
+
+            // Check if clicked element is a mobile matrix cell
+            const cell = e.target.closest('.mobile-matrix-cell');
+            if (!cell) return;
+
+            const cityId = cell.dataset.cityId;
+            const gemId = cell.dataset.gemId;
+
+            if (cityId && gemId) {
+                // Update dropdown selections
+                const citySelect = document.getElementById('matrix-city-select');
+                const gemSelect = document.getElementById('matrix-gem-select');
+
+                if (citySelect) {
+                    citySelect.value = cityId;
+                    this.gameState.trading.activeCity = cityId;
+                }
+
+                if (gemSelect) {
+                    gemSelect.value = gemId;
+                }
+
+                // Update matrix summary and highlight selection
+                this.syncMatrixSelections();
+            }
+        });
+    }
+
+    attachMatrixEvents() {
+        const citySelect = document.getElementById('matrix-city-select');
+        const gemSelect = document.getElementById('matrix-gem-select');
+        const amountInput = document.getElementById('matrix-sell-amount');
+        const sellButton = document.getElementById('matrix-sell-btn');
+
+        citySelect?.addEventListener('change', () => {
+            this.gameState.trading.activeCity = citySelect.value;
+            this.syncMatrixSelections();
+        });
+
+        gemSelect?.addEventListener('change', () => {
+            this.syncMatrixSelections();
+        });
+
+        amountInput?.addEventListener('input', () => {
+            this.updateMatrixSummary();
+        });
+
+        sellButton?.addEventListener('click', () => {
+            this.sellGems();
+        });
+
+        // Add click events for mobile matrix cells
+        this.attachMobileMatrixClickEvents();
 
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -1988,6 +2394,7 @@ class TSDGEMSGame {
 
         const matrixBasePriceLabel = document.getElementById('matrix-base-price');
         if (matrixBasePriceLabel) {
+            // Show the latest base price
             matrixBasePriceLabel.textContent = `Base price: ${latestPrice.toFixed(2)} Game $`;
         }
     }
@@ -2010,15 +2417,28 @@ class TSDGEMSGame {
 
         const selectedCity = citySelect.value;
         const selectedGem = gemSelect.value;
+        const isMobile = window.innerWidth <= 768;
 
-        document.querySelectorAll('#city-boost-matrix td').forEach(cell => {
-            cell.classList.toggle('selected', false);
-        });
+        // Remove previous selections
+        if (isMobile) {
+            document.querySelectorAll('.mobile-matrix-cell').forEach(cell => {
+                cell.classList.remove('selected');
+            });
+        } else {
+            document.querySelectorAll('#city-boost-matrix td').forEach(cell => {
+                cell.classList.remove('selected');
+            });
+        }
 
+        // Add selection to target
         const targetCell = document.getElementById(`matrix-${selectedCity}-${selectedGem}`);
         if (targetCell) {
             targetCell.classList.add('selected');
-            targetCell.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+            if (isMobile) {
+                targetCell.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            } else {
+                targetCell.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+            }
         }
     }
 
@@ -2040,19 +2460,28 @@ class TSDGEMSGame {
         const entry = matrix?.[city]?.[gem];
         const boost = entry?.boost ?? 0;
         const gemName = this.findGemNameById(gem);
-        const basePrice = this.gameState.trading.gemPrices[gemName]?.base ?? 0;
-        const dynamicBasePrice = this.latestGemBasePrice ?? 0;
-        const cityBonus = this.gameState.trading.cities.find(c => c.id === city)?.bonus ?? 0;
+        const basePrice = this.latestGemBasePrice ?? 0;
+        // City bonus is not used in the calculation - only boost and staking bonus
 
+        // Get staking bonus only for the specific gem type
         const stakingSlot = this.gameState.trading.stakingSlots.find(s => s.gemType === gemName && s.staked);
         const stakingBonusPercent = stakingSlot ? (stakingSlot.benefit.gameDollarMultiplier || 0) * 100 : 0;
 
-        const totalMultiplier = 1 + (cityBonus + stakingBonusPercent) / 100;
-        const pricePerGem = Math.round((basePrice + dynamicBasePrice) * (1 + boost / 100) * totalMultiplier);
+        // Simple calculation: Base Price + City Boost + Staking Bonus
+        const cityBoostValue = (basePrice * boost) / 100;
+        const stakingBonusValue = (basePrice * stakingBonusPercent) / 100;
+        const pricePerGem = Math.round(basePrice + cityBoostValue + stakingBonusValue);
         const payout = pricePerGem * amount;
 
         boostLabel.textContent = `Boost: +${boost}%`;
-        stakingLabel.textContent = `Staking Bonus: +${stakingBonusPercent.toFixed(0)}%`;
+        
+        // Only show staking bonus if the gem type is actually staked
+        if (stakingSlot && stakingBonusPercent > 0) {
+            stakingLabel.textContent = `Staking Bonus: +${stakingBonusPercent.toFixed(0)}%`;
+        } else {
+            stakingLabel.textContent = `Staking Bonus: +0%`;
+        }
+        
         priceLabel.textContent = `Est. Payout: ${payout} Game $`;
     }
 
@@ -2115,6 +2544,8 @@ class TSDGEMSGame {
 
     updateTradingMatrixDom() {
         const matrix = this.gameState.trading.priceMatrix;
+        const isMobile = window.innerWidth <= 768;
+        
         Object.keys(matrix).forEach(cityId => {
             Object.keys(matrix[cityId]).forEach(gemId => {
                 const entry = matrix[cityId][gemId];
@@ -2124,28 +2555,51 @@ class TSDGEMSGame {
                 if (cell) {
                     const previous = cellData.previousBoost;
 
-                const boostSpan = cell.querySelector('.matrix-boost') || document.createElement('span');
-                boostSpan.className = 'matrix-boost';
-                boostSpan.textContent = `+${entry.boost}%`;
+                    if (isMobile) {
+                        // Mobile table structure
+                        const boostElement = cell.querySelector('.mobile-matrix-boost');
+                        if (boostElement) {
+                            boostElement.textContent = `+${entry.boost}%`;
+                            
+                            // Update boost styling
+                            boostElement.classList.remove('increase', 'decrease', 'neutral');
+                            if (previous !== null) {
+                                if (entry.boost > previous) {
+                                    boostElement.classList.add('increase');
+                                } else if (entry.boost < previous) {
+                                    boostElement.classList.add('decrease');
+                                } else {
+                                    boostElement.classList.add('neutral');
+                                }
+                            } else {
+                                boostElement.classList.add('neutral');
+                            }
+                        }
+                    } else {
+                        // Desktop table structure
+                        const boostSpan = cell.querySelector('.matrix-boost') || document.createElement('span');
+                        boostSpan.className = 'matrix-boost';
+                        boostSpan.textContent = `+${entry.boost}%`;
 
-                if (!boostSpan.parentNode) {
-                    cell.appendChild(boostSpan);
-                }
+                        if (!boostSpan.parentNode) {
+                            cell.appendChild(boostSpan);
+                        }
 
-                    if (previous !== null) {
-                        if (entry.boost > previous) {
-                            boostSpan.classList.remove('decrease');
-                            boostSpan.classList.add('increase');
-                        } else if (entry.boost < previous) {
-                            boostSpan.classList.remove('increase');
-                            boostSpan.classList.add('decrease');
+                        if (previous !== null) {
+                            if (entry.boost > previous) {
+                                boostSpan.classList.remove('decrease');
+                                boostSpan.classList.add('increase');
+                            } else if (entry.boost < previous) {
+                                boostSpan.classList.remove('increase');
+                                boostSpan.classList.add('decrease');
+                            } else {
+                                boostSpan.classList.remove('increase');
+                                boostSpan.classList.remove('decrease');
+                            }
                         } else {
                             boostSpan.classList.remove('increase');
                             boostSpan.classList.remove('decrease');
                         }
-                    } else {
-                        boostSpan.classList.remove('increase');
-                        boostSpan.classList.remove('decrease');
                     }
 
                     cellData.previousBoost = entry.boost;
@@ -2382,28 +2836,38 @@ class TSDGEMSGame {
         }
 
         const gemName = this.findGemNameById(gemId);
-        const basePrice = this.gameState.trading.gemPrices[gemName]?.base ?? 0;
-        const dynamicBasePrice = this.latestGemBasePrice;
+        const basePrice = this.latestGemBasePrice ?? 0;
         const city = this.gameState.trading.cities.find(c => c.id === cityId);
         const cityBonus = city?.bonus ?? 0;
 
         const stakingSlot = this.gameState.trading.stakingSlots.find(s => s.gemType === gemName && s.staked);
         const stakingBonusPercent = stakingSlot ? (stakingSlot.benefit.gameDollarMultiplier || 0) * 100 : 0;
 
-        const totalMultiplier = 1 + (cityBonus + stakingBonusPercent) / 100;
-        const baseWithBoost = (basePrice + dynamicBasePrice) * (1 + matrixEntry.boost / 100);
-        const pricePerGem = Math.round(baseWithBoost * totalMultiplier);
+        // Simple calculation: Base Price + City Boost + Staking Bonus
+        const cityBoostValue = (basePrice * matrixEntry.boost) / 100;
+        const stakingBonusValue = (basePrice * stakingBonusPercent) / 100;
+        const pricePerGem = Math.round(basePrice + cityBoostValue + stakingBonusValue);
         const totalPayout = pricePerGem * amount;
+
+        // Check if player has enough polished gems
+        const availablePolishedGems = this.gameState.player.polishedGems[gemId] || 0;
+        if (availablePolishedGems < amount) {
+            this.showNotification(`Not enough polished ${gemName}! You have ${availablePolishedGems} polished gems.`, 'error');
+            return;
+        }
+
+        // Deduct polished gems from inventory
+        this.gameState.player.polishedGems[gemId] -= amount;
 
         this.gameState.trading.totalGameDollars += totalPayout;
 
-        this.showNotification(`Sold ${amount} ${gemName} for ${totalPayout.toFixed(0)} Game $!`, 'success');
+        this.showNotification(`Sold ${amount} polished ${gemName} for ${totalPayout.toFixed(0)} Game $!`, 'success');
         this.updateTradingStats();
         this.updateMatrixSummary();
     }
 
     getPolishedGemAmount(gemId) {
-        return this.gameState.polishing.inventory[gemId] ?? 0;
+        return this.gameState.player.polishedGems[gemId] ?? 0;
     }
 
     updateTradingMatrixHeaders() {
@@ -2432,9 +2896,18 @@ function closeMotivationModal() {
     document.getElementById('motivation-modal').classList.remove('active');
 }
 
+function closeWorkerGalleryModal() {
+    document.getElementById('worker-gallery-modal').classList.remove('active');
+}
+
 
 // Initialize game when page loads
 let game;
 document.addEventListener('DOMContentLoaded', () => {
     game = new TSDGEMSGame();
+    
+    // Add event listener for worker selection confirmation
+    document.getElementById('confirm-worker-selection').addEventListener('click', () => {
+        game.confirmWorkerSelection();
+    });
 });
