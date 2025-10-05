@@ -1271,7 +1271,17 @@ class TSDGEMSGame {
         this.generateWorkerGallery(maxSelectable);
 
         // Show modal
-        document.getElementById('worker-gallery-modal').classList.add('active');
+        const workerModal = document.getElementById('worker-gallery-modal');
+        workerModal.classList.add('active');
+        
+        // Scroll to top of page to show the modal
+        setTimeout(() => {
+            window.scrollTo({
+                top: 0,
+                left: 0,
+                behavior: 'smooth'
+            });
+        }, 100);
     }
 
     // Generate worker gallery with 50 images cycling through 41-45.png
