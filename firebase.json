@@ -2,18 +2,16 @@
   "hosting": {
     "site": "tsdgems-trading",
     "public": "web",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
+      { "source": "/initPlayer",    "function": "initPlayer" },
+      { "source": "/getDashboard",  "function": "getDashboard" },
+      { "source": "/getCityMatrix", "function": "getCityMatrix" },
+      { "source": "**", "destination": "/index.html" }
     ]
-  },
+  }
+,
+
   "firestore": {
     "database": "tsdgems",
     "location": "eur3",
