@@ -9,7 +9,10 @@
       { "source": "/getCityMatrix", "function": "getCityMatrix" },
       { "source": "/seedCities",       "function": "seedCities" },
       { "source": "/seedBoostsInit",   "function": "seedBoostsInit" },
-      { "source": "/updateBonusesNow", "function": "updateBonusesNow" }
+      { "source": "/updateBonusesNow", "function": "updateBonusesNow" },
+      { "source": "/getBasePrice",     "function": "getBasePrice" },
+      { "source": "/refreshBasePrice", "function": "refreshBasePrice" },
+      { "source": "/getChart",         "function": "getChart" }
     ]
   }
 ,

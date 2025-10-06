@@ -35,3 +35,17 @@ export async function hydrate(actor) {
   }));
   return { dash, matrix };
 }
+
+export async function getBasePrice() {
+  const r = await fetch('/getBasePrice');
+  if (!r.ok) throw new Error(`getBasePrice ${r.status}`);
+  return r.json();
+}
+
+export async function getChart(days = 30) {
+  const u = new URL('/getChart', window.location.origin);
+  u.searchParams.set('days', String(days));
+  const r = await fetch(u);
+  if (!r.ok) throw new Error(`getChart ${r.status}`);
+  return r.json(); // { days, points:[{t,btcUsd,basePrice}] }
+}
