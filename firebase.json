@@ -7,7 +7,9 @@
       { "source": "/initPlayer",    "function": "initPlayer" },
       { "source": "/getDashboard",  "function": "getDashboard" },
       { "source": "/getCityMatrix", "function": "getCityMatrix" },
-      { "source": "**", "destination": "/index.html" }
+      { "source": "/seedCities",       "function": "seedCities" },
+      { "source": "/seedBoostsInit",   "function": "seedBoostsInit" },
+      { "source": "/updateBonusesNow", "function": "updateBonusesNow" }
     ]
   }
 ,

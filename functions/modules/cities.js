@@ -4,10 +4,11 @@
 const { onRequest }  = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin          = require('firebase-admin');
+const { getFirestore } = require('firebase-admin/firestore');
 const corsLib        = require('cors');
 
 // --- Config ---
-const db = admin.firestore();
+const db = getFirestore(undefined, 'tsdgems');
 const SEED_TOKEN = process.env.SEED_TOKEN || 'changeme-temp-token';
 
 // CORS allowlist (env or functions config). Comma-separated list.
