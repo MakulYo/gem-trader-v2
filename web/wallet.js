@@ -1,7 +1,5 @@
 // web/wallet.js
 // WharfKit SessionKit + WebRenderer + Cloud/Anchor/Wombat (CDN ESM, no bundler)
-import { hydrateBackend } from './bridge.js';
-import { apiInitPlayer, apiGetDashboard } from './api.js';
 import { SessionKit } from 'https://esm.sh/@wharfkit/session@1';
 import { WebRenderer } from 'https://esm.sh/@wharfkit/web-renderer@1';
 import { WalletPluginAnchor } from 'https://esm.sh/@wharfkit/wallet-plugin-anchor@1';
