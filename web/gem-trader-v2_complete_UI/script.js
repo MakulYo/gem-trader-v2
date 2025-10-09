@@ -1,44 +1,6 @@
 // TSDGEMS Diamond Trading Simulator - Game Logic
 
-window.addEventListener('backend:ready', (e) => {
-  if (window.tsdgemsGame && typeof window.tsdgemsGame.applyBackendData === 'function') {
-    window.tsdgemsGame.applyBackendData(e.detail);
-  }
-});
-
-
 class TSDGEMSGame {
-    applyBackendData(detail = {}) {
-        const { player = {}, cities = [] } = detail;
-
-        // Button label with actor
-        const actor = player.account || player.id || '';
-        const btn = document.querySelector('.connect-wallet-btn');
-        if (btn && actor) {
-            btn.textContent = `Connected: ${actor}`;
-            btn.classList.add('connected');
-        }
-
-        // ---- Update header + dashboard cards ----
-        const dollars = Number(player.ingameCurrency ?? 0);
-        const tsdm    = Number(player.balances?.TSDM ?? 0);
-
-        // Header chip
-        const header = document.getElementById('header-game-dollars');
-        if (header) header.textContent = `Game $: ${dollars.toLocaleString()}`;
-
-        // Dashboard “Ingame $”
-        const tsdEl = document.getElementById('tsd-balance');
-        if (tsdEl) tsdEl.textContent = dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-        // Dashboard “TSDM Balance”
-        const tsdmEl = document.getElementById('tsdm-balance');
-        if (tsdmEl) tsdmEl.textContent = tsdm.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-        // (Optional) Keep cities for later
-        this.gameState.trading.citiesFromBackend = cities;
-        }
-
     constructor() {
         this.gameState = {
             player: {
@@ -241,88 +203,16 @@ class TSDGEMSGame {
         this.gemPriceChart = null;
         this.priceRefreshInterval = null;
         this.latestGemBasePrice = null;
-        // Placeholder for backend data
-        this.backendData = {
-            player: null,
-            cities: [],
-            boosts: {}
-        };
         this.init();
-        applyBackendData(data); {
-    console.log('[TSDGEMSGame] Applying backend data...');
-    if (data.player) {
-        this.backendData.player = data.player;
-        // Example: update gameState player name and TSDM balance
-        this.gameState.player.name = data.player.id || this.gameState.player.name;
-        if (data.player.balances?.TSDM != null) {
-            this.gameState.player.tsdBalance = data.player.balances.TSDM;
-        }
-        if (data.player.balances?.WAX != null) {
-            this.gameState.player.walletBalance = data.player.balances.WAX;
-        }
-    }
-
-    if (data.cities && Array.isArray(data.cities)) {
-        this.backendData.cities = data.cities;
-        // Replace static city list with backend cities
-        this.gameState.trading.cities = data.cities.map(c => ({
-            id: c.id,
-            name: c.name,
-            bonus: 0
-        }));
-    }
-
-    if (data.boosts) {
-        this.backendData.boosts = data.boosts;
-        // Merge bonuses into trading.city list if needed
-        for (const c of this.gameState.trading.cities) {
-            const backendBonus = data.boosts[c.id];
-            if (backendBonus) {
-                // Example: average all polished bonuses to one number
-                const avg = Object.values(backendBonus).reduce((a,b)=>a+b,0)/Object.keys(backendBonus).length;
-                c.bonus = Math.round(avg*1000)/10;
-            }
-        }
-    }
-
-    this.updateUI();
-    this.showNotification('Backend data synced successfully!', 'success');
-}
-
     }
 
     init() {
         this.setupEventListeners();
         this.initializeGameData();
-        applyBackendData(detail = {}); {
-        const profile = detail.player || window.PLAYER_PROFILE || {};
-
-        // Ingame $ (from Firestore players/<actor>.ingameCurrency)
-        if (profile.ingameCurrency != null) {
-            this.gameState.trading.totalGameDollars = Number(profile.ingameCurrency) || 0;
-        }
-
-        // TSDM token balance (from Firestore players/<actor>.balances.TSDM)
-        const tsdm =
-            (profile.balances && (profile.balances.TSDM ?? profile.balances.tsdm)) ??
-            profile.TSDM ?? profile.tsdm;
-
-        if (tsdm != null) {
-            this.gameState.player.tsdBalance = Number(tsdm) || 0;
-        }
-
-        // (optional) WAX if you want it later
-        // const wax = profile.balances?.WAX ?? profile.balances?.wax;
-
-        this.updateUI()// Dashboard card — make sure the <span> showing this has id="ingame-currency"
-        const dashIngame = document.getElementById('ingame-currency');
-        if (dashIngame) dashIngame.textContent = this.gameState.trading.totalGameDollars.toFixed(0);
-        ;
-        }
-
         this.initializeLeaderboard();
 
         this.startGameLoop();
+        this.updateUI();
         this.showNotification('Welcome to TSDGEMS! Start mining to earn rewards.', 'info');
     }
 
@@ -383,18 +273,9 @@ class TSDGEMSGame {
 
 
         // Wallet connection
-        document.querySelector('.connect-wallet-btn').addEventListener('click', async () => {
-            // Connect the wallet and wait for it to finish
-            const actor = await this.connectWallet();
-
-            // After wallet connected successfully (actor = wallet address)
-            if (actor) {
-                await hydrateBackend(actor);
-            } else {
-                console.warn('[connect-wallet-btn] Wallet connection failed or actor undefined.');
-            }
+        document.querySelector('.connect-wallet-btn').addEventListener('click', () => {
+            this.connectWallet();
         });
-
 
         // Trading subpage toggle
         const subpageToggle = document.getElementById('trading-subpage-toggle');
@@ -412,19 +293,6 @@ class TSDGEMSGame {
                 section.classList.toggle('active', section.id === `trading-subpage-${target}`);
             });
         });
-        
-    }
-        async connectWallet() {
-        try {
-            // call your existing wallet integration here
-            const actor = await walletConnect(); // Replace with your real login function
-            this.gameState.player.name = actor;
-            console.log(`[Wallet] Connected: ${actor}`);
-            return actor; // return the wallet address to caller
-        } catch (err) {
-            console.error('[Wallet] Connection failed:', err);
-            return null;
-        }
     }
 
     // Close mobile navigation
@@ -3053,5 +2921,3 @@ document.addEventListener('DOMContentLoaded', () => {
         game.confirmWorkerSelection();
     });
 });
-window.tsdgemsGame = new TSDGEMSGame();
-

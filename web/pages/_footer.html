@@ -1,0 +1,94 @@
+    </main>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay">
+      <div class="modal" id="modal">
+        <div class="modal-header">
+          <h3 id="modal-title">Modal Title</h3>
+          <button class="modal-close" onclick="closeModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body" id="modal-body">
+          <!-- Modal content -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Equipment Repair Modal -->
+    <div id="repair-modal" class="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Repair Equipment</h3>
+          <button class="modal-close" onclick="closeRepairModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="repair-content">
+            <!-- Repair content -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Worker Motivation Modal -->
+    <div id="motivation-modal" class="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Motivate Worker</h3>
+          <button class="modal-close" onclick="closeMotivationModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="motivation-content">
+            <!-- Motivation content -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Worker Selection Gallery Modal -->
+    <div id="worker-gallery-modal" class="modal-overlay">
+      <div class="modal worker-gallery-modal">
+        <div class="modal-header">
+          <h3>Select Workers</h3>
+          <div class="worker-selection-info">
+            <span id="selected-workers-count">0</span>/<span id="max-workers-count">0</span> selected
+          </div>
+          <button class="modal-close" onclick="closeWorkerGalleryModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="worker-gallery-container">
+            <div class="worker-gallery-grid" id="worker-gallery-grid">
+              <!-- Worker images will be populated by JavaScript -->
+            </div>
+          </div>
+          <div class="worker-gallery-actions">
+            <button id="confirm-worker-selection" class="action-btn primary" disabled>
+              <i class="fas fa-check"></i> Confirm Selection (100 TSDM each)
+            </button>
+            <button onclick="closeWorkerGalleryModal()" class="action-btn secondary">
+              <i class="fas fa-times"></i> Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="notifications" class="notifications"></div>
+
+    <!-- Mining Animations Container -->
+    <div id="mining-animations" class="mining-animations"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script type="module" src="wallet.js"></script>
+    <script src="common.js"></script>
+  </div>
+</body>
+</html>
+

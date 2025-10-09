@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend Test - TSDGEMS</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a2e;
+            color: #fff;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .section {
+            background: rgba(0, 212, 255, 0.1);
+            border: 2px solid #00d4ff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h2 {
+            color: #00d4ff;
+            margin-top: 0;
+        }
+        button {
+            background: #00d4ff;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 5px;
+        }
+        button:hover {
+            background: #00a8cc;
+        }
+        pre {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        input {
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            border: 1px solid #00d4ff;
+            padding: 10px;
+            border-radius: 8px;
+            width: 300px;
+            margin-right: 10px;
+        }
+        .success { color: #00ff64; }
+        .error { color: #ff4757; }
+        .loading { color: #ffc800; }
+    </style>
+</head>
+<body>
+    <h1>🔍 TSDGEMS Backend Test</h1>
+
+    <div class="section">
+        <h2>1. Base Price Test</h2>
+        <button onclick="testBasePrice()">Test getBasePrice</button>
+        <pre id="baseprice-result">Click button to test...</pre>
+    </div>
+
+    <div class="section">
+        <h2>2. City Matrix Test</h2>
+        <button onclick="testCityMatrix()">Test getCityMatrix</button>
+        <pre id="citymatrix-result">Click button to test...</pre>
+    </div>
+
+    <div class="section">
+        <h2>3. Player Dashboard Test</h2>
+        <input type="text" id="actor-input" placeholder="Enter WAX account name" value="testplayer.wam">
+        <button onclick="testDashboard()">Test getDashboard</button>
+        <button onclick="testInitPlayer()">Test initPlayer</button>
+        <pre id="dashboard-result">Enter actor name and click button...</pre>
+    </div>
+
+    <div class="section">
+        <h2>4. Full Initialize Test</h2>
+        <button onclick="testFullInitialize()">Test Full Initialize Flow</button>
+        <pre id="init-result">Click button to test...</pre>
+    </div>
+
+    <script src="js/backend-service.js"></script>
+    <script>
+        async function testBasePrice() {
+            const el = document.getElementById('baseprice-result');
+            el.innerHTML = '<span class="loading">⏳ Loading...</span>';
+            
+            try {
+                const data = await window.backendService.getBasePrice();
+                el.innerHTML = '<span class="success">✅ Success!</span>\n\n' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                el.innerHTML = '<span class="error">❌ Error:</span>\n\n' + error.message + '\n\n' + error.stack;
+            }
+        }
+
+        async function testCityMatrix() {
+            const el = document.getElementById('citymatrix-result');
+            el.innerHTML = '<span class="loading">⏳ Loading...</span>';
+            
+            try {
+                const data = await window.backendService.getCityMatrix();
+                el.innerHTML = '<span class="success">✅ Success!</span>\n\n' + 
+                    'Cities: ' + (data.cities ? data.cities.length : 0) + '\n' +
+                    'Boosts: ' + (data.boosts ? data.boosts.length : 0) + '\n\n' +
+                    JSON.stringify(data, null, 2);
+            } catch (error) {
+                el.innerHTML = '<span class="error">❌ Error:</span>\n\n' + error.message + '\n\n' + error.stack;
+            }
+        }
+
+        async function testDashboard() {
+            const el = document.getElementById('dashboard-result');
+            const actor = document.getElementById('actor-input').value;
+            
+            if (!actor) {
+                el.innerHTML = '<span class="error">❌ Please enter an actor name!</span>';
+                return;
+            }
+            
+            el.innerHTML = '<span class="loading">⏳ Loading dashboard for: ' + actor + '...</span>';
+            
+            try {
+                const data = await window.backendService.getDashboard(actor);
+                el.innerHTML = '<span class="success">✅ Success!</span>\n\n' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                el.innerHTML = '<span class="error">❌ Error:</span>\n\n' + error.message + '\n\n' + error.stack;
+            }
+        }
+
+        async function testInitPlayer() {
+            const el = document.getElementById('dashboard-result');
+            const actor = document.getElementById('actor-input').value;
+            
+            if (!actor) {
+                el.innerHTML = '<span class="error">❌ Please enter an actor name!</span>';
+                return;
+            }
+            
+            el.innerHTML = '<span class="loading">⏳ Initializing player: ' + actor + '...</span>';
+            
+            try {
+                const data = await window.backendService.initPlayer(actor);
+                el.innerHTML = '<span class="success">✅ Player initialized!</span>\n\n' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                el.innerHTML = '<span class="error">❌ Error:</span>\n\n' + error.message + '\n\n' + error.stack;
+            }
+        }
+
+        async function testFullInitialize() {
+            const el = document.getElementById('init-result');
+            const actor = document.getElementById('actor-input').value;
+            
+            if (!actor) {
+                el.innerHTML = '<span class="error">❌ Please enter an actor name in section 3!</span>';
+                return;
+            }
+            
+            el.innerHTML = '<span class="loading">⏳ Running full initialize for: ' + actor + '...</span>';
+            
+            try {
+                const data = await window.backendService.initialize(actor);
+                el.innerHTML = '<span class="success">✅ Full initialize success!</span>\n\n' +
+                    'Dashboard: ' + (data.dashboard ? '✅' : '❌') + '\n' +
+                    'City Matrix: ' + (data.cityMatrix ? '✅' : '❌') + '\n' +
+                    'Base Price: ' + (data.basePrice ? '✅' : '❌') + '\n\n' +
+                    JSON.stringify(data, null, 2);
+            } catch (error) {
+                el.innerHTML = '<span class="error">❌ Error:</span>\n\n' + error.message + '\n\n' + error.stack;
+            }
+        }
+
+        console.log('Backend Test Page Ready');
+        console.log('Backend Service:', window.backendService);
+    </script>
+</body>
+</html>
+

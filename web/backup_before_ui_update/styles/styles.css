@@ -1,0 +1,5357 @@
+section#gallery .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+section#gallery .gallery-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+section#gallery .gallery-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 18px 40px rgba(0, 212, 255, 0.25);
+    border-color: rgba(0, 212, 255, 0.35);
+}
+
+section#gallery .gallery-image {
+    width: 100%;
+    height: 220px;
+    background: rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+section#gallery .gallery-image img {
+    max-width: 80%;
+    max-height: 80%;
+    object-fit: contain;
+}
+
+section#gallery .gallery-content {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+section#gallery .gallery-content h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+/* Worker Gallery Modal Styles */
+.worker-gallery-modal {
+    max-width: 90vw;
+    max-height: 85vh;
+    width: 1200px;
+    margin-top: 5vh;
+    align-self: flex-start;
+}
+
+.worker-gallery-modal .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.worker-selection-info {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    color: #00d4ff;
+}
+
+.worker-gallery-container {
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 1rem 0;
+}
+
+.worker-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+    padding: 0 1rem;
+}
+
+.worker-gallery-item {
+    position: relative;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    aspect-ratio: 1;
+}
+
+.worker-gallery-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 212, 255, 0.2);
+    border-color: rgba(0, 212, 255, 0.3);
+}
+
+.worker-gallery-item.selected {
+    border-color: #00d4ff;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+    background: rgba(0, 212, 255, 0.1);
+}
+
+.worker-gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.worker-gallery-item .selection-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    background: #00d4ff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #000;
+    font-weight: bold;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.worker-gallery-item.selected .selection-indicator {
+    opacity: 1;
+}
+
+.worker-gallery-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    padding: 1.5rem 0 0 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 1rem;
+}
+
+.worker-gallery-actions .action-btn {
+    min-width: 200px;
+}
+
+/* Unstake Confirmation Modal Styles */
+.unstake-confirmation {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.warning-box {
+    background: rgba(255, 193, 7, 0.1);
+    border: 2px solid rgba(255, 193, 7, 0.3);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.warning-box i {
+    font-size: 2rem;
+    color: #ffc107;
+    margin-bottom: 0.5rem;
+}
+
+.warning-box h4 {
+    color: #ffc107;
+    margin: 0.5rem 0;
+    font-size: 1.2rem;
+}
+
+.warning-box p {
+    color: #ffffff;
+    margin: 0;
+    font-size: 1rem;
+}
+
+.mine-info {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.mine-info h4 {
+    color: #ffffff;
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+}
+
+.mine-info ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.mine-info li {
+    color: #a0a0a0;
+    margin: 0.25rem 0;
+    font-size: 0.95rem;
+}
+
+.unstake-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.unstake-actions .action-btn {
+    min-width: 150px;
+}
+
+section#gallery .gallery-content p {
+    color: #a0a0a0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+section#gallery .gallery-link {
+    align-self: flex-start;
+    padding: 0.6rem 1.25rem;
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    border-radius: 999px;
+    color: #ffffff;
+    font-weight: 600;
+    text-decoration: none;
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+section#gallery .gallery-link:hover {
+    box-shadow: 0 12px 28px rgba(0, 212, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+section#gallery .shop-actions {
+    margin-top: 1rem;
+}
+.hidden {
+    display: none !important;
+}
+
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+    color: #ffffff;
+    line-height: 1.6;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+.scale-wrapper {
+    transform: scale(0.75);
+    transform-origin: top center;
+    padding-top: 60px;
+}
+
+/* Navigation Styles */
+.navbar {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 0.5rem 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+    min-height: 50px;
+}
+
+.nav-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1.5rem;
+    gap: 1rem;
+    height: 100%;
+    flex-wrap: wrap;
+}
+
+.nav-left-group {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #00d4ff;
+    flex-shrink: 0;
+}
+
+.nav-status-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.nav-game-dollar {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #ffffff;
+    padding: 0.25rem 0.6rem;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 999px;
+}
+
+.nav-logo i {
+    font-size: 1.5rem;
+    color: #00d4ff;
+}
+
+.nav-menu {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex: 1;
+    justify-content: center;
+}
+
+.nav-link {
+    color: #ffffff;
+    text-decoration: none;
+    padding: 0.4rem 0.7rem;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    position: relative;
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+.nav-link:hover {
+    background: rgba(0, 212, 255, 0.1);
+    color: #00d4ff;
+}
+
+.nav-link.active {
+    background: rgba(0, 212, 255, 0.2);
+    color: #00d4ff;
+    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
+}
+
+.nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 2px;
+    background: #00d4ff;
+    border-radius: 1px;
+}
+
+/* Dropdown Navigation Styles */
+.nav-dropdown {
+    position: relative;
+}
+
+.dropdown-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.dropdown-toggle i {
+    font-size: 0.8rem;
+    transition: transform 0.3s ease;
+    opacity: 0.7;
+}
+
+.nav-dropdown:hover .dropdown-toggle i {
+    transform: rotate(180deg);
+    opacity: 1;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 12px;
+    padding: 0.5rem 0;
+    min-width: 200px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 1001;
+    backdrop-filter: blur(10px);
+}
+
+.nav-dropdown:hover .dropdown-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.dropdown-item {
+    display: block;
+    padding: 0.75rem 1.5rem;
+    color: #ffffff;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border-radius: 0;
+    font-weight: 400;
+    position: relative;
+    overflow: hidden;
+}
+
+.dropdown-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.1), transparent);
+    transition: width 0.3s ease;
+}
+
+.dropdown-item:hover::before {
+    width: 100%;
+}
+
+.dropdown-item:hover {
+    background: rgba(0, 212, 255, 0.1);
+    color: #00d4ff;
+    transform: translateX(5px);
+}
+
+.dropdown-item:first-child {
+    border-radius: 8px 8px 0 0;
+}
+
+.dropdown-item:last-child {
+    border-radius: 0 0 8px 8px;
+}
+
+.dropdown-item.active {
+    background: rgba(0, 212, 255, 0.2);
+    color: #00d4ff;
+    font-weight: 500;
+}
+
+.dropdown-item.active:hover {
+    background: rgba(0, 212, 255, 0.25);
+}
+
+.nav-wallet {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.wallet-balance {
+    color: #00d4ff;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.connect-wallet-btn {
+    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.connect-wallet-btn:hover {
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+}
+
+/* Main Content */
+.main-content {
+    margin-top: 80px;
+    min-height: calc(100vh - 80px);
+}
+
+.section {
+    display: none;
+    padding: 1rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.section.active {
+    display: block;
+}
+
+/* City Boost Section */
+.city-boost-container {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.matrix-sell-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, auto));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    align-items: end;
+}
+
+.matrix-control label {
+    display: block;
+    font-size: 0.85rem;
+    color: #a0a0a0;
+    margin-bottom: 0.5rem;
+}
+
+.matrix-control select,
+.matrix-control input {
+    width: 100%;
+    padding: 0.6rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.3);
+    color: #ffffff;
+    outline: none;
+    transition: border 0.2s ease;
+}
+
+.matrix-control select:focus,
+.matrix-control input:focus {
+    border-color: rgba(0, 212, 255, 0.6);
+}
+
+.matrix-control.action {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.matrix-summary {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+    color: #a0f1ff;
+}
+
+.matrix-summary span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+#city-boost-matrix {
+    max-height: none;
+    overflow: visible;
+}
+
+#city-boost-matrix table {
+    width: 100%;
+    overflow: visible;
+}
+
+#city-boost-matrix td.selected {
+    box-shadow: inset 0 0 0 2px rgba(0, 212, 255, 0.6);
+    background: rgba(0, 212, 255, 0.12);
+}
+
+.section-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+.trading-subpage-toggle {
+    margin-top: 1.25rem;
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 212, 255, 0.08);
+}
+
+.toggle-btn {
+    background: transparent;
+    color: #ffffff;
+    border: none;
+    padding: 0.65rem 1.75rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.toggle-btn:not(.active):hover {
+    background: rgba(0, 212, 255, 0.18);
+}
+
+.toggle-btn.active {
+    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+    box-shadow: 0 12px 32px rgba(0, 212, 255, 0.35);
+}
+
+.trading-subpage {
+    display: none;
+    animation: fadeIn 0.25s ease;
+}
+
+.trading-subpage.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.pricing-container {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.pricing-chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 320px;
+}
+
+.pricing-status {
+    color: #a0f1ff;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+#gem-price-chart {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+
+.section-header h2 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(45deg, #00d4ff, #ffffff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.section-header p {
+    color: #a0a0a0;
+    font-size: 1rem;
+}
+
+/* Dashboard */
+.dashboard-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-header h1 {
+    font-size: 2.2rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(45deg, #00d4ff, #ffffff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.dashboard-header p {
+    color: #a0a0a0;
+    font-size: 1rem;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.stat-card:hover {
+    border-color: rgba(0, 212, 255, 0.3);
+    box-shadow: 0 10px 30px rgba(0, 212, 255, 0.1);
+}
+
+.stat-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    color: #00d4ff;
+}
+
+.stat-content h3 {
+    color: #a0a0a0;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.quick-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.action-btn {
+    padding: 1rem 2rem;
+    border: none;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.action-btn:hover::before {
+    left: 100%;
+}
+
+.action-btn.primary {
+    background: linear-gradient(45deg, #00d4ff, #0099cc);
+    color: white;
+}
+
+.action-btn.secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.action-btn:hover {
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+}
+
+/* Mining Section */
+.mining-container {
+    display: grid;
+    gap: 2rem;
+}
+
+.mining-controls {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.mining-status h3 {
+    margin-bottom: 1rem;
+    color: #00d4ff;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ff4757;
+    transition: background 0.3s ease;
+}
+
+.status-dot.active {
+    background: #2ed573;
+}
+
+.mining-toggle-btn {
+    background: linear-gradient(45deg, #00d4ff, #0099cc);
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.mining-toggle-btn:hover {
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+}
+
+.mining-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.mining-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mining-stat label {
+    color: #a0a0a0;
+}
+
+.mining-stat span {
+    color: #00d4ff;
+    font-weight: 600;
+}
+
+.equipment-grid,
+.workers-grid {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.equipment-grid h3,
+.workers-grid h3 {
+    margin-bottom: 1rem;
+    color: #00d4ff;
+}
+
+.equipment-list,
+.workers-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.offline-mining-grid {
+    grid-column: 1 / -1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+    margin-top: 1rem;
+}
+
+.offline-mining-grid h3 {
+    margin-bottom: 1rem;
+    color: #00d4ff;
+}
+
+.offline-mining-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.offline-mining-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 2rem;
+}
+
+.offline-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.offline-status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #666;
+    transition: background 0.3s ease;
+}
+
+.offline-status-dot.active {
+    background: #00ff88;
+    animation: pulse 2s infinite;
+}
+
+.offline-status-text {
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.offline-mining-info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.offline-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.offline-stat label {
+    font-size: 0.875rem;
+    color: #a0a0a0;
+    font-weight: 500;
+}
+
+.offline-stat span {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #00d4ff;
+}
+
+.offline-mining-controls {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.offline-mining-controls .action-btn {
+    min-width: 160px;
+}
+
+.offline-mining-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00ff88, #00d4ff);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.progress-text {
+    font-size: 0.875rem;
+    color: #a0a0a0;
+    font-weight: 500;
+}
+
+.offline-mining-bonuses {
+    display: flex;
+    justify-content: space-around;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.bonus-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.bonus-info label {
+    font-size: 0.75rem;
+    color: #a0a0a0;
+    font-weight: 500;
+}
+
+.bonus-info span {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #00ff88;
+}
+
+
+
+
+
+
+
+.offline-mining-history {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.offline-mining-history h4 {
+    margin: 0 0 1rem 0;
+    color: #00d4ff;
+    font-size: 1rem;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.history-item .session-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history-item .session-date {
+    color: #a0a0a0;
+    font-size: 0.75rem;
+}
+
+.history-item .session-earnings {
+    color: #00ff88;
+    font-weight: 600;
+}
+
+.history-item .session-duration {
+    color: #00d4ff;
+    font-size: 0.75rem;
+}
+
+/* Responsive design for offline mining */
+@media (max-width: 768px) {
+    .offline-mining-status {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .offline-mining-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .offline-mining-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .offline-mining-controls .action-btn {
+        min-width: 200px;
+        width: 100%;
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Mining Operations - Enhanced Design */
+.mining-overview {
+    margin-bottom: 1rem;
+}
+
+.mining-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.mining-slots-section {
+    margin-top: 1rem;
+}
+
+.section-title {
+    text-align: left;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid rgba(0, 212, 255, 0.2);
+}
+
+.section-title h3 {
+    color: #00d4ff;
+    font-size: 1.4rem;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.section-title h3 i {
+    font-size: 1.2rem;
+    color: #00d4ff;
+}
+
+.section-title p {
+    color: #a0a0a0;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.mining-slot {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    border: 2px solid rgba(0, 212, 255, 0.15);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.mining-slot::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.15), transparent);
+    transition: left 0.6s ease;
+}
+
+.mining-slot:hover {
+    border-color: rgba(0, 212, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
+}
+
+.mining-slot.active::before {
+    left: 100%;
+}
+
+.mining-slot.rented {
+    border-color: rgba(0, 212, 255, 0.6);
+    box-shadow: 0 12px 40px rgba(0, 212, 255, 0.25);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 212, 255, 0.03));
+}
+
+.mining-slot.rented::after {
+    content: 'ACTIVE';
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 25px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+}
+
+.slot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.slot-name {
+    color: #00d4ff;
+    font-weight: 700;
+    font-size: 1.2rem;
+    line-height: 1.3;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.slot-cost {
+    color: #2ed573;
+    font-weight: 700;
+    font-size: 1rem;
+    background: rgba(46, 213, 115, 0.1);
+    padding: 0.25rem 0.75rem;
+    border-radius: 15px;
+    border: 1px solid rgba(46, 213, 115, 0.3);
+}
+
+.slot-content-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.slot-description {
+    color: #c0c0c0;
+    margin-bottom: 0;
+    line-height: 1.4;
+    font-size: 0.9rem;
+    flex: 1;
+}
+
+.slot-benefits {
+    margin-bottom: 1rem;
+}
+
+.slot-benefit {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    color: #ffffff;
+    font-size: 0.85rem;
+    padding: 0.25rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.slot-benefit:hover {
+    background: rgba(0, 212, 255, 0.05);
+}
+
+.slot-benefit i {
+    color: #00d4ff;
+    width: 18px;
+    font-size: 1rem;
+}
+
+.slot-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.slot-actions .action-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 0.7rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    clear: both;
+    margin-bottom: 0.5rem;
+}
+
+.mining-slot.locked {
+    border-color: rgba(158, 158, 158, 0.5);
+    opacity: 0.7;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(158, 158, 158, 0.1));
+}
+
+.mining-slot.greyed-out {
+    border-color: rgba(158, 158, 158, 0.3);
+    opacity: 0.5;
+    background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
+    filter: grayscale(0.8);
+}
+
+.mining-slot.greyed-out .slot-header,
+.mining-slot.greyed-out .slot-description,
+.mining-slot.greyed-out .slot-benefits {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.slot-staked {
+    background: rgba(0, 212, 255, 0.2);
+    color: #00d4ff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Slot Images */
+.slot-mine-image-container,
+.slot-polishing-image-container {
+    text-align: center;
+    margin-bottom: 0;
+    flex-shrink: 0;
+}
+
+.slot-mine-image,
+.slot-polishing-image {
+    border-radius: 8px;
+    transition: all 0.4s ease;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.slot-mine-image.greyed,
+.slot-polishing-image.greyed {
+    filter: grayscale(100%) brightness(0.5);
+    opacity: 0.7;
+}
+
+.slot-mine-image:not(.greyed),
+.slot-polishing-image:not(.greyed) {
+    filter: none;
+    opacity: 1;
+}
+
+.slot-staking {
+    margin-top: 1rem;
+}
+
+/* Pickaxe Hit Animation */
+.pickaxe-animation-overlay {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 12px;
+}
+
+.pickaxe-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pickaxe-icon {
+    font-size: 2rem;
+    color: #ffd700;
+    animation: pickaxe-hit 1.5s ease-out;
+    filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.7));
+}
+
+@keyframes pickaxe-hit {
+    0% {
+        transform: translateY(-20px) rotate(0deg);
+        opacity: 0;
+    }
+    20% {
+        transform: translateY(-5px) rotate(15deg);
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(0px) rotate(0deg);
+        opacity: 1;
+    }
+    70% {
+        transform: translateY(5px) rotate(-10deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(20px) rotate(0deg);
+        opacity: 0;
+    }
+}
+
+.impact-effect {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ff6600 0%, #ff2200 50%, transparent 70%);
+    animation: impact-explosion 1.5s ease-out;
+    z-index: -1;
+}
+
+@keyframes impact-explosion {
+    0% {
+        transform: scale(0);
+        opacity: 0.8;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+.stake-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.stake-options .action-btn {
+    font-size: 0.9rem;
+    padding: 0.75rem;
+}
+
+.slot-workers {
+    margin-top: 1rem;
+}
+
+.worker-info {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #00d4ff;
+}
+
+.slot-workers .slot-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.slot-workers .slot-actions .action-btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.slot-workers .slot-actions .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mining-power {
+    color: #ffd700;
+    font-weight: 600;
+    margin-left: 1rem;
+}
+
+.mining-trip-timer {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 0.5rem;
+    margin: 0.5rem 0;
+    text-align: center;
+}
+
+.timer-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #00d4ff;
+    margin-bottom: 0.25rem;
+}
+
+.timer-value {
+    display: block;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #00d4ff;
+    font-family: 'Courier New', monospace;
+}
+
+.action-btn.success {
+    background: linear-gradient(135deg, #4caf50, #45a049);
+    border-color: #4caf50;
+}
+
+.action-btn.success:hover {
+    background: linear-gradient(135deg, #45a049, #3d8b40);
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+}
+
+.action-btn.warning {
+    background: linear-gradient(135deg, #ff9800, #f57c00);
+    border-color: #ff9800;
+}
+
+.action-btn.warning:hover {
+    background: linear-gradient(135deg, #f57c00, #ef6c00);
+    box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3);
+}
+
+.rewards-ready {
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 8px;
+    padding: 0.5rem;
+    margin: 0.5rem 0;
+    text-align: center;
+}
+
+.rewards-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #ffd700;
+    margin-bottom: 0.25rem;
+}
+
+.rewards-amount {
+    display: block;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #ffd700;
+}
+
+.mining-in-progress {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem;
+    text-align: center;
+    color: #00d4ff;
+    font-weight: 600;
+}
+
+.slot-locked {
+    color: #9e9e9e;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.slot-staking-requirements {
+    background: rgba(255, 193, 7, 0.1);
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.slot-staking-requirements h4 {
+    color: #ffc107;
+    margin-bottom: 10px;
+    font-size: 1rem;
+}
+
+.staking-req {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    color: var(--text-primary);
+}
+
+.staking-req span {
+    background: rgba(255, 193, 7, 0.2);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+/* Workers Management */
+.workers-management-container {
+    display: grid;
+    gap: 2rem;
+}
+
+.workers-overview {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    backdrop-filter: blur(10px);
+}
+
+.worker-stats {
+    display: flex;
+    gap: 2rem;
+}
+
+.worker-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.worker-stat label {
+    color: #a0a0a0;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.worker-stat span {
+    color: #00d4ff;
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+.worker-status {
+    font-size: 0.9rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.worker-status.status-ok {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.worker-status.status-warning {
+    background: rgba(255, 152, 0, 0.2);
+    color: #ff9800;
+    border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.slot-status {
+    font-size: 0.9rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.slot-status.status-ok {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.slot-status.status-warning {
+    background: rgba(255, 152, 0, 0.2);
+    color: #ff9800;
+    border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.training-center {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.training-center h3 {
+    color: #ffffff;
+    margin-bottom: 1.5rem;
+    font-size: 1.3rem;
+}
+
+.training-programs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.training-program {
+    background: rgba(33, 150, 243, 0.1);
+    border: 1px solid rgba(33, 150, 243, 0.3);
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+.training-program h4 {
+    color: #2196f3;
+    margin-bottom: 0.75rem;
+    font-size: 1.1rem;
+}
+
+.training-program p {
+    color: #a0a0a0;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.training-details {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.training-details span {
+    background: rgba(33, 150, 243, 0.2);
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: #ffffff;
+}
+
+.workers-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+
+.worker-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.worker-card:hover {
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+}
+
+.worker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.worker-header h4 {
+    color: #ffffff;
+    font-size: 1.2rem;
+    margin: 0;
+}
+
+.worker-card p {
+    color: #a0a0a0;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.worker-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.worker-stat {
+    text-align: center;
+}
+
+.worker-stat span:first-child {
+    display: block;
+    color: #a0a0a0;
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+}
+
+.worker-stat .stat-value {
+    color: #00d4ff;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.worker-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.worker-skills {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.worker-skills h5 {
+    color: #ffffff;
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+}
+
+.skill-badge {
+    display: inline-block;
+    background: #00d4ff;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    margin-right: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Staking Section */
+.staking-container {
+    display: grid;
+    gap: 2rem;
+}
+
+.staking-overview {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.staking-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+}
+
+.staking-stat {
+    text-align: center;
+}
+
+.staking-stat label {
+    color: #a0a0a0;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.staking-stat span {
+    color: #00d4ff;
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+.staking-actions, .unstaking-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.staking-input {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    backdrop-filter: blur(10px);
+}
+
+.staking-input h4 {
+    color: #ffffff;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.staking-input input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+.staking-input input:focus {
+    outline: none;
+    border-color: #00d4ff;
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+}
+
+/* NFT Mining */
+.nft-mining-container {
+    display: grid;
+    gap: 2rem;
+}
+
+.nft-mining-info {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.nft-stats {
+    display: flex;
+    justify-content: space-around;
+}
+
+.nft-stat {
+    text-align: center;
+}
+
+.nft-stat label {
+    display: block;
+    color: #a0a0a0;
+    margin-bottom: 0.5rem;
+}
+
+.nft-stat span {
+    color: #00d4ff;
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+.nft-mining-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.nft-mining-area {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+}
+
+.nft-mining-area::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent, rgba(255, 215, 0, 0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.nft-mining-area:hover::before {
+    opacity: 1;
+}
+
+.nft-mining-area:hover {
+    border-color: rgba(255, 215, 0, 0.5);
+    box-shadow: 0 10px 30px rgba(255, 215, 0, 0.2);
+}
+
+.nft-area-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: #ffd700;
+}
+
+.nft-area-name {
+    color: #ffffff;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.nft-area-description {
+    color: #a0a0a0;
+    margin-bottom: 1rem;
+}
+
+.nft-area-cost {
+    color: #ffd700;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.nft-collection {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+.nft-collection h3 {
+    color: #00d4ff;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.nft-collection-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.nft-category-header {
+    border-bottom: 2px solid rgba(255, 215, 0, 0.3);
+    margin-bottom: 1rem;
+}
+
+.nft-category-header h4 {
+    color: #ffd700;
+    font-size: 1.2rem;
+    margin: 0;
+    padding-bottom: 0.5rem;
+}
+
+.nft-category-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.nft-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    position: relative;
+}
+
+.nft-item.polished_gem {
+    border-color: rgba(0, 212, 255, 0.3);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(0, 212, 255, 0.05));
+}
+
+.nft-item.unpolished_gem {
+    border-color: rgba(255, 165, 0, 0.3);
+    background: linear-gradient(135deg, rgba(255, 165, 0, 0.1), rgba(255, 165, 0, 0.05));
+}
+
+.nft-item.mining_equipment {
+    border-color: rgba(255, 215, 0, 0.3);
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+}
+
+.nft-item.tool {
+    border-color: rgba(138, 43, 226, 0.3);
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(138, 43, 226, 0.05));
+}
+
+.nft-item.shard {
+    border-color: rgba(255, 69, 0, 0.3);
+    background: linear-gradient(135deg, rgba(255, 69, 0, 0.1), rgba(255, 69, 0, 0.05));
+}
+
+.nft-item:hover {
+    border-color: rgba(255, 215, 0, 0.3);
+    box-shadow: 0 8px 25px rgba(255, 215, 0, 0.1);
+}
+
+.nft-item.rare {
+    border-color: rgba(255, 215, 0, 0.5);
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+}
+
+.nft-item.epic {
+    border-color: rgba(138, 43, 226, 0.5);
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(138, 43, 226, 0.05));
+}
+
+.nft-item.legendary {
+    border-color: rgba(255, 69, 0, 0.5);
+    background: linear-gradient(135deg, rgba(255, 69, 0, 0.1), rgba(255, 69, 0, 0.05));
+}
+
+.nft-item-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.nft-item.rare .nft-item-icon {
+    color: #ffd700;
+}
+
+.nft-item.epic .nft-item-icon {
+    color: #8a2be2;
+}
+
+.nft-item.legendary .nft-item-icon {
+    color: #ff4500;
+}
+
+.nft-item-name {
+    color: #ffffff;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.nft-item-rarity {
+    color: #a0a0a0;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.nft-item-value {
+    color: #2ed573;
+    font-weight: 600;
+}
+
+.nft-item-type {
+    color: #a0a0a0;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+    opacity: 0.8;
+}
+
+.nft-item .nft-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    color: #ffd700;
+}
+
+.nft-item .nft-info h4 {
+    color: #ffffff;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.nft-item .nft-info .nft-rarity {
+    color: #a0a0a0;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    text-transform: capitalize;
+}
+
+/* Marketplace */
+.marketplace-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.tab-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tab-btn.active,
+.tab-btn:hover {
+    background: rgba(0, 212, 255, 0.2);
+    border-color: rgba(0, 212, 255, 0.5);
+    color: #00d4ff;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.marketplace-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+/* Leaderboard */
+.leaderboard-table {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+}
+
+.table-header {
+    display: grid;
+    grid-template-columns: 80px 2fr 1fr;
+    background: rgba(0, 212, 255, 0.1);
+    padding: 1rem;
+    font-weight: 600;
+    color: #00d4ff;
+}
+
+.header-cell {
+    text-align: center;
+}
+
+.table-body {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#leaderboard .table-body {
+    display: flex;
+    flex-direction: column;
+    max-height: 960px;
+}
+
+.table-row {
+    display: grid;
+    grid-template-columns: 80px 2fr 1fr;
+    padding: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    transition: background 0.3s ease;
+    min-height: 64px;
+}
+
+.table-cell {
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#leaderboard .table-cell {
+    font-size: 0.95rem;
+}
+
+.table-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.table-row:nth-child(1) {
+    background: linear-gradient(45deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+}
+
+.table-row:nth-child(2) {
+    background: linear-gradient(45deg, rgba(192, 192, 192, 0.1), rgba(192, 192, 192, 0.05));
+}
+
+.table-row:nth-child(3) {
+    background: linear-gradient(45deg, rgba(205, 127, 50, 0.1), rgba(205, 127, 50, 0.05));
+}
+
+.player-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.player-info i {
+    color: #ffd700;
+}
+
+.leaderboard-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    color: #a0a0a0;
+    font-size: 0.9rem;
+}
+
+.leaderboard-pagination .page-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.leaderboard-pagination button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.leaderboard-pagination button:hover {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: rgba(0, 212, 255, 0.3);
+}
+
+.leaderboard-pagination button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+
+/* Inventory */
+.inventory-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.inventory-tab {
+    display: none;
+}
+
+.inventory-tab.active {
+    display: block;
+}
+
+.inventory-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+/* Modals */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    backdrop-filter: blur(5px);
+}
+
+.modal-overlay.active {
+    display: flex;
+}
+
+.modal {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    backdrop-filter: blur(10px);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: #a0a0a0;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+.modal-close:hover {
+    color: #ff4757;
+}
+
+/* Notifications */
+.notifications {
+    position: fixed;
+    top: 100px;
+    right: 2rem;
+    z-index: 1500;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.notification {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+    backdrop-filter: blur(10px);
+    animation: slideIn 0.3s ease;
+    max-width: 300px;
+}
+
+.notification.success {
+    border-color: rgba(46, 213, 115, 0.5);
+    background: rgba(46, 213, 115, 0.1);
+}
+
+.notification.error {
+    border-color: rgba(255, 71, 87, 0.5);
+    background: rgba(255, 71, 87, 0.1);
+}
+
+.notification.info {
+    border-color: rgba(0, 212, 255, 0.5);
+    background: rgba(0, 212, 255, 0.1);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Mining Animations */
+.mining-animations {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 100;
+}
+
+.mining-particle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: #00d4ff;
+    border-radius: 50%;
+    animation: particleFloat 3s linear infinite;
+}
+
+.mining-spark {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: #ffd700;
+    border-radius: 50%;
+    animation: sparkle 2s linear infinite;
+}
+
+.mining-dust {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    background: #a0a0a0;
+    border-radius: 50%;
+    animation: dustFloat 4s linear infinite;
+}
+
+@keyframes particleFloat {
+    0% {
+        transform: translateY(100vh) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-100px) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+@keyframes sparkle {
+    0% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.5) rotate(180deg);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+@keyframes dustFloat {
+    0% {
+        transform: translateY(100vh) translateX(0);
+        opacity: 0.7;
+    }
+    100% {
+        transform: translateY(-100px) translateX(100px);
+        opacity: 0;
+    }
+}
+
+/* Equipment Damage Indicators */
+.equipment-damaged {
+    border-color: rgba(255, 71, 87, 0.5) !important;
+    background: linear-gradient(135deg, rgba(255, 71, 87, 0.1), rgba(255, 71, 87, 0.05)) !important;
+}
+
+.damage-indicator {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(255, 71, 87, 0.8);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.damage-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.damage-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2ed573, #ffd700, #ff4757);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+/* Worker Fatigue Indicators */
+.worker-tired {
+    border-color: rgba(255, 165, 0, 0.5) !important;
+    background: linear-gradient(135deg, rgba(255, 165, 0, 0.1), rgba(255, 165, 0, 0.05)) !important;
+}
+
+.fatigue-indicator {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(255, 165, 0, 0.8);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.fatigue-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.fatigue-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2ed573, #ffd700, #ffa500);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .nav-container {
+        padding: 0 1rem;
+    }
+    
+    .nav-menu {
+        display: none;
+    }
+    
+    .section {
+        padding: 1rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+    }
+    
+    .mining-controls {
+        grid-template-columns: 1fr;
+    }
+    
+    .quick-actions {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .action-btn {
+        width: 100%;
+        max-width: 300px;
+        justify-content: center;
+    }
+    
+    .table-header,
+    .table-row {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    
+    .leaderboard-info {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .slots-info {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .slot-stats {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .nft-stats {
+        flex-direction: column;
+        gap: 1rem;
+    }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 212, 255, 0.5);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 212, 255, 0.7);
+}
+
+/* Item Cards */
+.item-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    position: relative;
+}
+
+.item-card:hover {
+    border-color: rgba(0, 212, 255, 0.3);
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.1);
+}
+
+.item-card h4 {
+    color: #00d4ff;
+    margin-bottom: 0.5rem;
+}
+
+.item-card p {
+    color: #a0a0a0;
+    margin-bottom: 1rem;
+}
+
+.item-card .item-price {
+    color: #2ed573;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.item-card .item-stats {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.item-card .item-stat {
+    text-align: center;
+}
+
+.item-card .item-stat span {
+    display: block;
+    color: #a0a0a0;
+    font-size: 0.9rem;
+}
+
+.item-card .item-stat .stat-value {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+/* Progress Bars */
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(45deg, #00d4ff, #0099cc);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* Animations */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes glow {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(0, 212, 255, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+    }
+}
+
+.glow {
+    animation: glow 2s infinite;
+}
+
+@keyframes shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-5px);
+    }
+    75% {
+        transform: translateX(5px);
+    }
+}
+
+.shake {
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes repair {
+    0% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+    50% {
+        transform: scale(1.1);
+        filter: brightness(1.3);
+    }
+    100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+}
+
+.repair-animation {
+    animation: repair 1s ease-in-out;
+}
+
+/* New System Styles */
+
+/* Crafting Section */
+.crafting-container {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 2rem;
+    margin-top: 2rem;
+}
+
+.crafting-info {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.crafting-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.recipe-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.recipe-card {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.recipe-card:hover {
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
+}
+
+.recipe-card h4 {
+    color: #00d4ff;
+    margin-bottom: 0.5rem;
+}
+
+.recipe-materials {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    flex-wrap: wrap;
+}
+
+.material-tag {
+    background: rgba(0, 212, 255, 0.1);
+    color: #00d4ff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.crafting-queue {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.queue-item {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1rem;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+    border-left: 4px solid #00d4ff;
+}
+
+/* Fusion Section */
+.fusion-container {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    margin-top: 2rem;
+}
+
+.fusion-info {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.fusion-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.fusion-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.fusion-recipe {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.fusion-recipe:hover {
+    box-shadow: 0 8px 25px rgba(255, 193, 7, 0.2);
+}
+
+.fusion-recipe h4 {
+    color: #ffc107;
+    margin-bottom: 0.5rem;
+}
+
+.fusion-materials {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    flex-wrap: wrap;
+}
+
+.fusion-result {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+    padding: 0.5rem;
+    border-radius: 6px;
+    text-align: center;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    margin-top: 1rem;
+}
+
+/* Achievements Section */
+.achievements-container {
+    margin-top: 2rem;
+}
+
+.achievements-summary {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    justify-content: center;
+}
+
+.achievement-stat {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1rem 2rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+}
+
+.achievement-stat label {
+    display: block;
+    color: #a0a0a0;
+    margin-bottom: 0.5rem;
+}
+
+.achievement-stat span {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #00d4ff;
+}
+
+.achievements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.achievement-card {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.achievement-card.unlocked {
+    border-color: #4caf50;
+    background: rgba(76, 175, 80, 0.05);
+}
+
+.achievement-card.locked {
+    opacity: 0.6;
+}
+
+.achievement-card h4 {
+    color: #00d4ff;
+    margin-bottom: 0.5rem;
+}
+
+.achievement-reward {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+    padding: 0.5rem;
+    border-radius: 6px;
+    text-align: center;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    margin-top: 1rem;
+}
+
+/* Events Section */
+.events-container {
+    margin-top: 2rem;
+}
+
+.events-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    justify-content: center;
+}
+
+.events-content {
+    margin-top: 2rem;
+}
+
+.events-tab {
+    display: none;
+}
+
+.events-tab.active {
+    display: block;
+}
+
+.events-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.event-card {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.event-card:hover {
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
+}
+
+.event-card h4 {
+    color: #00d4ff;
+    margin-bottom: 0.5rem;
+}
+
+.event-reward {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+    padding: 0.5rem;
+    border-radius: 6px;
+    text-align: center;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    margin-top: 1rem;
+}
+
+.event-status {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.event-status.active {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.event-status.completed {
+    background: rgba(158, 158, 158, 0.2);
+    color: #9e9e9e;
+    border: 1px solid rgba(158, 158, 158, 0.3);
+}
+
+
+
+
+
+
+
+/* Quests Section */
+.quests-container {
+    margin-top: 2rem;
+}
+
+.quests-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    justify-content: center;
+}
+
+.quests-content {
+    margin-top: 2rem;
+}
+
+.quests-tab {
+    display: none;
+}
+
+.quests-tab.active {
+    display: block;
+}
+
+.quests-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.quest-card {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.quest-card:hover {
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
+}
+
+.quest-card h4 {
+    color: #00d4ff;
+    margin-bottom: 0.5rem;
+}
+
+.quest-reward {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+    padding: 0.5rem;
+    border-radius: 6px;
+    text-align: center;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    margin-top: 1rem;
+}
+
+.quest-status {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.quest-status.active {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.quest-status.completed {
+    background: rgba(158, 158, 158, 0.2);
+    color: #9e9e9e;
+    border: 1px solid rgba(158, 158, 158, 0.3);
+}
+
+/* Upgrades Section */
+.upgrades-container {
+    margin-top: 2rem;
+}
+
+.upgrades-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    justify-content: center;
+}
+
+.upgrades-content {
+    margin-top: 2rem;
+}
+
+.upgrades-tab {
+    display: none;
+}
+
+.upgrades-tab.active {
+    display: block;
+}
+
+.upgrades-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.upgrade-card {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.upgrade-card:hover {
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
+}
+
+.upgrade-card h4 {
+    color: #00d4ff;
+    margin-bottom: 0.5rem;
+}
+
+.upgrade-cost {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+    padding: 0.5rem;
+    border-radius: 6px;
+    text-align: center;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    margin: 1rem 0;
+}
+
+.upgrade-effect {
+    background: rgba(76, 175, 80, 0.1);
+    color: #4caf50;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    margin: 0.5rem 0;
+}
+
+
+
+/* Responsive Design for New Sections */
+@media (max-width: 768px) {
+    .crafting-container,
+    .fusion-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .achievements-summary {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .nav-menu {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .nav-link {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.9rem;
+    }
+}
+
+/* Responsive Navigation */
+@media (max-width: 1200px) {
+    .nav-container {
+        max-width: 100%;
+        padding: 0 1.5rem;
+    }
+    
+    .nav-menu {
+        gap: 0.25rem;
+    }
+    
+    .nav-link {
+        padding: 0.6rem 0.8rem;
+        font-size: 0.9rem;
+    }
+    
+    .dropdown-menu {
+        min-width: 180px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .nav-menu {
+        gap: 0.25rem;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .nav-link {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+        min-width: 100px;
+    }
+    
+    .dropdown-menu {
+        min-width: 160px;
+    }
+    
+    .dropdown-item {
+        padding: 0.6rem 1.2rem;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .nav-container {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 0 1rem;
+    }
+    
+    .nav-left-group {
+        gap: 0.8rem;
+    }
+    
+    .nav-menu {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.25rem;
+    }
+    
+    .nav-link {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+    
+    .dropdown-menu {
+        position: static;
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+        background: rgba(0, 212, 255, 0.05);
+        border: none;
+        box-shadow: none;
+        margin-top: 0.5rem;
+        border-radius: 8px;
+    }
+    
+    .nav-dropdown:hover .dropdown-menu {
+        transform: none;
+    }
+    
+    .dropdown-item {
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+        text-align: center;
+        margin: 0 0.5rem;
+        border-radius: 6px;
+    }
+    
+    .nav-wallet {
+        flex-direction: column;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 1rem;
+        background: rgba(0, 212, 255, 0.05);
+        border-radius: 8px;
+        border: 1px solid rgba(0, 212, 255, 0.1);
+    }
+    
+    .connect-wallet-btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-container {
+        padding: 0 0.5rem;
+    }
+    
+    .nav-logo {
+        font-size: 1.2rem;
+    }
+    
+    .nav-logo i {
+        font-size: 1.5rem;
+    }
+    
+    .nav-link {
+        padding: 0.6rem 0.8rem;
+        font-size: 0.8rem;
+    }
+    
+    .dropdown-item {
+        padding: 0.6rem 0.8rem;
+        font-size: 0.8rem;
+        margin: 0 0.25rem;
+    }
+    
+    .nav-wallet {
+        padding: 0.75rem;
+    }
+    
+    .wallet-balance {
+        font-size: 0.8rem;
+    }
+    
+    .connect-wallet-btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+    }
+}
+
+/* Mobile Menu Toggle */
+.mobile-menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: #00d4ff;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.mobile-menu-toggle:hover {
+    background: rgba(0, 212, 255, 0.1);
+}
+
+/* Mobile Navigation Improvements */
+@media (max-width: 768px) {
+    .scale-wrapper {
+        transform: scale(0.8);
+        transform-origin: top left;
+        width: 125%;
+        padding-top: 30px;
+    }
+    
+    .navbar {
+        padding: 0.3rem 0.8rem;
+        position: sticky;
+        top: 0;
+        min-height: 60px;
+    }
+    
+    .nav-container {
+        flex-wrap: nowrap;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 0.5rem;
+        gap: 0.5rem;
+    }
+    
+    .nav-left-group {
+        gap: 0.6rem;
+    }
+    
+    .nav-logo {
+        font-size: 1rem;
+    }
+    
+    .nav-logo i {
+        font-size: 1.2rem;
+    }
+    
+    .nav-game-dollar {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+    }
+    
+    .mobile-menu-toggle {
+        display: block;
+        background: none;
+        border: none;
+        color: #ffffff;
+        font-size: 1.2rem;
+        cursor: pointer;
+        padding: 0.2rem 0.4rem;
+        z-index: 1001;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+    }
+    
+    .mobile-menu-toggle:hover {
+        background: rgba(0, 212, 255, 0.1);
+        color: #00d4ff;
+    }
+    
+    .nav-menu {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.95);
+        backdrop-filter: blur(10px);
+        z-index: 1000;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 2rem;
+        gap: 1rem;
+    }
+    
+    .nav-menu.active {
+        display: flex;
+    }
+    
+    .nav-link {
+        padding: 1.5rem 0;
+        font-size: 1.5rem;
+        font-weight: 500;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        width: 100%;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+    
+    .nav-link:hover {
+        color: #00d4ff;
+        transform: translateX(10px);
+    }
+    
+    .nav-wallet {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: none !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: auto !important;
+        border-width: 0 !important;
+    }
+    
+    .connect-wallet-btn {
+        width: auto;
+        min-width: 120px;
+        height: 18px;
+        padding: 0 8px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        margin: 0;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        color: #ffffff;
+        transition: none;
+        text-decoration: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 3px;
+        box-sizing: border-box;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    }
+    
+    .section {
+        padding: 1rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        gap: 0.75rem;
+    }
+    
+    .stat-card {
+        padding: 1rem;
+    }
+    
+    .stat-icon {
+        font-size: 1.5rem;
+    }
+    
+    .stat-content h3 {
+        font-size: 0.9rem;
+    }
+    
+    .stat-value {
+        font-size: 1.2rem;
+    }
+    
+    .mining-controls {
+        grid-template-columns: 1fr;
+    }
+    
+    .quick-actions {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .action-btn {
+        width: 100%;
+        margin: 0.25rem 0;
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .modal {
+        width: 95%;
+        margin: 1rem auto;
+        max-height: 90vh;
+    }
+    
+    /* New Mobile City Matrix - Card-Based Layout */
+    @media (max-width: 768px) {
+        .city-boost-container {
+            padding: 1rem;
+            overflow: visible;
+        }
+        
+        .matrix-sell-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .matrix-control {
+            width: 100%;
+        }
+        
+        .matrix-control label {
+            font-size: 0.8rem;
+            margin-bottom: 0.5rem;
+            display: block;
+            color: #a0a0a0;
+            font-weight: 500;
+        }
+        
+        .matrix-control select,
+        .matrix-control input {
+            width: 100%;
+            padding: 0.75rem;
+            font-size: 0.9rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            color: #ffffff;
+            box-sizing: border-box;
+        }
+        
+        .matrix-control.action {
+            grid-column: 1 / -1;
+            margin-top: 0.75rem;
+        }
+        
+        .matrix-control.action .action-btn {
+            width: 100%;
+            padding: 1rem;
+            font-size: 0.9rem;
+            border-radius: 8px;
+        }
+        
+        .matrix-summary {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+            padding: 1rem;
+            font-size: 0.85rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .matrix-summary span {
+            text-align: center;
+            padding: 0.75rem;
+            background: rgba(0, 212, 255, 0.1);
+            border-radius: 8px;
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            font-weight: 600;
+        }
+        
+        /* Hide desktop matrix table */
+        #city-boost-matrix-wrapper .matrix-table {
+            display: none !important;
+        }
+        
+        /* Mobile matrix container - enable horizontal scrolling */
+        #city-boost-matrix-wrapper {
+            overflow-x: auto;
+            overflow-y: visible;
+            padding: 0;
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0, 212, 255, 0.5) transparent;
+        }
+        
+        #city-boost-matrix-wrapper::-webkit-scrollbar {
+            height: 8px;
+        }
+        
+        #city-boost-matrix-wrapper::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        
+        #city-boost-matrix-wrapper::-webkit-scrollbar-thumb {
+            background: rgba(0, 212, 255, 0.5);
+            border-radius: 4px;
+        }
+        
+        #city-boost-matrix-wrapper::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 212, 255, 0.7);
+        }
+        
+        /* Mobile matrix table */
+        .mobile-matrix-table {
+            min-width: 600px;
+            width: auto;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            overflow: hidden;
+            table-layout: auto;
+        }
+        
+        .mobile-matrix-table th,
+        .mobile-matrix-table td {
+            padding: 0.6rem 0.5rem;
+            text-align: center;
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        
+        .mobile-city-header {
+            background: #1a1a2e;
+            color: #00d4ff;
+            font-weight: 600;
+            font-size: 0.75rem;
+            width: 100px;
+            min-width: 100px;
+            position: sticky;
+            left: 0;
+            z-index: 10;
+        }
+        
+        .mobile-gem-header {
+            background: rgba(0, 212, 255, 0.05);
+            color: #00d4ff;
+            font-weight: 600;
+            font-size: 0.7rem;
+            width: 80px;
+            min-width: 80px;
+        }
+        
+        .mobile-gem-header .mobile-gem-name {
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 0.3rem;
+            line-height: 1.0;
+            display: block;
+        }
+        
+        .mobile-gem-header .mobile-gem-count {
+            font-size: 0.55rem;
+            color: #a0a0a0;
+            font-weight: 400;
+            display: block;
+            line-height: 1.0;
+        }
+        
+        .mobile-city-cell {
+            background: #1a1a2e;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-align: left;
+            padding-left: 0.6rem;
+            width: 100px;
+            min-width: 100px;
+            position: sticky;
+            left: 0;
+            z-index: 5;
+        }
+        
+        .mobile-matrix-cell {
+            background: rgba(255, 255, 255, 0.02);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 80px;
+            min-width: 80px;
+        }
+        
+        .mobile-matrix-cell:hover {
+            background: rgba(0, 212, 255, 0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+        }
+        
+        .mobile-matrix-cell.selected {
+            background: rgba(0, 212, 255, 0.2);
+            border: 2px solid #00d4ff;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        .mobile-matrix-boost {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.3rem 0.4rem;
+            border-radius: 4px;
+            display: inline-block;
+            min-width: 50px;
+            text-align: center;
+        }
+        
+        .mobile-matrix-boost.increase {
+            color: #2ed573;
+            background: rgba(46, 213, 115, 0.1);
+            border: 1px solid rgba(46, 213, 115, 0.3);
+        }
+        
+        .mobile-matrix-boost.decrease {
+            color: #ff4757;
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+        }
+        
+        .mobile-matrix-boost.neutral {
+            color: #00d4ff;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+        
+        /* Mobile table scroll indicator */
+        #city-boost-matrix-wrapper::before {
+            content: "← Swipe horizontally to view all gems →";
+            display: block;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #a0a0a0;
+            margin-bottom: 0.5rem;
+            padding: 0.6rem;
+            background: rgba(0, 212, 255, 0.05);
+            border-radius: 6px;
+            border: 1px solid rgba(0, 212, 255, 0.1);
+        }
+    }
+    
+    /* Worker Gallery Modal Mobile */
+    .worker-gallery-modal {
+        width: 95vw;
+        max-height: 90vh;
+        margin-top: 2vh;
+    }
+    
+    .worker-gallery-grid {
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 0.5rem;
+        padding: 0 0.5rem;
+    }
+    
+    .worker-gallery-item {
+        aspect-ratio: 1;
+    }
+    
+    .worker-gallery-actions {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .worker-gallery-actions .action-btn {
+        min-width: auto;
+        width: 100%;
+    }
+    
+    /* Polishing Slots Mobile */
+    .polishing-slots .slots-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .polishing-slot {
+        padding: 1rem;
+    }
+    
+    /* Mining Slots Mobile */
+    .mining-slots-grid {
+        gap: 1rem;
+    }
+    
+    .slots-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .mining-slot {
+        padding: 1rem;
+    }
+    
+    .slot-actions {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .slot-actions .action-btn {
+        width: 100%;
+        margin: 0;
+    }
+    
+    /* Gem Distribution Table Mobile */
+    .distribution-table {
+        padding: 0.5rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .gem-distribution-table {
+        min-width: 320px;
+        font-size: 0.75rem;
+        border-radius: 12px;
+        overflow: hidden;
+        table-layout: auto;
+    }
+    
+    
+    .gem-distribution-table th,
+    .gem-distribution-table td {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.75rem;
+        white-space: nowrap;
+    }
+    
+    .gem-distribution-table th {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: rgba(0, 212, 255, 0.15);
+        color: #00d4ff;
+    }
+    
+    .gem-distribution-table td {
+        font-weight: 500;
+    }
+    
+    .gem-type-cell {
+        gap: 0.4rem;
+        font-size: 0.75rem;
+    }
+    
+    .gem-type-cell i {
+        font-size: 0.8rem;
+    }
+    
+    .chance-cell {
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+    
+    .owned-cell {
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+    
+    
+    
+    /* Leaderboard Mobile Optimization */
+    .leaderboard-container {
+        padding: 0.5rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .leaderboard-table {
+        min-width: 320px;
+        font-size: 0.8rem;
+        border-radius: 12px;
+    }
+    
+    .table-header {
+        font-size: 0.75rem;
+        padding: 0.75rem 0.5rem;
+        grid-template-columns: 60px 1fr 1fr;
+    }
+    
+    .header-cell {
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .table-body {
+        font-size: 0.75rem;
+        max-height: 500px;
+    }
+    
+    .table-row {
+        padding: 0.75rem 0.5rem;
+        grid-template-columns: 60px 1fr 1fr;
+        min-height: 60px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    .table-cell {
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    
+    .player-info {
+        font-size: 0.75rem;
+        gap: 0.4rem;
+    }
+    
+    .player-info i {
+        font-size: 0.8rem;
+    }
+    
+    /* Top 3 special styling for mobile */
+    .table-row:nth-child(1) {
+        background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 215, 0, 0.08));
+        border: 1px solid rgba(255, 215, 0, 0.3);
+        box-shadow: 0 4px 15px rgba(255, 215, 0, 0.2);
+    }
+    
+    .table-row:nth-child(2) {
+        background: linear-gradient(135deg, rgba(192, 192, 192, 0.15), rgba(192, 192, 192, 0.08));
+        border: 1px solid rgba(192, 192, 192, 0.3);
+        box-shadow: 0 4px 15px rgba(192, 192, 192, 0.2);
+    }
+    
+    .table-row:nth-child(3) {
+        background: linear-gradient(135deg, rgba(205, 127, 50, 0.15), rgba(205, 127, 50, 0.08));
+        border: 1px solid rgba(205, 127, 50, 0.3);
+        box-shadow: 0 4px 15px rgba(205, 127, 50, 0.2);
+    }
+    
+    .leaderboard-pagination {
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        margin-top: 1rem;
+    }
+    
+    .leaderboard-pagination .page-controls {
+        justify-content: center;
+        gap: 1rem;
+    }
+    
+    .leaderboard-pagination button {
+        min-width: 44px;
+        min-height: 44px;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+    }
+    
+    .leaderboard-pagination button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+    }
+    
+    /* Scroll indicator for mobile */
+    .leaderboard-container::before {
+        content: "← Swipe horizontally to view full table →";
+        display: block;
+        text-align: center;
+        font-size: 0.7rem;
+        color: #a0a0a0;
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        background: rgba(0, 212, 255, 0.05);
+        border-radius: 6px;
+        border: 1px solid rgba(0, 212, 255, 0.1);
+    }
+    
+    .page-controls {
+        justify-content: center;
+    }
+    
+    .page-info {
+        text-align: center;
+        font-size: 0.7rem;
+    }
+    
+    .nav-container {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 0 1rem;
+    }
+    
+    .nav-link {
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+        width: 100%;
+        text-align: center;
+        border-radius: 8px;
+        background: rgba(0, 212, 255, 0.05);
+        border: 1px solid rgba(0, 212, 255, 0.1);
+    }
+    
+    .nav-link:hover {
+        background: rgba(0, 212, 255, 0.1);
+        border-color: rgba(0, 212, 255, 0.3);
+    }
+    
+    .dropdown-toggle {
+        justify-content: center;
+        width: 100%;
+    }
+    
+    .dropdown-menu {
+        position: static;
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+        background: rgba(0, 212, 255, 0.05);
+        border: 1px solid rgba(0, 212, 255, 0.1);
+        box-shadow: none;
+        margin-top: 0.5rem;
+        border-radius: 8px;
+        width: 100%;
+        max-width: none;
+        padding: 0.5rem 0;
+    }
+    
+    .nav-dropdown:hover .dropdown-menu {
+        transform: none;
+    }
+    
+    .dropdown-item {
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+        text-align: center;
+        margin: 0 0.5rem;
+        border-radius: 6px;
+    }
+    
+    .nav-wallet {
+        flex-direction: column;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 1rem;
+        background: rgba(0, 212, 255, 0.05);
+        border-radius: 8px;
+        border: 1px solid rgba(0, 212, 255, 0.1);
+    }
+    
+    .connect-wallet-btn {
+        width: 100%;
+    }
+}
+
+/* Missions Section */
+.missions-container {
+    margin-top: 2rem;
+}
+
+.missions-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    justify-content: center;
+}
+
+.missions-content {
+    margin-top: 2rem;
+}
+
+.missions-tab {
+    display: none;
+}
+
+.missions-tab.active {
+    display: block;
+}
+
+.missions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.mission-item {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.mission-item:hover {
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
+}
+
+.mission-item.completed {
+    border-color: #4caf50;
+    background: rgba(76, 175, 80, 0.05);
+}
+
+.mission-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.mission-header h4 {
+    color: #00d4ff;
+    margin: 0;
+}
+
+.mission-reward {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.mission-description {
+    color: #a0a0a0;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.mission-progress {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.mission-progress .progress-bar {
+    flex: 1;
+    margin: 0;
+}
+
+.mission-progress .progress-text {
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    min-width: 60px;
+    text-align: center;
+}
+
+.mission-completed {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+    padding: 0.5rem;
+    border-radius: 6px;
+    text-align: center;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    font-weight: 600;
+}
+
+/* Responsive Design for Missions */
+@media (max-width: 768px) {
+    .missions-tabs {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .missions-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .mission-header {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+    
+    .mission-progress {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
+
+/* Polishing Section Styles */
+.polishing-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.polishing-overview {
+    margin-bottom: 1rem;
+}
+
+.polishing-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.polishing-slots {
+    margin-top: 1rem;
+}
+
+.polishing-workshop {
+    margin-top: 1rem;
+}
+
+.gems-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.gem-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    border: 2px solid rgba(0, 212, 255, 0.15);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.gem-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.15), transparent);
+    transition: left 0.6s ease;
+}
+
+.gem-card:hover {
+    border-color: rgba(0, 212, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
+}
+
+.gem-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.gem-name {
+    color: #00d4ff;
+    font-weight: 700;
+    font-size: 1.2rem;
+    line-height: 1.3;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.gem-cost {
+    color: #2ed573;
+    font-weight: 700;
+    font-size: 1rem;
+    background: rgba(46, 213, 115, 0.1);
+    padding: 0.25rem 0.75rem;
+    border-radius: 15px;
+    border: 1px solid rgba(46, 213, 115, 0.3);
+}
+
+.gem-type {
+    font-size: 0.9rem;
+    color: #c0c0c0;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.gem-rewards {
+    margin-bottom: 1rem;
+}
+
+.reward-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    color: #ffffff;
+    font-size: 0.85rem;
+    padding: 0.25rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.reward-item:hover {
+    background: rgba(0, 212, 255, 0.05);
+}
+
+.reward-item i {
+    color: #00d4ff;
+    width: 18px;
+    font-size: 1rem;
+}
+
+.gem-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.gem-actions .action-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 0.7rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+.gem-card.insufficient-funds {
+    opacity: 0.6;
+    border-color: rgba(158, 158, 158, 0.5);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(158, 158, 158, 0.05));
+}
+
+.gem-card.insufficient-funds .action-btn {
+    background: rgba(158, 158, 158, 0.3);
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.gem-image {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.1));
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: #00d4ff;
+    margin-bottom: 0.5rem;
+}
+
+/* Polishing specific rewards styling */
+.reward-diamond {
+    color: #c0c0c0;
+}
+
+.reward-ruby {
+    color: #e74c3c;
+}
+
+.reward-sapphire {
+    color: #3498db;
+}
+
+.reward-emerald {
+    color: #27ae60;
+}
+
+.reward-jade {
+    color: #95c5f7;
+}
+
+.reward-tanzanite {
+    color: #9353d9;
+}
+
+.reward-opal {
+    color: #f39c12;
+}
+
+.reward-aquamarine {
+    color: #17a2b8;
+}
+
+.reward-topaz {
+    color: #ffc107;
+}
+
+.reward-amethyst {
+    color: #8e44ad;
+}
+
+/* Polishing Slots Styles */
+.slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.polishing-slot {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    border: 2px solid rgba(0, 212, 255, 0.15);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    min-height: 280px;
+}
+
+.polishing-slot::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.15), transparent);
+    transition: left 0.6s ease;
+}
+
+.polishing-slot:hover {
+    border-color: rgba(0, 212, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
+}
+
+.polishing-slot.empty {
+    border: 2px dashed rgba(0, 212, 255, 0.3);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.05), rgba(0, 212, 255, 0.02));
+}
+
+.polishing-slot.staked {
+    border-color: rgba(46, 213, 115, 0.5);
+    background: linear-gradient(135deg, rgba(46, 213, 115, 0.1), rgba(46, 213, 115, 0.05));
+}
+
+.polishing-slot.processing {
+    border-color: rgba(255, 193, 7, 0.5);
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 193, 7, 0.05));
+    /* Removed animation: polishing-pulse 2s infinite; */
+}
+
+.stake-button, .start-polishing-btn, .claim-btn {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border-radius: 12px;
+    border: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    margin-bottom: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.stake-button {
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.stake-button:hover {
+    background: linear-gradient(135deg, #0099cc, #0077aa);
+    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+}
+
+.start-polishing-btn {
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+    color: white;
+}
+
+.start-polishing-btn:hover {
+    background: linear-gradient(135deg, #27ae60, #219a52);
+    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+}
+
+.start-polishing-btn:disabled {
+    background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.claim-btn {
+    background: linear-gradient(135deg, #e67e22, #d35400);
+    color: white;
+}
+
+.claim-btn:hover {
+    background: linear-gradient(135deg, #d35400, #ba4a00);
+    box-shadow: 0 4px 15px rgba(230, 126, 34, 0.3);
+}
+
+.slot-status {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.slot-status.empty {
+    color: #c0c0c0;
+}
+
+.slot-status.staked {
+    color: #2ecc71;
+}
+
+.slot-status.processing {
+    color: #f39c12;
+}
+
+.slot-status.ready {
+    color: #e74c3c;
+}
+
+.gem-count {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    text-align: center;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.slot-progress {
+    margin-top: 1rem;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    text-align: center;
+    color: #c0c0c0;
+    font-size: 0.85rem;
+}
+
+/* Gem Inventory Styles */
+.gem-inventory {
+    margin-top: 2rem;
+}
+
+.distribution-table {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.gem-distribution-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #ffffff;
+    table-layout: auto;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+
+.gem-distribution-table th,
+.gem-distribution-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    box-sizing: border-box;
+}
+
+.gem-distribution-table th {
+    background: rgba(0, 212, 255, 0.1);
+    color: #00d4ff;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.gem-distribution-table td {
+    font-size: 0.9rem;
+}
+
+.gem-distribution-table td:first-child {
+    text-align: left;
+}
+
+.gem-distribution-table td:not(:first-child) {
+    text-align: center;
+}
+
+.gem-type-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.chance-cell {
+    color: #2ecc71;
+    font-weight: 600;
+}
+
+.owned-cell {
+    color: #f39c12;
+    font-weight: 600;
+}
+
+.rarity-cell {
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.rarity-legendary {
+    background: linear-gradient(135deg, #ffd700, #ffb347);
+    color: #000000;
+}
+
+.rarity-epic {
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+    color: #ffffff;
+}
+
+.rarity-rare {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: #ffffff;
+}
+
+.rarity-uncommon {
+    background: linear-gradient(135deg, #27ae60, #229954);
+    color: #ffffff;
+}
+
+.rarity-common {
+    background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+    color: #ffffff;
+}
+
+/* Manual Gem Adding Styles */
+.gem-input-section {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.gem-input-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.gem-amount-input {
+    flex: 1;
+    min-width: 80px;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 0.9rem;
+}
+
+.gem-amount-input:focus {
+    outline: none;
+    border-color: rgba(0, 212, 255, 0.5);
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+}
+
+.gem-input-info {
+    color: #a0a0a0;
+    font-size: 0.8rem;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.add-gems-btn, .max-gems-btn {
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.add-gems-btn {
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+}
+
+.max-gems-btn {
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+}
+
+.add-gems-btn:hover {
+    background: linear-gradient(135deg, #0099cc, #0077aa) !important;
+    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
+}
+
+.max-gems-btn:hover {
+    background: linear-gradient(135deg, #27ae60, #219a52) !important;
+    box-shadow: 0 2px 8px rgba(46, 204, 113, 0.3);
+}
+
+/* Timer styling improvements */
+.slot-progress {
+    margin-top: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.progress-bar {
+    width: 100%;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    border-radius: 6px;
+    transition: width 0.3s ease;
+    box-shadow: 0 2px 8px rgba(243, 156, 18, 0.3);
+}
+
+.progress-text {
+    text-align: center;
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+/* Trading Section Styles */
+.trading-container {
+    width: 100%;
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 0;
+}
+
+.benefits-overview {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    margin-bottom: 2rem;
+}
+
+.benefits-overview h3 {
+    color: #ffffff;
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.active-benefits-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.benefit-item {
+    background: rgba(0, 212, 255, 0.15);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.benefit-gem {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.benefit-bonus {
+    color: #00d4ff;
+    font-weight: 500;
+}
+
+.no-benefits {
+    color: #a0a0a0;
+    font-style: italic;
+    text-align: center;
+    margin: 0;
+}
+
+.trading-overview {
+    margin-bottom: 2rem;
+}
+
+.trading-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.trading-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.trading-menu {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+.trading-menu h3 {
+    color: #ffffff;
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.city-selection {
+    margin-bottom: 1.5rem;
+}
+
+.city-selection label {
+    color: #c0c0c0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.city-selection select {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.city-selection select:focus {
+    outline: none;
+    border-color: #00d4ff;
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.2);
+}
+
+.gem-selling-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.gem-selling-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+}
+
+.gem-selling-card:hover {
+    border-color: rgba(0, 212, 255, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.gem-selling-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.gem-icon {
+    font-size: 1.5rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 212, 255, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.gem-selling-details {
+    flex: 1;
+}
+
+.gem-selling-name {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.gem-selling-price {
+    color: #00d4ff;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.gem-selling-owned {
+    color: #c0c0c0;
+    font-size: 0.8rem;
+}
+
+.gem-selling-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+
+.staking-benefits {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+.section-title h3 {
+    color: #ffffff;
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.section-title p {
+    color: #c0c0c0;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.base-price-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.35);
+    color: #a0f1ff;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.staking-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.staking-slot {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+}
+
+.staking-slot.active {
+    border-color: rgba(46, 204, 113, 0.5);
+    background: rgba(46, 204, 113, 0.05);
+}
+
+.staking-slot.empty {
+    border-color: rgba(158, 158, 158, 0.3);
+    opacity: 0.8;
+}
+
+.staking-gem-image {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin: 0 auto 0.75rem;
+    display: block;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.staking-gem-image.greyed {
+    filter: grayscale(100%) brightness(0.5);
+    opacity: 0.6;
+}
+
+.staking-gem-image.colored {
+    filter: none;
+    opacity: 1;
+    border-color: rgba(0, 212, 255, 0.6);
+}
+
+.staking-info {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.staking-info h4 {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.staking-info p {
+    color: #c0c0c0;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.stake-btn {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.stake-btn:hover {
+    background: linear-gradient(135deg, #2980b9, #3498db);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.unstake-btn {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.unstake-btn:hover {
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+}
+
+/* Image Selection Staking Styles */
+.staking-image-selection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    align-items: center;
+}
+
+.gem-selection-item {
+    padding: 0.5rem;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 140px;
+}
+
+.gem-selection-item:hover {
+    border-color: rgba(0, 212, 255, 0.3);
+    background: rgba(0, 212, 255, 0.05);
+}
+
+.gem-selection-item.selected {
+    border-color: #00d4ff;
+    background: rgba(0, 212, 255, 0.1);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+.gem-selection-item.selected .staking-gem-image {
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+}
+
+.selection-benefit {
+    margin-top: 0.5rem;
+    text-align: center;
+}
+
+.benefit-text {
+    background: rgba(0, 212, 255, 0.15);
+    color: #00d4ff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.staking-gem-image.greyed-disabled {
+    filter: grayscale(100%) brightness(0.3);
+    opacity: 0.3;
+}
+
+.availability-text {
+    color: #666;
+    font-size: 0.7rem;
+    margin-top: 0.25rem;
+    font-style: italic;
+}
+
+@media (max-width: 768px) {
+    .trading-panel {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .gem-selling-grid {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+    
+    .staking-grid {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+}
+
+.matrix-cell {
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: center;
+    font-size: 0.9rem;
+}
+.matrix-cell .matrix-boost {
+    display: inline-block;
+    margin-left: 0;
+    padding: 0.2rem 0.6rem;
+    background: rgba(0, 212, 255, 0.18);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: #00d4ff;
+    font-weight: 600;
+}
+
+
+.matrix-cell .matrix-boost.increase {
+    background: rgba(46, 213, 115, 0.22);
+    color: #2ed573;
+}
+
+.matrix-cell .matrix-boost.decrease {
+    background: rgba(255, 71, 87, 0.22);
+    color: #ff4757;
+}
+
+/* Desktop Matrix Table Styles */
+.matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.matrix-table th,
+.matrix-table td {
+    width: calc(100% / 11);
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: center;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+}
+
+.matrix-table th {
+    background: rgba(0, 212, 255, 0.1);
+    color: #00d4ff;
+    font-weight: 600;
+}
+
+.matrix-cell {
+    padding: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: center;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+}
+
+.matrix-boost {
+    font-weight: 600;
+    color: #00d4ff;
+}

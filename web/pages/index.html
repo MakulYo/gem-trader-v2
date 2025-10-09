@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TSDGEMS - Dashboard</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+      .hidden { display: none !important; }
+      #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
+    </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-left-group">
+        <div class="nav-logo">
+          <i class="fas fa-gem"></i>
+          <span>TSDGEMS</span>
+        </div>
+        <span class="nav-game-dollar" id="header-game-dollars">Game $: 0</span>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+          <i class="fas fa-bars"></i>
+        </button>
+      </div>
+        
+      <div class="nav-menu" id="nav-menu">
+        <a href="index.html" class="nav-link active">Dashboard</a>
+        <a href="mining.html" class="nav-link">Mining</a>
+        <a href="polishing.html" class="nav-link">Polishing</a>
+        <a href="trading.html" class="nav-link">Trading</a>
+        <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+        <a href="shop.html" class="nav-link">Shop</a>
+      </div>
+
+      <div class="nav-wallet" id="nav-wallet" data-auth="signed-out">
+        <span id="wallet-address" class="wallet-address hidden" title="Wallet address"></span>
+        <span id="wallet-balance" class="wallet-balance hidden" data-token="TSD">0.00 TSD</span>
+        <button id="connectWalletBtn" class="connect-wallet-btn" data-action="connect">Connect Wallet</button>
+        <button id="logoutBtn" class="connect-wallet-btn hidden" data-action="disconnect">Disconnect</button>
+        <span id="walletStatus" style="margin-left:.75rem;color:#a0d9ff;"></span>
+      </div>
+    </div>
+  </nav>
+
+  <div class="scale-wrapper">
+    <main class="main-content">
+      <!-- Dashboard Section -->
+      <section id="dashboard" class="section active">
+        <div class="dashboard-header">
+          <h1>Welcome to TSDGEMS</h1>
+          <p>The ultimate blockchain-based diamond trading simulator</p>
+        </div>
+        
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i class="fas fa-coins"></i>
+            </div>
+            <div class="stat-content">
+              <h3>Ingame $</h3>
+              <p class="stat-value" id="tsd-balance">0.00</p>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-content">
+              <h3>Hired Workers</h3>
+              <p class="stat-value" id="active-workers">0</p>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i class="fas fa-gem"></i>
+            </div>
+            <div class="stat-content">
+              <h3>Rough Gems</h3>
+              <p class="stat-value" id="rough-gems-count">0</p>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i class="fas fa-gem" style="color: #00d4ff; text-shadow: 0 0 10px #00d4ff;"></i>
+            </div>
+            <div class="stat-content">
+              <h3>Polished Gems</h3>
+              <p class="stat-value" id="polished-gems-count">0</p>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i class="fas fa-map-marker-alt"></i>
+            </div>
+            <div class="stat-content">
+              <h3>Mining Slots</h3>
+              <p class="stat-value" id="mining-slots-count">0/10</p>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i class="fas fa-wallet"></i>
+            </div>
+            <div class="stat-content">
+              <h3>TSDM Balance</h3>
+              <p class="stat-value" id="tsdm-balance">0.00</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Notifications -->
+    <div id="notifications" class="notifications"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script type="module" src="../js/wallet.js"></script>
+    <script src="../js/common.js"></script>
+    <script src="../js/backend-service.js"></script>
+    <script src="../js/dashboard.js"></script>
+  </div>
+</body>
+</html>
