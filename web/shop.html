@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TSDGEMS - Shop</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
       .hidden { display: none !important; }
       #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
+      .gallery-category { margin-bottom: 2.5rem; }
     </style>
 </head>
 <body>
@@ -27,7 +28,7 @@
       </div>
         
       <div class="nav-menu" id="nav-menu">
-        <a href="dashboard.html" class="nav-link">Dashboard</a>
+        <a href="index.html" class="nav-link">Dashboard</a>
         <a href="mining.html" class="nav-link">Mining</a>
         <a href="polishing.html" class="nav-link">Polishing</a>
         <a href="trading.html" class="nav-link">Trading</a>
@@ -47,25 +48,28 @@
 
   <div class="scale-wrapper">
     <main class="main-content">
-      <section id="shop" class="section active">
+      <section id="gallery" class="section active">
         <div class="section-header">
-          <h2>Shop</h2>
-          <p>Purchase upgrades and special items</p>
+          <h2>TSDGEMS Shop</h2>
+          <p>Discover selected TSDGEMS NFTs and secure your favorites on NeftyBlocks.</p>
+          <div class="shop-actions">
+            <a class="action-btn primary" href="https://neftyblocks.com/collection/tsdmediagems" target="_blank" rel="noopener">
+              <i class="fas fa-shopping-cart"></i> Buy NFTs
+            </a>
+          </div>
         </div>
-        <div class="shop-container">
-          <p style="text-align: center; padding: 40px; color: #888;">Shop features coming soon...</p>
-        </div>
+
+        <!-- Gallery content will be populated by JavaScript -->
+        <div id="shop-gallery-container"></div>
       </section>
     </main>
 
     <div id="notifications" class="notifications"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script type="module" src="js/wallet.js"></script>
-    <script src="js/backend-service.js"></script>
-    <script src="js/common.js"></script>
-    <script src="js/shop.js"></script>
+    <script type="module" src="wallet.js"></script>
+    <script src="common.js"></script>
+    <script src="shop.js"></script>
   </div>
 </body>
 </html>
-

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TSDGEMS - Dashboard</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -28,7 +28,7 @@
       </div>
         
       <div class="nav-menu" id="nav-menu">
-        <a href="dashboard.html" class="nav-link active">Dashboard</a>
+        <a href="index.html" class="nav-link active">Dashboard</a>
         <a href="mining.html" class="nav-link">Mining</a>
         <a href="polishing.html" class="nav-link">Polishing</a>
         <a href="trading.html" class="nav-link">Trading</a>
@@ -123,31 +123,10 @@
     <div id="notifications" class="notifications"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    
-    <!-- Backend Service FIRST -->
-    <script src="js/backend-service.js"></script>
-    
-    <script>
-        // Test backend service loaded
-        if (window.backendService) {
-            console.log('✅ [Dashboard HTML] Backend Service loaded successfully');
-            console.log('[Dashboard HTML] Backend Service:', window.backendService);
-        } else {
-            console.error('❌ [Dashboard HTML] Backend Service NOT loaded!');
-        }
-    </script>
-    
-    <!-- Then other scripts -->
-    <script type="module" src="js/wallet.js"></script>
-    <script src="js/common.js"></script>
-    <script src="js/dashboard.js"></script>
-    
-    <script>
-        // Log when all scripts loaded
-        console.log('========================================');
-        console.log('📄 Dashboard HTML - All scripts loaded');
-        console.log('========================================');
-    </script>
+    <script type="module" src="wallet.js"></script>
+    <script src="common.js"></script>
+    <script src="backend-service.js"></script>
+    <script src="dashboard.js"></script>
   </div>
 </body>
 </html>

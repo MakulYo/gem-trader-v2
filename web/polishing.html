@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TSDGEMS - Polishing</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <title>TSDGEMS - Gem Polishing</title>
+    <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -27,7 +27,7 @@
       </div>
         
       <div class="nav-menu" id="nav-menu">
-        <a href="dashboard.html" class="nav-link">Dashboard</a>
+        <a href="index.html" class="nav-link">Dashboard</a>
         <a href="mining.html" class="nav-link">Mining</a>
         <a href="polishing.html" class="nav-link active">Polishing</a>
         <a href="trading.html" class="nav-link">Trading</a>
@@ -50,10 +50,74 @@
       <section id="polishing" class="section active">
         <div class="section-header">
           <h2>Gem Polishing</h2>
-          <p>Polish your rough gems into valuable polished gems</p>
+          <p>Stake polishing table NFTs and polish gems in automated slots</p>
         </div>
+
         <div class="polishing-container">
-          <p style="text-align: center; padding: 40px; color: #888;">Polishing features coming soon...</p>
+          <div class="polishing-overview">
+            <div class="polishing-stats">
+              <div class="stat-card">
+                <div class="stat-icon">
+                  <i class="fas fa-gem"></i>
+                </div>
+                <div class="stat-content">
+                  <h3>Rough Gems Available</h3>
+                  <p class="stat-value" id="rough-gems-polishing-count">0</p>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon">
+                  <i class="fas fa-gem" style="color: #00d4ff; text-shadow: 0 0 10px #00d4ff;"></i>
+                </div>
+                <div class="stat-content">
+                  <h3>Polished Gems Created</h3>
+                  <p class="stat-value" id="polished-gems-polishing-count">0</p>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon">
+                  <i class="fas fa-box"></i>
+                </div>
+                <div class="stat-content">
+                  <h3>Total Gem Inventory</h3>
+                  <p class="stat-value" id="total-inventory-gems">0</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="polishing-slots">
+            <div class="section-title">
+              <h3><i class="fas fa-table"></i> Polishing Slot System</h3>
+              <p>Stake Polishing Table NFTs in slots and polish gems automatically</p>
+            </div>
+            
+            <div class="slots-grid" id="polishing-slots-grid">
+              <!-- Polishing slots will be populated by JavaScript -->
+            </div>
+          </div>
+
+          <div class="gem-inventory" id="gem-inventory">
+            <div class="section-title">
+              <h3><i class="fas fa-gem"></i> Gem Distribution Table</h3>
+              <p>Chance distribution for obtaining gems through polishing</p>
+            </div>
+            
+            <div class="distribution-table">
+              <table class="gem-distribution-table">
+                <thead>
+                  <tr>
+                    <th>Gem Type</th>
+                    <th>Chance</th>
+                    <th>Owned</th>
+                  </tr>
+                </thead>
+                <tbody id="inventory-table-body">
+                  <!-- Inventory display will be populated by JavaScript -->
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
     </main>
@@ -61,11 +125,9 @@
     <div id="notifications" class="notifications"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script type="module" src="js/wallet.js"></script>
-    <script src="js/backend-service.js"></script>
-    <script src="js/common.js"></script>
-    <script src="js/polishing.js"></script>
+    <script type="module" src="wallet.js"></script>
+    <script src="common.js"></script>
+    <script src="polishing.js"></script>
   </div>
 </body>
 </html>
-

@@ -4,12 +4,115 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TSDGEMS - Gem Trading</title>
-    <link rel="stylesheet" href="../styles/styles.css">
+    <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
       .hidden { display: none !important; }
       #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
+      
+      /* City Boost Matrix Table */
+      .city-boost-matrix {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+        background: rgba(0, 0, 0, 0.3);
+      }
+      
+      .city-boost-matrix th,
+      .city-boost-matrix td {
+        padding: 0.75rem;
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      
+      .city-boost-matrix thead th {
+        background: rgba(0, 212, 255, 0.2);
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      
+      .city-name {
+        font-weight: 600;
+        text-align: left !important;
+        background: rgba(0, 212, 255, 0.1);
+      }
+      
+      .boost-cell {
+        font-weight: 600;
+        transition: all 0.2s;
+        cursor: help;
+      }
+      
+      .boost-cell:hover {
+        transform: scale(1.05);
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+      }
+      
+      .boost-very-high { background: rgba(0, 255, 0, 0.2); color: #00ff00; }
+      .boost-high { background: rgba(100, 255, 0, 0.2); color: #64ff00; }
+      .boost-medium { background: rgba(255, 255, 0, 0.2); color: #ffff00; }
+      .boost-low { background: rgba(255, 150, 0, 0.2); color: #ff9600; }
+      .boost-negative { background: rgba(255, 0, 0, 0.2); color: #ff0000; }
+      
+      /* Base Price Display */
+      .base-price-display {
+        background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 100, 255, 0.2));
+        border: 2px solid #00d4ff;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 20px 0;
+        text-align: center;
+      }
+      
+      .base-price-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #00d4ff;
+        text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        margin: 10px 0;
+      }
+      
+      .base-price-label {
+        font-size: 1rem;
+        color: #aaa;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+      
+      .base-price-update {
+        font-size: 0.9rem;
+        color: #888;
+        margin-top: 10px;
+      }
+      
+      /* Matrix Container */
+      .matrix-table-wrapper {
+        overflow-x: auto;
+        max-height: 600px;
+        overflow-y: auto;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 212, 255, 0.3);
+      }
+      
+      /* Loading State */
+      .loading-spinner {
+        text-align: center;
+        padding: 40px;
+        color: #00d4ff;
+      }
+      
+      .loading-spinner i {
+        font-size: 3rem;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
     </style>
 </head>
 <body>
@@ -59,22 +162,33 @@
         </div>
 
         <div id="trading-subpage-overview" class="trading-subpage active">
+          <!-- Base Price Display -->
+          <div class="base-price-display" id="base-price-display">
+            <div class="base-price-label">Current Gem Base Price</div>
+            <div class="base-price-value" id="base-price-value">Loading...</div>
+            <div class="base-price-update" id="base-price-update">Fetching latest data...</div>
+          </div>
+
           <div class="city-boost-container" id="city-boost">
             <div class="section-title">
               <h3>
                 <i class="fas fa-bolt"></i> City Boost Data Matrix
-                <span class="base-price-chip" id="matrix-base-price">Base price: loading…</span>
               </h3>
-              <p>Analyse the hourly trading boost values across global trading hubs.</p>
+              <p>Live trading boost values across global trading hubs. Higher percentages = better prices!</p>
             </div>
+            
             <div class="matrix-sell-controls">
               <div class="matrix-control">
                 <label for="matrix-city-select">City</label>
-                <select id="matrix-city-select"></select>
+                <select id="matrix-city-select">
+                  <option value="">Select a city...</option>
+                </select>
               </div>
               <div class="matrix-control">
                 <label for="matrix-gem-select">Gem Type</label>
-                <select id="matrix-gem-select"></select>
+                <select id="matrix-gem-select">
+                  <option value="">Select a gem...</option>
+                </select>
               </div>
               <div class="matrix-control">
                 <label for="matrix-sell-amount">Amount</label>
@@ -87,23 +201,29 @@
                 </button>
               </div>
             </div>
+            
             <div class="matrix-summary" id="matrix-summary">
               <span id="matrix-summary-boost">Boost: +0%</span>
               <span id="matrix-summary-staking">Staking Bonus: +0%</span>
               <span id="matrix-summary-price">Est. Payout: 0 Game $</span>
             </div>
-            <div id="city-boost-matrix-wrapper"></div>
+            
+            <div class="matrix-table-wrapper">
+              <div id="city-boost-matrix-wrapper">
+                <div class="loading-spinner">
+                  <i class="fas fa-circle-notch"></i>
+                  <p>Loading city boost matrix...</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="trading-container">
             <div class="benefits-overview">
               <h3><i class="fas fa-star"></i> Active Benefits</h3>
               <div id="benefits-display">
-                <!-- Benefits display will be populated by JavaScript -->
+                <p style="color: #888;">Connect your wallet to view your active benefits</p>
               </div>
-            </div>
-            <div class="trading-panel">
-              <!-- Trading panel content -->
             </div>
           </div>
         </div>
@@ -138,10 +258,10 @@
     <div id="notifications" class="notifications"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script type="module" src="../scripts/wallet.js"></script>
-    <script src="../scripts/common.js"></script>
-    <script src="../scripts/trading.js"></script>
+    <script type="module" src="wallet.js"></script>
+    <script src="common.js"></script>
+    <script src="backend-service.js"></script>
+    <script src="trading.js"></script>
   </div>
 </body>
 </html>
-

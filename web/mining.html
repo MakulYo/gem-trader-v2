@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TSDGEMS - Mining</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <title>TSDGEMS - Mining Operations</title>
+    <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -27,7 +27,7 @@
       </div>
         
       <div class="nav-menu" id="nav-menu">
-        <a href="dashboard.html" class="nav-link">Dashboard</a>
+        <a href="index.html" class="nav-link">Dashboard</a>
         <a href="mining.html" class="nav-link active">Mining</a>
         <a href="polishing.html" class="nav-link">Polishing</a>
         <a href="trading.html" class="nav-link">Trading</a>
@@ -50,24 +50,124 @@
       <section id="mining" class="section active">
         <div class="section-header">
           <h2>Mining Operations</h2>
-          <p>Mine rough gems and manage your operations</p>
+          <p>Manage your mining infrastructure and equipment</p>
         </div>
+
         <div class="mining-container">
-          <!-- Mining content will be populated by JavaScript -->
-          <p style="text-align: center; padding: 40px; color: #888;">Mining features coming soon...</p>
+          <div class="mining-slots-grid">
+            <div class="mining-overview">
+              <div class="mining-stats">
+                <div class="stat-card">
+                  <div class="stat-icon">
+                    <i class="fas fa-mountain"></i>
+                  </div>
+                  <div class="stat-content">
+                    <h3>Active Mining Sites</h3>
+                    <p class="stat-value" id="active-mining-sites">0</p>
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-icon">
+                    <i class="fas fa-users"></i>
+                  </div>
+                  <div class="stat-content">
+                    <h3>Workforce</h3>
+                    <p class="stat-value" id="total-workforce">0</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mining-slots-section">
+              <div class="section-title">
+                <h3><i class="fas fa-gem"></i> Mining Properties</h3>
+                <p>Discover, acquire, and develop profitable mining locations</p>
+              </div>
+              <div class="slots-grid" id="slots-grid">
+                <!-- Mining slots will be populated by JavaScript -->
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay">
+      <div class="modal" id="modal">
+        <div class="modal-header">
+          <h3 id="modal-title">Modal Title</h3>
+          <button class="modal-close" onclick="closeModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <div id="repair-modal" class="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Repair Equipment</h3>
+          <button class="modal-close" onclick="closeRepairModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="repair-content"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="motivation-modal" class="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Motivate Worker</h3>
+          <button class="modal-close" onclick="closeMotivationModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="motivation-content"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="worker-gallery-modal" class="modal-overlay">
+      <div class="modal worker-gallery-modal">
+        <div class="modal-header">
+          <h3>Select Workers</h3>
+          <div class="worker-selection-info">
+            <span id="selected-workers-count">0</span>/<span id="max-workers-count">0</span> selected
+          </div>
+          <button class="modal-close" onclick="closeWorkerGalleryModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="worker-gallery-container">
+            <div class="worker-gallery-grid" id="worker-gallery-grid"></div>
+          </div>
+          <div class="worker-gallery-actions">
+            <button id="confirm-worker-selection" class="action-btn primary" disabled>
+              <i class="fas fa-check"></i> Confirm Selection (100 TSDM each)
+            </button>
+            <button onclick="closeWorkerGalleryModal()" class="action-btn secondary">
+              <i class="fas fa-times"></i> Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div id="notifications" class="notifications"></div>
     <div id="mining-animations" class="mining-animations"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script type="module" src="js/wallet.js"></script>
-    <script src="js/backend-service.js"></script>
-    <script src="js/common.js"></script>
-    <script src="js/mining.js"></script>
+    <script type="module" src="wallet.js"></script>
+    <script src="common.js"></script>
+    <script src="backend-service.js"></script>
+    <script src="mining.js"></script>
   </div>
 </body>
 </html>
-
