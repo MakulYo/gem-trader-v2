@@ -145,4 +145,67 @@ const chartCron = onSchedule('every 5 minutes', async () => {
   try { await refreshNow(); } catch (e) { console.error('chart cron failed', e); }
 });
 
-module.exports = { getBasePrice, refreshBasePrice, getChart, chartCron };
+// POST /chartTick?token=...  -> add one point to history_30
+const chartTick = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if ((req.query.token || '') !== SEED_TOKEN) return res.status(403).json({ error: 'Forbidden' });
+    try {
+      const snap = await db.doc('runtime/pricing').get();
+      if (!snap.exists) throw new Error('pricing missing');
+      const { btcUsd = 0, basePrice = 0 } = snap.data() || {};
+      const now = Date.now();
+      const histRef = db.doc('runtime/pricing_history_30');
+      const hist = (await histRef.get()).data() || { points: [] };
+      const points = Array.isArray(hist.points) ? hist.points : [];
+      points.push({ t: now, btcUsd, basePrice });
+      // keep only last 30 days (~43200 min)
+      const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+      const filtered = points.filter(p => p.t >= cutoff);
+      await histRef.set({
+        days: 30,
+        points: filtered,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        source: 'cron',
+      }, { merge: true });
+      res.json({ ok: true, added: filtered.length });
+    } catch (e) {
+      console.error('chartTick', e);
+      res.status(500).json({ error: e.message });
+    }
+  })
+);
+
+// Scheduler: extend history automatically every 5 minutes
+const chartHistoryCron = onSchedule('every 5 minutes', async () => {
+  try {
+    const snap = await db.doc('runtime/pricing').get();
+    if (!snap.exists) return;
+    const { btcUsd = 0, basePrice = 0 } = snap.data() || {};
+    const now = Date.now();
+    const histRef = db.doc('runtime/pricing_history_30');
+    const hist = (await histRef.get()).data() || { points: [] };
+    const points = Array.isArray(hist.points) ? hist.points : [];
+    points.push({ t: now, btcUsd, basePrice });
+    const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+    const filtered = points.filter(p => p.t >= cutoff);
+    await histRef.set({
+      days: 30,
+      points: filtered,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      source: 'auto',
+    }, { merge: true });
+    console.log('chartHistoryCron tick ok', filtered.length);
+  } catch (e) {
+    console.error('chartHistoryCron failed', e);
+  }
+});
+
+
+module.exports = {
+  getBasePrice,
+  refreshBasePrice,
+  getChart,
+  chartCron,
+  chartTick,
+  chartHistoryCron,
+};
