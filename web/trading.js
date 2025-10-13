@@ -11,11 +11,14 @@ class TradingGame extends TSDGEMSGame {
         this.rawBackendData = null;
         this.refreshInterval = null;
         this.boostsData = null;
+        this.chartData = null;
+        this.currentChartDays = 30;
         this.init();
     }
 
     init() {
         this.setupTradingSubpages();
+        this.setupChartControls();
         this.createDebugPanel();
         this.loadInitialData();
         this.showNotification('Loading trading markets...', 'info');
@@ -556,7 +559,7 @@ class TradingGame extends TSDGEMSGame {
         updateSummary();
     }
 
-    initializeGemPriceChart() {
+    async initializeGemPriceChart() {
         const chartCanvas = document.getElementById('gem-price-chart');
         const status = document.getElementById('pricing-status');
         if (!chartCanvas || !status) return;
@@ -566,22 +569,44 @@ class TradingGame extends TSDGEMSGame {
             this.gemPriceChart.destroy();
         }
 
+        // Load chart data from API
+        status.textContent = 'Loading chart data...';
+        try {
+            await this.loadChartData(this.currentChartDays);
+        } catch (error) {
+            console.error('[Trading] Failed to load chart data:', error);
+            status.textContent = 'Failed to load chart data: ' + error.message;
+            return;
+        }
+
         const ctx = chartCanvas.getContext('2d');
         const gradient = ctx.createLinearGradient(0, 0, 0, chartCanvas.offsetHeight || 320);
         gradient.addColorStop(0, 'rgba(0, 212, 255, 0.35)');
         gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
 
-        // Prepare chart data from backend
+        // Prepare chart data from API response
         let labels = [];
         let dataPoints = [];
+        let btcDataPoints = [];
 
-        if (this.basePriceData && this.basePriceData.history) {
-            // Use history data from backend
-            labels = this.basePriceData.history.map(entry => {
-                const date = new Date(entry.timestamp);
-                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (this.chartData && this.chartData.points && Array.isArray(this.chartData.points)) {
+            // chartData.points is [{t: ms, btcUsd: number, basePrice: number}, ...]
+            const points = this.chartData.points;
+            
+            labels = points.map(point => {
+                const date = new Date(point.t);
+                // Format based on time range
+                if (this.currentChartDays <= 1) {
+                    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                } else if (this.currentChartDays <= 7) {
+                    return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit' });
+                } else {
+                    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                }
             });
-            dataPoints = this.basePriceData.history.map(entry => entry.price);
+            
+            dataPoints = points.map(point => point.basePrice);
+            btcDataPoints = points.map(point => point.btcUsd);
         }
 
         this.gemPriceChart = new Chart(ctx, {
@@ -589,52 +614,172 @@ class TradingGame extends TSDGEMSGame {
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Gem Base Price (BTC / 100)',
+                    label: 'Gem Base Price (Game $)',
                     data: dataPoints,
                     borderColor: '#00d4ff',
                     backgroundColor: gradient,
                     borderWidth: 2,
                     tension: 0.25,
+                    pointRadius: dataPoints.length > 100 ? 0 : 2,
+                    fill: true,
+                    yAxisID: 'y'
+                }, {
+                    label: 'Bitcoin Price (USD)',
+                    data: btcDataPoints,
+                    borderColor: '#f7931a',
+                    backgroundColor: 'rgba(247, 147, 26, 0.1)',
+                    borderWidth: 1,
+                    tension: 0.25,
                     pointRadius: 0,
-                    fill: true
+                    fill: false,
+                    yAxisID: 'y1'
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
                 scales: {
                     x: {
-                        ticks: { color: '#a0a0a0' },
+                        ticks: { 
+                            color: '#a0a0a0',
+                            maxTicksLimit: 10
+                        },
                         grid: { display: false }
                     },
                     y: {
-                        ticks: { color: '#a0a0a0' },
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Gem Base Price (Game $)',
+                            color: '#00d4ff'
+                        },
+                        ticks: { color: '#00d4ff' },
+                        grid: { color: 'rgba(0, 212, 255, 0.1)' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'BTC Price (USD)',
+                            color: '#f7931a'
+                        },
+                        ticks: { color: '#f7931a' },
+                        grid: { display: false }
                     }
                 },
                 plugins: {
                     legend: {
                         labels: { color: '#ffffff' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    if (context.datasetIndex === 0) {
+                                        label += context.parsed.y.toFixed(2) + ' Game $';
+                                    } else {
+                                        label += '$' + context.parsed.y.toLocaleString();
+                                    }
+                                }
+                                return label;
+                            }
+                        }
                     }
                 }
             }
         });
 
-        if (this.basePriceData) {
-            const price = this.basePriceData.basePrice || 0;
-            let lastUpdate = 'Unknown';
-            if (this.basePriceData.updatedAt) {
-                if (this.basePriceData.updatedAt._seconds) {
-                    lastUpdate = new Date(this.basePriceData.updatedAt._seconds * 1000).toLocaleString();
-                } else if (typeof this.basePriceData.updatedAt === 'number') {
-                    lastUpdate = new Date(this.basePriceData.updatedAt).toLocaleString();
-                } else if (this.basePriceData.updatedAt.toDate) {
-                    lastUpdate = this.basePriceData.updatedAt.toDate().toLocaleString();
-                }
-            }
-            status.textContent = `Current: ${price.toFixed(2)} Game $ (Updated: ${lastUpdate})`;
+        // Update status with current data info
+        if (this.chartData && this.chartData.points && this.chartData.points.length > 0) {
+            const latestPoint = this.chartData.points[this.chartData.points.length - 1];
+            const date = new Date(latestPoint.t);
+            status.textContent = `Showing ${this.chartData.days} day${this.chartData.days > 1 ? 's' : ''} of data | ${this.chartData.points.length} data points | Latest: ${latestPoint.basePrice.toFixed(2)} Game $ @ ${date.toLocaleString()}`;
         } else {
-            status.textContent = 'Chart initialized - waiting for data';
+            status.textContent = 'Chart initialized - no data available';
+        }
+    }
+
+    async loadChartData(days = 30) {
+        try {
+            console.log('[Trading] Loading chart data for', days, 'days...');
+            this.chartData = await this.backendService.getChartData(days);
+            console.log('[Trading] Chart data loaded:', this.chartData);
+            this.currentChartDays = days;
+            return this.chartData;
+        } catch (error) {
+            console.error('[Trading] Failed to load chart data:', error);
+            throw error;
+        }
+    }
+
+    async updateChartTimeframe(days) {
+        const status = document.getElementById('pricing-status');
+        if (status) {
+            status.textContent = `Loading ${days} day${days > 1 ? 's' : ''} of data...`;
+        }
+        
+        this.currentChartDays = days;
+        await this.initializeGemPriceChart();
+    }
+
+    setupChartControls() {
+        const timeframeSelect = document.getElementById('chart-timeframe-select');
+        const refreshBtn = document.getElementById('chart-refresh-btn');
+
+        if (timeframeSelect) {
+            timeframeSelect.addEventListener('change', async (e) => {
+                const days = e.target.value;
+                console.log('[Trading] Chart timeframe changed to:', days);
+                try {
+                    await this.updateChartTimeframe(days);
+                    this.showNotification(`Chart updated to ${days} day${days > 1 ? 's' : ''}`, 'success');
+                } catch (error) {
+                    console.error('[Trading] Failed to update chart:', error);
+                    this.showNotification('Failed to update chart: ' + error.message, 'error');
+                }
+            });
+        }
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                console.log('[Trading] Refreshing chart data...');
+                const icon = refreshBtn.querySelector('i');
+                if (icon) {
+                    icon.classList.add('fa-spin');
+                }
+                
+                try {
+                    await this.updateChartTimeframe(this.currentChartDays);
+                    this.showNotification('Chart refreshed successfully!', 'success');
+                } catch (error) {
+                    console.error('[Trading] Failed to refresh chart:', error);
+                    this.showNotification('Failed to refresh chart: ' + error.message, 'error');
+                } finally {
+                    if (icon) {
+                        icon.classList.remove('fa-spin');
+                    }
+                }
+            });
+
+            // Hover effect
+            refreshBtn.addEventListener('mouseenter', () => {
+                refreshBtn.style.background = '#00a8cc';
+            });
+            refreshBtn.addEventListener('mouseleave', () => {
+                refreshBtn.style.background = '#00d4ff';
+            });
         }
     }
 

@@ -7,13 +7,13 @@ const healthcheck = onRequest((req, res) => res.json({ ok: true }));
 
 const players = require('./modules/players');
 const cities  = require('./modules/cities');
-const chart   = require('./modules/chart');   
-const chart   = require('./modules/inventory');
+const chart   = require('./modules/chart');
+const inventory = require('./modules/inventory');
 
 module.exports = Object.assign(
   { healthcheck },
   players,
   cities,
   chart,
-  inventory      
+  inventory
 );

@@ -141,6 +141,91 @@ class BackendService {
     }
 
     /**
+     * Get chart data for specific timeframe
+     * @param {string|number} days - Number of days (1, 7, 14, 30, 90, 180, 365, 'max')
+     */
+    async getChartData(days = 30) {
+        try {
+            console.log('[Backend] Fetching chart data for', days, 'days...');
+            const url = new URL(`${this.apiBase}/getChart`);
+            url.searchParams.set('days', days);
+            
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`getChart failed: ${response.status} - ${errorText}`);
+            }
+
+            const chartData = await response.json();
+            console.log('[Backend] Chart data loaded:', chartData);
+            return chartData;
+        } catch (error) {
+            console.error('[Backend] Error fetching chart data:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get inventory data for player
+     * @param {string} actor - WAX account name
+     * @param {boolean} refresh - Force refresh from blockchain
+     */
+    async getInventory(actor, refresh = false) {
+        try {
+            console.log('[Backend] Fetching inventory for actor:', actor, 'refresh:', refresh);
+            const url = new URL(`${this.apiBase}/getInventory`);
+            url.searchParams.set('actor', actor);
+            if (refresh) {
+                url.searchParams.set('refresh', '1');
+            }
+            
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`getInventory failed: ${response.status} - ${errorText}`);
+            }
+
+            const inventoryData = await response.json();
+            console.log('[Backend] Inventory data loaded:', inventoryData);
+            return inventoryData;
+        } catch (error) {
+            console.error('[Backend] Error fetching inventory:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Refresh inventory from blockchain
+     * @param {string} actor - WAX account name
+     */
+    async refreshInventory(actor) {
+        try {
+            console.log('[Backend] Refreshing inventory from blockchain for:', actor);
+            const response = await fetch(`${this.apiBase}/refreshInventory`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ actor })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`refreshInventory failed: ${response.status} - ${errorText}`);
+            }
+
+            const inventoryData = await response.json();
+            console.log('[Backend] Inventory refreshed:', inventoryData);
+            return inventoryData;
+        } catch (error) {
+            console.error('[Backend] Error refreshing inventory:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Full initialization flow (OPTIMIZED)
      * @param {string} actor - WAX account name
      */

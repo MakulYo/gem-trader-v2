@@ -1,4 +1,5 @@
 // TSDGEMS - Polishing Page Script
+// For in-game earned gems only (not NFTs)
 
 class PolishingGame extends TSDGEMSGame {
     constructor() {
@@ -63,6 +64,7 @@ class PolishingGame extends TSDGEMSGame {
         const tableBody = document.getElementById('inventory-table-body');
         if (!tableBody) return;
 
+        // Display gem types with drop chances (for in-game earned gems)
         tableBody.innerHTML = this.gemTypes.map(gem => {
             const owned = this.gameState.player.polishedGems[gem.name.toLowerCase()] || 0;
             return `
@@ -76,9 +78,9 @@ class PolishingGame extends TSDGEMSGame {
     }
 
     updatePolishingDisplay() {
-        // Update polishing stats
-        const totalRough = Object.values(this.gameState.player.roughGems).reduce((a, b) => a + b, 0);
-        const totalPolished = Object.values(this.gameState.player.polishedGems).reduce((a, b) => a + b, 0);
+        // Update polishing stats from local game state (in-game gems only)
+        const totalRough = Object.values(this.gameState.player.roughGems || {}).reduce((a, b) => a + b, 0);
+        const totalPolished = Object.values(this.gameState.player.polishedGems || {}).reduce((a, b) => a + b, 0);
         const totalInventory = totalRough + totalPolished;
 
         const roughEl = document.getElementById('rough-gems-polishing-count');
@@ -88,6 +90,9 @@ class PolishingGame extends TSDGEMSGame {
         if (roughEl) roughEl.textContent = totalRough;
         if (polishedEl) polishedEl.textContent = totalPolished;
         if (inventoryEl) inventoryEl.textContent = totalInventory;
+
+        // Re-render gem distribution table
+        this.renderGemDistribution();
 
         this.updateHeaderStats();
     }
@@ -99,4 +104,3 @@ document.addEventListener('DOMContentLoaded', () => {
     game = new PolishingGame();
     window.tsdgemsGame = game;
 });
-
