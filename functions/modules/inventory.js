@@ -4,10 +4,10 @@
 //
 // Node 20+, Functions v2, CommonJS.
 
-const { onRequest }  = require('firebase-functions/v2/https')
-const admin          = require('firebase-admin')
+const { onRequest }   = require('firebase-functions/v2/https')
+const admin           = require('firebase-admin')
 const { getFirestore } = require('firebase-admin/firestore')
-const corsLib        = require('cors')
+const corsLib         = require('cors')
 
 // Node 20+ has native fetch
 const fetch = globalThis.fetch || require('node-fetch')
@@ -30,7 +30,6 @@ const ATOMIC_APIS = [
 const AA_BASE = process.env.ATOMIC_API || ATOMIC_APIS[0]
 
 // --- Collection & templates mapping ---
-// Use your real collection (you’ve linked to NeftyBlocks under tsdmediagems).
 const COLLECTION = 'tsdmediagems'
 
 // IMPORTANT: put your real template IDs here so we can classify "polished" vs "rough" reliably.
@@ -44,50 +43,52 @@ const TEMPLATES_ROUGH = new Set([
   894397, 894398, 894399, 894400, 894401, 894402, 894403, 894404, 894405, 894406,
 ])
 
+// --- Equipment categories (for counts/slots) ---
+const WORKER_IDS = new Set([ 894928, 894929, 894930, 894931, 894932 ]) // Pickaxe..Dump Truck
+const MINE_IDS   = new Set([ 894933, 894934, 894935 ])                  // Small/Medium/Large Mine
+const TABLE_ID   = 896279                                               // Polishing Table
+
 // Template details with images for polished gems
 const TEMPLATES_POLISHED_DETAILS = new Map([
-  [894387, { name: 'Diamond', image: '(1).png', imagePath: 'assets/gallery_images/(1).png' }],
-  [894388, { name: 'Ruby', image: '(2).png', imagePath: 'assets/gallery_images/(2).png' }],
-  [894389, { name: 'Sapphire', image: '(3).png', imagePath: 'assets/gallery_images/(3).png' }],
-  [894390, { name: 'Emerald', image: '(4).png', imagePath: 'assets/gallery_images/(4).png' }],
-  [894391, { name: 'Jade', image: '(5).png', imagePath: 'assets/gallery_images/(5).png' }],
-  [894392, { name: 'Tanzanite', image: '(6).png', imagePath: 'assets/gallery_images/(6).png' }],
-  [894393, { name: 'Opal', image: '(7).png', imagePath: 'assets/gallery_images/(7).png' }],
-  [894394, { name: 'Aquamarine', image: '(8).png', imagePath: 'assets/gallery_images/(8).png' }],
-  [894395, { name: 'Topaz', image: '(9).png', imagePath: 'assets/gallery_images/(9).png' }],
-  [894396, { name: 'Amethyst', image: '(10).png', imagePath: 'assets/gallery_images/(10).png' }],
+  [894387, { name: 'Diamond',     image: '(1).png',  imagePath: 'assets/gallery_images/(1).png' }],
+  [894388, { name: 'Ruby',        image: '(2).png',  imagePath: 'assets/gallery_images/(2).png' }],
+  [894389, { name: 'Sapphire',    image: '(3).png',  imagePath: 'assets/gallery_images/(3).png' }],
+  [894390, { name: 'Emerald',     image: '(4).png',  imagePath: 'assets/gallery_images/(4).png' }],
+  [894391, { name: 'Jade',        image: '(5).png',  imagePath: 'assets/gallery_images/(5).png' }],
+  [894392, { name: 'Tanzanite',   image: '(6).png',  imagePath: 'assets/gallery_images/(6).png' }],
+  [894393, { name: 'Opal',        image: '(7).png',  imagePath: 'assets/gallery_images/(7).png' }],
+  [894394, { name: 'Aquamarine',  image: '(8).png',  imagePath: 'assets/gallery_images/(8).png' }],
+  [894395, { name: 'Topaz',       image: '(9).png',  imagePath: 'assets/gallery_images/(9).png' }],
+  [894396, { name: 'Amethyst',    image: '(10).png', imagePath: 'assets/gallery_images/(10).png' }],
 ])
 
 // Template details with images for rough gems
 const TEMPLATES_ROUGH_DETAILS = new Map([
-  [894397, { name: 'Unpolished Diamond', image: '(11).png', imagePath: 'assets/gallery_images/(11).png' }],
-  [894398, { name: 'Unpolished Ruby', image: '(12).png', imagePath: 'assets/gallery_images/(12).png' }],
-  [894399, { name: 'Unpolished Sapphire', image: '(13).png', imagePath: 'assets/gallery_images/(13).png' }],
-  [894400, { name: 'Unpolished Emerald', image: '(14).png', imagePath: 'assets/gallery_images/(14).png' }],
-  [894401, { name: 'Unpolished Jade', image: '(15).png', imagePath: 'assets/gallery_images/(15).png' }],
-  [894402, { name: 'Unpolished Tanzanite', image: '(16).png', imagePath: 'assets/gallery_images/(16).png' }],
-  [894403, { name: 'Unpolished Opal', image: '(17).png', imagePath: 'assets/gallery_images/(17).png' }],
-  [894404, { name: 'Unpolished Aquamarine', image: '(18).png', imagePath: 'assets/gallery_images/(18).png' }],
-  [894405, { name: 'Unpolished Topaz', image: '(19).png', imagePath: 'assets/gallery_images/(19).png' }],
-  [894406, { name: 'Unpolished Amethyst', image: '(20).png', imagePath: 'assets/gallery_images/(20).png' }],
+  [894397, { name: 'Unpolished Diamond',     image: '(11).png', imagePath: 'assets/gallery_images/(11).png' }],
+  [894398, { name: 'Unpolished Ruby',        image: '(12).png', imagePath: 'assets/gallery_images/(12).png' }],
+  [894399, { name: 'Unpolished Sapphire',    image: '(13).png', imagePath: 'assets/gallery_images/(13).png' }],
+  [894400, { name: 'Unpolished Emerald',     image: '(14).png', imagePath: 'assets/gallery_images/(14).png' }],
+  [894401, { name: 'Unpolished Jade',        image: '(15).png', imagePath: 'assets/gallery_images/(15).png' }],
+  [894402, { name: 'Unpolished Tanzanite',   image: '(16).png', imagePath: 'assets/gallery_images/(16).png' }],
+  [894403, { name: 'Unpolished Opal',        image: '(17).png', imagePath: 'assets/gallery_images/(17).png' }],
+  [894404, { name: 'Unpolished Aquamarine',  image: '(18).png', imagePath: 'assets/gallery_images/(18).png' }],
+  [894405, { name: 'Unpolished Topaz',       image: '(19).png', imagePath: 'assets/gallery_images/(19).png' }],
+  [894406, { name: 'Unpolished Amethyst',    image: '(20).png', imagePath: 'assets/gallery_images/(20).png' }],
 ])
 
 // Equipment templates with Mining Power (MP) and images
 const TEMPLATES_EQUIPMENT = new Map([
   // [template_id, { name: string, mp: number, image: string, imagePath: string }]
-  [894928, { name: 'Pickaxe Worker', mp: 50, image: '41.png', imagePath: 'assets/gallery_images/41.png' }],
-  [894929, { name: 'Hammer Drill Worker', mp: 110, image: '42.png', imagePath: 'assets/gallery_images/42.png' }],
-  [894930, { name: 'Mini Excavator Worker', mp: 245, image: '43.jpg', imagePath: 'assets/gallery_images/43.jpg' }],
-  [894931, { name: 'Excavator', mp: 540, image: '44.png', imagePath: 'assets/gallery_images/44.png' }],
-  [894932, { name: 'Dump Truck', mp: 1190, image: '45.png', imagePath: 'assets/gallery_images/45.png' }],
-  [894933, { name: 'Small Mine', mp: 2620, image: '46.png', imagePath: 'assets/gallery_images/46.png' }],
-  [894934, { name: 'Medium Mine', mp: 5765, image: '47.png', imagePath: 'assets/gallery_images/47.png' }],
-  [894935, { name: 'Large Mine', mp: 12685, image: '48.png', imagePath: 'assets/gallery_images/48.png' }],
-  [896279, { name: 'Polishing Table', mp: 0, image: 'polishingtable.jpg', imagePath: 'assets/gallery_images/polishingtable.jpg' }],
+  [894928, { name: 'Pickaxe Worker',        mp: 50,    image: '41.png', imagePath: 'assets/gallery_images/41.png' }],
+  [894929, { name: 'Hammer Drill Worker',   mp: 110,   image: '42.png', imagePath: 'assets/gallery_images/42.png' }],
+  [894930, { name: 'Mini Excavator Worker', mp: 245,   image: '43.jpg', imagePath: 'assets/gallery_images/43.jpg' }],
+  [894931, { name: 'Excavator',             mp: 540,   image: '44.png', imagePath: 'assets/gallery_images/44.png' }],
+  [894932, { name: 'Dump Truck',            mp: 1190,  image: '45.png', imagePath: 'assets/gallery_images/45.png' }],
+  [894933, { name: 'Small Mine',            mp: 2620,  image: '46.png', imagePath: 'assets/gallery_images/46.png' }],
+  [894934, { name: 'Medium Mine',           mp: 5765,  image: '47.png', imagePath: 'assets/gallery_images/47.png' }],
+  [894935, { name: 'Large Mine',            mp: 12685, image: '48.png', imagePath: 'assets/gallery_images/48.png' }],
+  [896279, { name: 'Polishing Table',       mp: 0,     image: 'polishingtable.jpg', imagePath: 'assets/gallery_images/polishingtable.jpg' }],
 ])
-
-// If there are more polished/rough templates, just add them above.
-// If you prefer schema-based classification, we can switch to checking schema_name.
 
 // --- Helpers ---
 function requireActor(req, res) {
@@ -102,29 +103,19 @@ function requireActor(req, res) {
 // Fetch with fallback APIs
 async function fetchWithFallback(url, options) {
   const errors = []
-  
   for (let i = 0; i < ATOMIC_APIS.length; i++) {
     const apiBase = ATOMIC_APIS[i]
     const fullUrl = url.replace(ATOMIC_APIS[0], apiBase)
-    
     try {
       console.log(`[Inventory] Trying API ${i + 1}/${ATOMIC_APIS.length}: ${apiBase}`)
-      
       const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 30000) // 30 second timeout
-      
-      const response = await fetch(fullUrl, {
-        ...options,
-        signal: controller.signal
-      })
-      
+      const timeout = setTimeout(() => controller.abort(), 30000) // 30s
+      const response = await fetch(fullUrl, { ...options, signal: controller.signal })
       clearTimeout(timeout)
-      
       if (response.ok) {
         console.log(`[Inventory] ✅ Success with API: ${apiBase}`)
         return response
       }
-      
       const statusText = await response.text().catch(() => response.statusText)
       console.warn(`[Inventory] API ${i + 1} returned ${response.status}: ${statusText}`)
       errors.push(`${apiBase}: ${response.status}`)
@@ -133,8 +124,6 @@ async function fetchWithFallback(url, options) {
       errors.push(`${apiBase}: ${error.message}`)
     }
   }
-  
-  // All APIs failed
   console.error(`[Inventory] ❌ All ${ATOMIC_APIS.length} APIs failed:`, errors)
   throw new Error(`All AtomicAssets APIs failed: ${errors.join('; ')}`)
 }
@@ -159,21 +148,16 @@ async function fetchAllAssetsForOwner(owner, collection = COLLECTION) {
     console.log(`[Inventory] Fetching page ${page}...`)
 
     try {
-      const r = await fetchWithFallback(url.toString(), { 
-        headers: { 
-          accept: 'application/json',
-          'User-Agent': 'TSDGEMS/1.0'
-        }
+      const r = await fetchWithFallback(url.toString(), {
+        headers: { accept: 'application/json', 'User-Agent': 'TSDGEMS/1.0' }
       })
-      
       const j = await r.json()
       const data = Array.isArray(j?.data) ? j.data : []
       console.log(`[Inventory] Page ${page}: Found ${data.length} assets`)
-      
       all = all.concat(data)
       if (data.length < limit) break
       page++
-      if (page > 50) break // safety cap (5k assets); raise if needed
+      if (page > 50) break // safety cap (5k assets)
     } catch (error) {
       console.error(`[Inventory] Fetch error on page ${page}:`, error.message)
       throw error
@@ -206,54 +190,37 @@ function classifyAssets(assets) {
     }
 
     byTemplate[tid] = (byTemplate[tid] || 0) + 1
-    
+
     if (TEMPLATES_POLISHED.has(tid)) {
       polished++
-      const polishedInfo = TEMPLATES_POLISHED_DETAILS.get(tid)
-      if (polishedInfo) {
+      const info = TEMPLATES_POLISHED_DETAILS.get(tid)
+      if (info) {
         if (!polishedDetails[tid]) {
-          polishedDetails[tid] = {
-            name: polishedInfo.name,
-            image: polishedInfo.image,
-            imagePath: polishedInfo.imagePath,
-            count: 0
-          }
+          polishedDetails[tid] = { name: info.name, image: info.image, imagePath: info.imagePath, count: 0 }
         }
         polishedDetails[tid].count = byTemplate[tid]
       }
     } else if (TEMPLATES_ROUGH.has(tid)) {
       rough++
-      const roughInfo = TEMPLATES_ROUGH_DETAILS.get(tid)
-      if (roughInfo) {
+      const info = TEMPLATES_ROUGH_DETAILS.get(tid)
+      if (info) {
         if (!roughDetails[tid]) {
-          roughDetails[tid] = {
-            name: roughInfo.name,
-            image: roughInfo.image,
-            imagePath: roughInfo.imagePath,
-            count: 0
-          }
+          roughDetails[tid] = { name: info.name, image: info.image, imagePath: info.imagePath, count: 0 }
         }
         roughDetails[tid].count = byTemplate[tid]
       }
     } else if (TEMPLATES_EQUIPMENT.has(tid)) {
       equipment++
-      const equipmentInfo = TEMPLATES_EQUIPMENT.get(tid)
+      const info = TEMPLATES_EQUIPMENT.get(tid)
       const count = byTemplate[tid]
-      totalMiningPower += equipmentInfo.mp * count
-      
-      // Store equipment details
+      totalMiningPower += info.mp * count
+
       if (!equipmentDetails[tid]) {
-        equipmentDetails[tid] = {
-          name: equipmentInfo.name,
-          mp: equipmentInfo.mp,
-          image: equipmentInfo.image,
-          imagePath: equipmentInfo.imagePath,
-          count: 0
-        }
+        equipmentDetails[tid] = { name: info.name, mp: info.mp, image: info.image, imagePath: info.imagePath, count: 0 }
       }
       equipmentDetails[tid].count = count
     }
-    // else: ignore or count as "other" if you want: (byTemplate[-1]++)
+    // else ignore
   }
 
   // Create templateCounts structure for compatibility with existing API
@@ -261,80 +228,77 @@ function classifyAssets(assets) {
   let total = 0
   let uniqueTemplates = 0
 
-  // Add polished gems to templateCounts
+  // polished -> templateCounts
   for (const [tid, details] of Object.entries(polishedDetails)) {
     const key = `${tid}_${details.name}`
     templateCounts[key] = {
-      template_id: Number(tid),
-      name: details.name,
-      schema: 'gems',
-      count: details.count,
-      total_mining_power: 0,
-      image: details.image,
-      imagePath: details.imagePath
+      template_id: Number(tid), name: details.name, schema: 'gems',
+      count: details.count, total_mining_power: 0, image: details.image, imagePath: details.imagePath
     }
-    total += details.count
-    uniqueTemplates++
+    total += details.count; uniqueTemplates++
   }
 
-  // Add rough gems to templateCounts
+  // rough -> templateCounts
   for (const [tid, details] of Object.entries(roughDetails)) {
     const key = `${tid}_${details.name}`
     templateCounts[key] = {
-      template_id: Number(tid),
-      name: details.name,
-      schema: 'gems',
-      count: details.count,
-      total_mining_power: 0,
-      image: details.image,
-      imagePath: details.imagePath
+      template_id: Number(tid), name: details.name, schema: 'gems',
+      count: details.count, total_mining_power: 0, image: details.image, imagePath: details.imagePath
     }
-    total += details.count
-    uniqueTemplates++
+    total += details.count; uniqueTemplates++
   }
 
-  // Add equipment to templateCounts
+  // equipment -> templateCounts
   for (const [tid, details] of Object.entries(equipmentDetails)) {
     const key = `${tid}_${details.name}`
     const totalMp = details.mp * details.count
-    // Determine schema based on template ID
     let schema = 'equipment'
-    if (tid == 896279) { // Polishing Table
-      schema = 'tools'
-    }
-    
+    if (Number(tid) === TABLE_ID) schema = 'tools'
     templateCounts[key] = {
-      template_id: Number(tid),
-      name: details.name,
-      schema: schema,
-      count: details.count,
-      total_mining_power: totalMp,
-      image: details.image,
-      imagePath: details.imagePath,
-      mp: details.mp
+      template_id: Number(tid), name: details.name, schema,
+      count: details.count, total_mining_power: totalMp, image: details.image, imagePath: details.imagePath, mp: details.mp
     }
-    total += details.count
-    uniqueTemplates++
+    total += details.count; uniqueTemplates++
   }
 
-  // Calculate polishing slots based on Polishing Table count (max 10)
-  const polishingTableCount = byTemplate[896279] || 0
-  const polishingSlots = Math.min(polishingTableCount, 10)
-  console.log(`[Inventory] Polishing Table count: ${polishingTableCount}, slots: ${polishingSlots}`)
-  console.log(`[Inventory] byTemplate for 896279:`, byTemplate[896279])
+  // --- NEW: workers/mines/tables counts and derived slots ---
+  let workersCount = 0
+  let minesCount   = 0
+  const tablesCount = byTemplate[TABLE_ID] || 0
 
-  return { 
-    polished, 
-    rough, 
-    equipment, 
+  for (const [tidStr, details] of Object.entries(equipmentDetails)) {
+    const tid = Number(tidStr)
+    const cnt = Number(details.count || 0)
+    if (WORKER_IDS.has(tid)) workersCount += cnt
+    else if (MINE_IDS.has(tid)) minesCount += cnt
+  }
+
+  const minersCount = workersCount + minesCount
+  const miningSlots = Math.min(minersCount, 10)
+  const polishingTableCount = tablesCount
+  const polishingSlots = Math.min(tablesCount, 10)
+
+  console.log(`[Inventory] Workers:${workersCount} Mines:${minesCount} Tables:${tablesCount} -> miningSlots:${miningSlots} polishingSlots:${polishingSlots}`)
+
+  return {
+    polished,
+    rough,
+    equipment,
     totalMiningPower,
     total,
     uniqueTemplates,
-    byTemplate, 
+    byTemplate,
     templateCounts,
     polishedDetails,
     roughDetails,
     equipmentDetails,
+
+    // NEW fields
+    workersCount,
+    minesCount,
+    tablesCount,
+    minersCount,
+    miningSlots,
     polishingTableCount,
     polishingSlots
   }
