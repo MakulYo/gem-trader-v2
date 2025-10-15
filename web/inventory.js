@@ -203,30 +203,60 @@ Updated: ${updatedAtStr}</pre>
     }
 
     processInventoryData() {
-        if (!this.inventoryData || !this.inventoryData.byTemplate) {
+        console.log('[Inventory] processInventoryData called');
+        console.log('[Inventory] inventoryData:', this.inventoryData);
+        
+        if (!this.inventoryData || !this.inventoryData.templateCounts) {
+            console.log('[Inventory] No templateCounts data available');
             this.allNFTs = [];
             this.filteredNFTs = [];
             return;
         }
 
-        // Convert template data to NFT cards
+        // Convert templateCounts data to NFT cards
         this.allNFTs = [];
         this.collections.clear();
         
-        Object.entries(this.inventoryData.byTemplate).forEach(([templateId, count]) => {
+        console.log('[Inventory] Processing templateCounts:', Object.keys(this.inventoryData.templateCounts).length, 'templates');
+        
+        Object.entries(this.inventoryData.templateCounts).forEach(([key, templateData]) => {
+            const templateId = templateData.template_id;
+            const count = templateData.count;
+            const name = templateData.name;
+            const image = templateData.image;
+            const imagePath = templateData.imagePath;
+            const schema = templateData.schema;
+            const totalMiningPower = templateData.total_mining_power || 0;
+            const mp = templateData.mp || 0;
+
+            console.log(`[Inventory] Processing template ${templateId} (${name}): count=${count}, image="${image}", schema="${schema}"`);
+
             for (let i = 0; i < count; i++) {
+                // Use imagePath if available, otherwise build fallback path
+                let finalImagePath = null;
+                if (image) {
+                    // Always use the correct path for gallery_images
+                    finalImagePath = `assets/gallery_images/${image}`;
+                }
+                
+                console.log(`[Inventory] Template ${templateId} [${i}]: finalImagePath="${finalImagePath}"`);
+
                 this.allNFTs.push({
                     template_id: templateId,
                     asset_id: `${templateId}-${i}`,
                     collection: this.inventoryData.collection || 'tsdmediagems',
-                    name: this.getTemplateName(templateId),
-                    image: null, // Would need to fetch from AtomicAssets
-                    data: {}
+                    name: name,
+                    image: finalImagePath,
+                    schema: schema,
+                    mining_power: mp,
+                    total_mining_power: totalMiningPower,
+                    data: templateData
                 });
             }
             this.collections.add(this.inventoryData.collection || 'tsdmediagems');
         });
 
+        console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
         this.filteredNFTs = [...this.allNFTs];
         
         // Populate collection filter
@@ -273,12 +303,16 @@ Updated: ${updatedAtStr}</pre>
         const totalNFTs = document.getElementById('total-nfts');
         const polishedGems = document.getElementById('polished-gems');
         const roughGems = document.getElementById('rough-gems');
+        const equipmentCount = document.getElementById('equipment-count');
+        const miningPower = document.getElementById('mining-power');
         const uniqueTemplates = document.getElementById('unique-templates');
 
-        if (totalNFTs) totalNFTs.textContent = this.allNFTs.length;
+        if (totalNFTs) totalNFTs.textContent = this.inventoryData?.total || this.allNFTs.length;
         if (polishedGems) polishedGems.textContent = this.inventoryData?.polished || 0;
         if (roughGems) roughGems.textContent = this.inventoryData?.rough || 0;
-        if (uniqueTemplates) uniqueTemplates.textContent = Object.keys(this.inventoryData?.byTemplate || {}).length;
+        if (equipmentCount) equipmentCount.textContent = this.inventoryData?.equipment || 0;
+        if (miningPower) miningPower.textContent = this.inventoryData?.totalMiningPower || 0;
+        if (uniqueTemplates) uniqueTemplates.textContent = this.inventoryData?.uniqueTemplates || Object.keys(this.inventoryData?.templateCounts || {}).length;
     }
 
     renderNFTs() {
@@ -306,24 +340,76 @@ Updated: ${updatedAtStr}</pre>
         const card = document.createElement('div');
         card.className = 'nft-card';
         
+        // Get schema icon
+        const schemaIcon = this.getSchemaIcon(nft.schema);
+        
+        // Get schema color
+        const schemaColor = this.getSchemaColor(nft.schema);
+        
+        // Mining Power display for equipment
+        const miningPowerDisplay = (nft.schema === 'equipment' || nft.schema === 'tools') && nft.mining_power > 0 ? 
+            `<div class="nft-attribute">
+                <span class="nft-attribute-key">Mining Power:</span> ${nft.mining_power} MP
+            </div>` : '';
+        
+        // Create image element with fallback logic
+        let imageElement = '';
+        if (nft.image) {
+            console.log(`[Inventory] Creating image element for ${nft.name} with path: ${nft.image}`);
+            imageElement = `
+                <img src="${nft.image}" alt="${nft.name}" class="nft-image" 
+                     style="width: 100%; height: 100%; object-fit: contain;"
+                     onload="console.log('✅ Image loaded:', this.src);"
+                     onerror="console.log('❌ Image failed:', this.src); this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="nft-image-fallback" style="display: none; align-items: center; justify-content: center; height: 100%; color: #555;">
+                    <i class="fas ${schemaIcon}" style="font-size: 3rem;"></i>
+                </div>
+            `;
+        } else {
+            imageElement = `<i class="fas ${schemaIcon} nft-placeholder"></i>`;
+        }
+        
         card.innerHTML = `
             <div class="nft-card-header">
                 <span class="nft-template-id">Template #${nft.template_id}</span>
                 <span class="nft-asset-id">${nft.asset_id}</span>
             </div>
             <div class="nft-image-container">
-                ${nft.image ? 
-                    `<img src="${nft.image}" alt="${nft.name}" class="nft-image">` :
-                    `<i class="fas fa-gem nft-placeholder"></i>`
-                }
+                ${imageElement}
             </div>
             <div class="nft-name">${nft.name}</div>
-            <div class="nft-collection">
-                <i class="fas fa-layer-group"></i> ${nft.collection}
+            <div class="nft-collection" style="color: ${schemaColor};">
+                <i class="fas ${schemaIcon}"></i> ${nft.schema || 'unknown'}
+            </div>
+            <div class="nft-attributes">
+                ${miningPowerDisplay}
+                <div class="nft-attribute">
+                    <span class="nft-attribute-key">Collection:</span> ${nft.collection}
+                </div>
             </div>
         `;
 
         return card;
+    }
+
+    getSchemaIcon(schema) {
+        switch (schema) {
+            case 'gems': return 'fa-gem';
+            case 'equipment': return 'fa-industry';
+            case 'tools': return 'fa-tools';
+            case 'shards': return 'fa-shapes';
+            default: return 'fa-box';
+        }
+    }
+
+    getSchemaColor(schema) {
+        switch (schema) {
+            case 'gems': return '#00ff64';
+            case 'equipment': return '#00d4ff';
+            case 'tools': return '#ff9500';
+            case 'shards': return '#ff6b6b';
+            default: return '#aaa';
+        }
     }
 
     showLoadingState() {
@@ -436,6 +522,8 @@ Updated: ${updatedAtStr}</pre>
             this.inventoryData = await this.backendService.refreshInventory(this.currentActor);
             
             console.log('[Inventory] Inventory refreshed:', this.inventoryData);
+            console.log('[Inventory] polishingTableCount:', this.inventoryData.polishingTableCount);
+            console.log('[Inventory] polishingSlots:', this.inventoryData.polishingSlots);
             this.processInventoryData();
             this.updateStats();
             this.renderNFTs();
