@@ -57,13 +57,14 @@ async function getEffectiveMiningSlots(actor) {
   const [invSnap, profSnap] = await Promise.all([invSummary.get(), root.get()])
 
   const inv = invSnap.exists ? (invSnap.data() || {}) : {}
-  const capacity = Math.min(Number(inv.miningSlots || 0) || 0, MAX_SLOTS)
+  const nftSlots = Math.min(Number(inv.miningSlots || 0) || 0, MAX_SLOTS)
 
   const prof = profSnap.exists ? (profSnap.data() || {}) : {}
-  const unlocked = Number(prof.miningSlotsUnlocked || 0)
+  const unlockedSlots = Number(prof.miningSlotsUnlocked || 0)
 
-  const gate = unlocked > 0 ? unlocked : capacity
-  return Math.min(capacity, gate, MAX_SLOTS)
+  // Use the maximum of NFT-based slots and manually unlocked slots
+  // This allows players to unlock slots either by buying NFTs OR by spending TSDM
+  return Math.min(Math.max(nftSlots, unlockedSlots), MAX_SLOTS)
 }
 
 async function getActiveCount(actor) {
@@ -171,4 +172,52 @@ const completeMining = onRequest((req, res) =>
   })
 )
 
-module.exports = { startMining, getActiveMining, completeMining }
+// POST /unlockMiningSlot { actor }
+const unlockMiningSlot = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
+    const actor = requireActor(req, res); if (!actor) return
+
+    try {
+      const { root } = refs(actor)
+      const snap = await root.get()
+      if (!snap.exists) return res.status(404).json({ error: 'player not found' })
+
+      const profile = snap.data()
+      const currentSlots = Number(profile.miningSlotsUnlocked || 0)
+      
+      if (currentSlots >= MAX_SLOTS) {
+        return res.status(400).json({ error: 'maximum slots already unlocked' })
+      }
+
+      // Cost: 100 TSDM per slot (adjust as needed)
+      const UNLOCK_COST_TSDM = 100
+      const currentTSDM = Number(profile.balances?.TSDM || 0)
+
+      if (currentTSDM < UNLOCK_COST_TSDM) {
+        return res.status(400).json({ error: 'insufficient TSDM balance' })
+      }
+
+      // Deduct TSDM and unlock slot
+      const newTSDM = currentTSDM - UNLOCK_COST_TSDM
+      const newSlots = currentSlots + 1
+
+      await root.update({
+        'balances.TSDM': newTSDM,
+        miningSlotsUnlocked: newSlots
+      })
+
+      res.json({ 
+        ok: true, 
+        slotsUnlocked: newSlots,
+        tsdmRemaining: newTSDM,
+        costPaid: UNLOCK_COST_TSDM
+      })
+    } catch (e) {
+      console.error('[unlockMiningSlot]', e)
+      res.status(500).json({ error: e.message })
+    }
+  })
+)
+
+module.exports = { startMining, getActiveMining, completeMining, unlockMiningSlot }

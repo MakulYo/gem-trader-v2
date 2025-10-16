@@ -4,7 +4,7 @@
 const { onRequest }  = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin          = require('firebase-admin');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const corsLib        = require('cors');
 const fetch          = (...a) => import('node-fetch').then(({default: f}) => f(...a));
 
@@ -59,7 +59,7 @@ async function refreshNow() {
   const base   = deriveBasePrice(btcUsd);
   await db.doc('runtime/pricing').set({
     btcUsd, basePrice: base, source: 'coingecko',
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
   return { btcUsd, basePrice: base };
 }
@@ -82,7 +82,7 @@ async function getOrRefreshHistory(days = 30) {
   await db.doc(docId).set({
     days,
     points,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
     source: 'coingecko',
   }, { merge: true });
 
@@ -164,7 +164,7 @@ const chartTick = onRequest((req, res) =>
       await histRef.set({
         days: 30,
         points: filtered,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
         source: 'cron',
       }, { merge: true });
       res.json({ ok: true, added: filtered.length });
@@ -191,7 +191,7 @@ const chartHistoryCron = onSchedule('every 5 minutes', async () => {
     await histRef.set({
       days: 30,
       points: filtered,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       source: 'auto',
     }, { merge: true });
     console.log('chartHistoryCron tick ok', filtered.length);

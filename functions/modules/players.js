@@ -3,7 +3,7 @@
 
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 
 try { admin.app(); } catch { admin.initializeApp(); }
 const db = getFirestore(undefined, 'tsdgems'); // named DB
@@ -31,7 +31,7 @@ const initPlayer = onRequest(CORS, async (req, res) => {
 
   const actor = requireActor(req, res); if (!actor) return;
 
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
   const ref = db.collection('players').doc(actor);
   const snap = await ref.get();
 
@@ -95,7 +95,7 @@ async function syncNowInternal(actor) {
     getTsdmBalance(actor).catch(() => 0),
     getOwnedNfts(actor, process.env.ATOMIC_COLLECTION).catch(() => [])
   ]);
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
   await db.collection('players').doc(actor).set({
     balances: { WAX: wax, TSDM: tsdm },
     nfts: { count: Number(nfts.length || 0), lastSyncAt: now },

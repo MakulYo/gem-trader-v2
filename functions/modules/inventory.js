@@ -6,7 +6,7 @@
 
 const { onRequest }   = require('firebase-functions/v2/https')
 const admin           = require('firebase-admin')
-const { getFirestore } = require('firebase-admin/firestore')
+const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore')
 const corsLib         = require('cors')
 
 // Node 20+ has native fetch
@@ -306,7 +306,7 @@ function classifyAssets(assets) {
 
 // Persist summary under players/{actor}/inventory_summary
 async function writeInventorySummary(actor, summary) {
-  const now = admin.firestore.Timestamp.now()
+  const now = Timestamp.now()
   const ref = db.collection('players').doc(actor).collection('meta').doc('inventory_summary')
   await ref.set({
     ...summary,

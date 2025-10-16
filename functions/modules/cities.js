@@ -4,7 +4,7 @@
 const { onRequest }  = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin          = require('firebase-admin');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const corsLib        = require('cors');
 
 // --- Config ---
@@ -54,7 +54,7 @@ async function writeCityBonuses() {
     for (const k of GEM_KEYS) bonuses[k] = rand(0.01, 0.10);
     batch.set(
       db.doc(`city_boosts/${id}`),
-      { bonuses, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { bonuses, updatedAt: FieldValue.serverTimestamp() },
       { merge: true }
     );
   }
@@ -91,7 +91,7 @@ const seedCities = onRequest((req, res) =>
     if ((req.query.token || '') !== SEED_TOKEN) return res.status(403).json({ error: 'Forbidden' });
 
     await db.doc('game_config/cities').set(
-      { list: CITIES, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { list: CITIES, updatedAt: FieldValue.serverTimestamp() },
       { merge: true }
     );
     res.json({ ok: true, count: CITIES.length });
@@ -110,7 +110,7 @@ const seedBoostsInit = onRequest((req, res) =>
       for (const g of GEM_KEYS) bonuses[g] = 0;
       batch.set(
         db.doc(`city_boosts/${id}`),
-        { bonuses, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+        { bonuses, updatedAt: FieldValue.serverTimestamp() },
         { merge: true }
       );
     }

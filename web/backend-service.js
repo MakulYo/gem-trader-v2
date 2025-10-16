@@ -2,7 +2,13 @@
 // Zentrale Kommunikation mit Firebase Functions
 
 // Backend API Base URL (Firebase Functions)
-const API_BASE = 'https://us-central1-tsdgems-trading.cloudfunctions.net';
+// Auto-detect local emulator or use production
+const IS_LOCALHOST = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_BASE = IS_LOCALHOST 
+    ? 'http://127.0.0.1:5001/tsdgems-trading/us-central1'
+    : 'https://us-central1-tsdgems-trading.cloudfunctions.net';
+
+console.log('[Backend] API Base URL:', API_BASE, '(Localhost:', IS_LOCALHOST, ')');
 
 class BackendService {
     constructor() {
@@ -11,6 +17,8 @@ class BackendService {
         this.cityMatrix = null;
         this.basePriceData = null;
         this.apiBase = API_BASE;
+        
+        console.log('[Backend] Backend Service initialized with API Base:', this.apiBase);
     }
 
     /**
