@@ -39,7 +39,7 @@ const initPlayer = onRequest(CORS, async (req, res) => {
     account: actor,
     ingameCurrency: 0,
     tsdmBalance: 0,
-    miningSlotsUnlocked: 0,
+    miningSlotsUnlocked: 1,  // First slot is free and auto-unlocked
     polishingSlotsUnlocked: 0,
     monthlyScore: 0,
     nfts: { count: 0, lastSyncAt: now },
@@ -49,7 +49,13 @@ const initPlayer = onRequest(CORS, async (req, res) => {
   if (!snap.exists) {
     await ref.set({ ...base, createdAt: now, lastSeenAt: now });
   } else {
-    await ref.update({ lastSeenAt: now });
+    // Ensure existing players have at least 1 mining slot
+    const existingData = snap.data();
+    if (!existingData.miningSlotsUnlocked || existingData.miningSlotsUnlocked < 1) {
+      await ref.update({ lastSeenAt: now, miningSlotsUnlocked: 1 });
+    } else {
+      await ref.update({ lastSeenAt: now });
+    }
   }
 
   // sync balances + NFTs (read-only on-chain)

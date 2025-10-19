@@ -21,18 +21,47 @@ function requireActor(req, res) {
 
 const POLISHING_DURATION_MS = 1 * 60 * 60 * 1000
 const MAX_SLOTS = 10
+const MAX_AMOUNT_PER_SLOT = 500
 
-const GEM_MAP = {
-  diamond:     { rough:'rough_diamond',    polished:'polished_diamond' },
-  ruby:        { rough:'rough_ruby',       polished:'polished_ruby' },
-  sapphire:    { rough:'rough_sapphire',   polished:'polished_sapphire' },
-  emerald:     { rough:'rough_emerald',    polished:'polished_emerald' },
-  jade:        { rough:'rough_jade',       polished:'polished_jade' },
-  tanzanite:   { rough:'rough_tanzanite',  polished:'polished_tanzanite' },
-  opal:        { rough:'rough_opal',       polished:'polished_opal' },
-  aquamarine:  { rough:'rough_aquamarine', polished:'polished_aquamarine' },
-  topaz:       { rough:'rough_topaz',      polished:'polished_topaz' },
-  amethyst:    { rough:'rough_amethyst',   polished:'polished_amethyst' },
+// Only one general rough gem type (input)
+const ROUGH_GEM_KEY = 'rough_gems'
+
+// 10 specific polished gem types (output)
+const POLISHED_TYPES = [
+  'polished_diamond',
+  'polished_ruby',
+  'polished_sapphire',
+  'polished_emerald',
+  'polished_jade',
+  'polished_tanzanite',
+  'polished_opal',
+  'polished_aquamarine',
+  'polished_topaz',
+  'polished_amethyst'
+]
+
+// Weights for random polished gem type selection
+const WEIGHTS = {
+  polished_diamond: 0.03,      // 3%
+  polished_ruby: 0.05,          // 5%
+  polished_sapphire: 0.10,      // 10%
+  polished_emerald: 0.10,       // 10%
+  polished_jade: 0.1166,        // 11.66%
+  polished_tanzanite: 0.1166,   // 11.66%
+  polished_opal: 0.1166,        // 11.66%
+  polished_aquamarine: 0.1166,  // 11.66%
+  polished_topaz: 0.1166,       // 11.66%
+  polished_amethyst: 0.1166     // 11.66%
+}
+
+function pickPolishedType() {
+  const r = Math.random()
+  let a = 0
+  for (const [k, w] of Object.entries(WEIGHTS)) { 
+    a += w
+    if (r <= a) return k
+  }
+  return 'polished_amethyst'
 }
 
 function refs(actor) {
@@ -66,46 +95,59 @@ async function getActiveCount(actor) {
   return snap.size || 0
 }
 
-function polishingYield(n) {
-  const noise = Math.round(n * ((Math.random()*0.2) - 0.1)) // ±10%
-  return Math.max(0, n + noise)
+function getNextAvailableSlot(existingJobs, maxSlots) {
+  const usedSlots = new Set(existingJobs.map(j => j.slotNum).filter(Boolean))
+  for (let i = 1; i <= maxSlots; i++) {
+    if (!usedSlots.has(i)) return i
+  }
+  return null
 }
 
-// POST /startPolishing { actor, gem, amount }
+// POST /startPolishing { actor, amount }
 const startPolishing = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
     const actor = requireActor(req, res); if (!actor) return
 
-    const gem = String(req.body?.gem || '').toLowerCase()
     const amount = Math.max(1, Number(req.body?.amount || 0) | 0)
-    if (!GEM_MAP[gem]) return res.status(400).json({ error: 'invalid gem' })
     if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'invalid amount' })
+    if (amount > MAX_AMOUNT_PER_SLOT) return res.status(400).json({ error: `maximum ${MAX_AMOUNT_PER_SLOT} gems per slot` })
 
     try {
-      const [slots, activeCount] = await Promise.all([ getEffectivePolishingSlots(actor), getActiveCount(actor) ])
+      const { gems, active } = refs(actor)
+      
+      // Get existing jobs to determine available slot
+      const snap = await active.get()
+      const existingJobs = snap.docs.map(d => d.data())
+      
+      const slots = await getEffectivePolishingSlots(actor)
+      const activeCount = existingJobs.length
+      
       if (activeCount >= slots) return res.status(400).json({ error: 'no available polishing slots' })
 
-      const { gems, active } = refs(actor)
+      // Find next available slot number
+      const slotNum = getNextAvailableSlot(existingJobs, slots)
+      if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
+
       const now = Date.now()
       const jobId = `job_${now}_${Math.floor(Math.random()*1e6)}`
+      const slotId = `slot_${slotNum}`
       const finishAt = now + POLISHING_DURATION_MS
-      const roughKey = GEM_MAP[gem].rough
 
       await db.runTransaction(async (tx) => {
         const gSnap = await tx.get(gems)
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
-        const have = Number(cur[roughKey] || 0)
-        if (have < amount) throw new Error(`insufficient ${roughKey}: have ${have}, need ${amount}`)
-        tx.set(gems, { ...cur, [roughKey]: have - amount }, { merge: true })
+        const have = Number(cur[ROUGH_GEM_KEY] || 0)
+        if (have < amount) throw new Error(`insufficient rough gems: have ${have}, need ${amount}`)
+        tx.set(gems, { ...cur, [ROUGH_GEM_KEY]: have - amount }, { merge: true })
 
         tx.set(active.doc(jobId), {
-          jobId, actor, gem, roughKey, amountIn: amount,
+          jobId, slotId, slotNum, actor, amountIn: amount,
           startedAt: now, finishAt, status: 'active'
         })
       })
 
-      res.json({ ok: true, jobId, finishAt })
+      res.json({ ok: true, jobId, slotId, slotNum, finishAt })
     } catch (e) {
       console.error('[startPolishing]', e)
       res.status(400).json({ error: e.message })
@@ -145,21 +187,28 @@ const completePolishing = onRequest((req, res) =>
       const now = Date.now()
       if (now < job.finishAt) return res.status(400).json({ error: 'job still in progress' })
 
-      const polishedKey = GEM_MAP[job.gem]?.polished
-      if (!polishedKey) return res.status(400).json({ error: 'invalid job gem' })
-
-      const out = polishingYield(job.amountIn)
+      // 1:1 conversion - no yield variation
+      const out = job.amountIn
+      
+      // Randomly select polished gem type
+      const polishedType = pickPolishedType()
 
       await db.runTransaction(async (tx) => {
         const gSnap = await tx.get(gems)
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
-        const have = Number(cur[polishedKey] || 0)
-        tx.set(gems, { ...cur, [polishedKey]: have + out }, { merge: true })
-        tx.set(history.doc(jobId), { ...job, status:'done', polishedKey, outAmount: out, completedAt: now })
+        const have = Number(cur[polishedType] || 0)
+        tx.set(gems, { ...cur, [polishedType]: have + out }, { merge: true })
+        tx.set(history.doc(jobId), { 
+          ...job, 
+          status: 'done', 
+          polishedType: polishedType,
+          outAmount: out, 
+          completedAt: now 
+        })
         tx.delete(jobRef)
       })
 
-      res.json({ ok: true, result: { gem: job.gem, polishedKey, outAmount: out, completedAt: now } })
+      res.json({ ok: true, result: { polishedType, outAmount: out, completedAt: now } })
     } catch (e) {
       console.error('[completePolishing]', e)
       res.status(500).json({ error: e.message })

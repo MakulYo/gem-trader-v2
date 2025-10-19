@@ -23,23 +23,22 @@ const MINING_DURATION_MS = 3 * 60 * 60 * 1000   // 3 hours
 const MINING_COST_TSDM   = 50                   // recorded only (no debit yet)
 const MAX_SLOTS          = 10
 
-const WEIGHTS = {
-  diamond: 0.03,
-  ruby: 0.05,
-  sapphire: 0.10,
-  emerald: 0.10,
-  jade: 0.1166,
-  tanzanite: 0.1166,
-  opal: 0.1166,
-  aquamarine: 0.1166,
-  topaz: 0.1166,
-  amethyst: 0.1166,
-}
-const ROUGH_KEY = {
-  diamond:'rough_diamond', ruby:'rough_ruby', sapphire:'rough_sapphire', emerald:'rough_emerald',
-  jade:'rough_jade', tanzanite:'rough_tanzanite', opal:'rough_opal', aquamarine:'rough_aquamarine',
-  topaz:'rough_topaz', amethyst:'rough_amethyst'
-}
+// Slot unlock costs (slot 1 is free, already unlocked)
+const SLOT_UNLOCK_COSTS = [
+  0,      // Slot 1 - Free/Already unlocked
+  250,    // Slot 2
+  500,    // Slot 3
+  1000,   // Slot 4
+  2000,   // Slot 5
+  4000,   // Slot 6
+  8000,   // Slot 7
+  16000,  // Slot 8
+  20000,  // Slot 9
+  25000   // Slot 10
+]
+
+// Mining now produces only one unified rough_gems type
+// (Previously used different types: rough_diamond, rough_ruby, etc.)
 
 function refs(actor) {
   const root = db.collection('players').doc(actor)
@@ -73,11 +72,14 @@ async function getActiveCount(actor) {
   return snap.size || 0
 }
 
-function pickType() {
-  const r = Math.random()
-  let a = 0
-  for (const [k, w] of Object.entries(WEIGHTS)) { a += w; if (r <= a) return k }
-  return 'amethyst'
+function getNextAvailableSlot(existingJobs, maxSlots) {
+  // Get all used slot numbers
+  const usedSlots = new Set(existingJobs.map(j => j.slotNum).filter(Boolean))
+  // Find first available slot
+  for (let i = 1; i <= maxSlots; i++) {
+    if (!usedSlots.has(i)) return i
+  }
+  return null
 }
 
 function computeYield(totalMiningPower = 0) {
@@ -93,22 +95,31 @@ const startMining = onRequest((req, res) =>
     const actor = requireActor(req, res); if (!actor) return
 
     try {
-      const [slots, activeCount] = await Promise.all([
-        getEffectiveMiningSlots(actor),
-        getActiveCount(actor)
-      ])
+      const { active } = refs(actor)
+      
+      // Get existing jobs to determine available slot
+      const snap = await active.get()
+      const existingJobs = snap.docs.map(d => d.data())
+      
+      const slots = await getEffectiveMiningSlots(actor)
+      const activeCount = existingJobs.length
+      
       if (activeCount >= slots) return res.status(400).json({ error: 'no available mining slots' })
+
+      // Find next available slot number
+      const slotNum = getNextAvailableSlot(existingJobs, slots)
+      if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
 
       const now = Date.now()
       const jobId = `job_${now}_${Math.floor(Math.random()*1e6)}`
+      const slotId = `slot_${slotNum}`
       const finishAt = now + MINING_DURATION_MS
-      const { active } = refs(actor)
 
       await active.doc(jobId).set({
-        jobId, actor, startedAt: now, finishAt, status: 'active',
+        jobId, slotId, slotNum, actor, startedAt: now, finishAt, status: 'active',
         costTsdm: MINING_COST_TSDM
       })
-      res.json({ ok: true, jobId, finishAt })
+      res.json({ ok: true, jobId, slotId, slotNum, finishAt })
     } catch (e) {
       console.error('[startMining]', e)
       res.status(500).json({ error: e.message })
@@ -151,8 +162,8 @@ const completeMining = onRequest((req, res) =>
       const invSnap = await invSummary.get()
       const totalMP = Number(invSnap.exists ? (invSnap.data()?.totalMiningPower || 0) : 0)
 
-      const type  = pickType()
-      const key   = ROUGH_KEY[type]
+      // Mining now produces only one type: rough_gems
+      const key   = 'rough_gems'
       const amt   = computeYield(totalMP)
 
       await db.runTransaction(async (tx) => {
@@ -160,11 +171,11 @@ const completeMining = onRequest((req, res) =>
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
         const have = Number(cur[key] || 0)
         tx.set(gems, { ...cur, [key]: have + amt }, { merge: true })
-        tx.set(history.doc(jobId), { ...job, status: 'done', completedAt: now, roughType: type, roughKey: key, yieldAmt: amt })
+        tx.set(history.doc(jobId), { ...job, status: 'done', completedAt: now, roughKey: key, yieldAmt: amt })
         tx.delete(jobRef)
       })
 
-      res.json({ ok: true, result: { roughType: type, roughKey: key, yieldAmt: amt, completedAt: now } })
+      res.json({ ok: true, result: { roughKey: key, yieldAmt: amt, completedAt: now } })
     } catch (e) {
       console.error('[completeMining]', e)
       res.status(500).json({ error: e.message })
@@ -172,11 +183,12 @@ const completeMining = onRequest((req, res) =>
   })
 )
 
-// POST /unlockMiningSlot { actor }
+// POST /unlockMiningSlot { actor, targetSlot }
 const unlockMiningSlot = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
     const actor = requireActor(req, res); if (!actor) return
+    const targetSlot = Number(req.body?.targetSlot || 0)
 
     try {
       const { root } = refs(actor)
@@ -186,20 +198,30 @@ const unlockMiningSlot = onRequest((req, res) =>
       const profile = snap.data()
       const currentSlots = Number(profile.miningSlotsUnlocked || 0)
       
+      // Target slot must be the next one in sequence
+      const nextSlotToUnlock = currentSlots + 1
+      if (targetSlot !== nextSlotToUnlock) {
+        return res.status(400).json({ 
+          error: `Please unlock slots in order. Next available slot is ${nextSlotToUnlock}` 
+        })
+      }
+      
       if (currentSlots >= MAX_SLOTS) {
         return res.status(400).json({ error: 'maximum slots already unlocked' })
       }
 
-      // Cost: 100 TSDM per slot (adjust as needed)
-      const UNLOCK_COST_TSDM = 100
+      // Get cost for this specific slot (0-indexed array)
+      const unlockCost = SLOT_UNLOCK_COSTS[targetSlot - 1] || 0
       const currentTSDM = Number(profile.balances?.TSDM || 0)
 
-      if (currentTSDM < UNLOCK_COST_TSDM) {
-        return res.status(400).json({ error: 'insufficient TSDM balance' })
+      if (currentTSDM < unlockCost) {
+        return res.status(400).json({ 
+          error: `insufficient TSDM balance (need ${unlockCost}, have ${currentTSDM})` 
+        })
       }
 
       // Deduct TSDM and unlock slot
-      const newTSDM = currentTSDM - UNLOCK_COST_TSDM
+      const newTSDM = currentTSDM - unlockCost
       const newSlots = currentSlots + 1
 
       await root.update({
@@ -211,7 +233,8 @@ const unlockMiningSlot = onRequest((req, res) =>
         ok: true, 
         slotsUnlocked: newSlots,
         tsdmRemaining: newTSDM,
-        costPaid: UNLOCK_COST_TSDM
+        costPaid: unlockCost,
+        slotNumber: targetSlot
       })
     } catch (e) {
       console.error('[unlockMiningSlot]', e)

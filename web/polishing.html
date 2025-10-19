@@ -10,6 +10,51 @@
     <style>
       .hidden { display: none !important; }
       #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
+      
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+      
+      .polishing-slot.active.in-progress {
+        animation: glow-orange 2s ease-in-out infinite;
+      }
+      
+      .polishing-slot.active.complete {
+        animation: glow-green 1.5s ease-in-out infinite;
+      }
+      
+      @keyframes glow-orange {
+        0%, 100% { box-shadow: 0 0 20px rgba(255, 149, 0, 0.3); }
+        50% { box-shadow: 0 0 30px rgba(255, 149, 0, 0.6); }
+      }
+      
+      @keyframes glow-green {
+        0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 100, 0.3); }
+        50% { box-shadow: 0 0 35px rgba(0, 255, 100, 0.7); }
+      }
+      
+      .nft-card:hover {
+        transform: translateY(-5px);
+        border-color: #00ff64 !important;
+        box-shadow: 0 5px 20px rgba(255, 149, 0, 0.4);
+      }
+      
+      .modal-overlay.active {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .gem-selection-card:hover:not(.disabled) {
+        transform: translateY(-3px);
+        border-color: #00ff64 !important;
+        box-shadow: 0 4px 15px rgba(255, 149, 0, 0.4);
+      }
+      
+      .gem-selection-card.disabled {
+        cursor: not-allowed !important;
+      }
     </style>
 </head>
 <body>
@@ -77,11 +122,11 @@
               </div>
               <div class="stat-card">
                 <div class="stat-icon">
-                  <i class="fas fa-box"></i>
+                  <i class="fas fa-table"></i>
                 </div>
                 <div class="stat-content">
-                  <h3>Total Gem Inventory</h3>
-                  <p class="stat-value" id="total-inventory-gems">0</p>
+                  <h3>Polishing Tables</h3>
+                  <p class="stat-value" id="polishing-tables-count">0</p>
                 </div>
               </div>
             </div>
@@ -98,28 +143,55 @@
             </div>
           </div>
 
-          <div class="gem-inventory" id="gem-inventory">
+          <div class="polished-gems-distribution" style="margin-top: 40px;">
             <div class="section-title">
-              <h3><i class="fas fa-gem"></i> In-Game Gem Distribution</h3>
-              <p>Drop chances for gems earned through polishing (not NFTs)</p>
-              <p style="margin-top: 10px; color: #00d4ff; font-size: 0.9rem;">
-                <i class="fas fa-info-circle"></i> For your NFT inventory, visit the <a href="inventory.html" style="color: #00d4ff; text-decoration: underline;">Inventory</a> page
-              </p>
+              <h3><i class="fas fa-gem"></i> Polished Gem Types & Drop Chances</h3>
+              <p>When polishing rough gems, you'll receive one of these polished gem types based on RNG</p>
             </div>
             
             <div class="distribution-table">
-              <table class="gem-distribution-table">
+              <table class="gem-distribution-table" style="width: 100%; margin-top: 20px;">
                 <thead>
                   <tr>
-                    <th>Gem Type</th>
-                    <th>Drop Chance</th>
-                    <th>Earned (In-Game)</th>
+                    <th style="text-align: left; padding: 12px; border-bottom: 2px solid rgba(255, 149, 0, 0.3);">Polished Gem Type</th>
+                    <th style="text-align: center; padding: 12px; border-bottom: 2px solid rgba(255, 149, 0, 0.3);">Drop Chance</th>
+                    <th style="text-align: center; padding: 12px; border-bottom: 2px solid rgba(255, 149, 0, 0.3);">Rarity</th>
+                    <th style="text-align: right; padding: 12px; border-bottom: 2px solid rgba(255, 149, 0, 0.3);">You Own</th>
                   </tr>
                 </thead>
-                <tbody id="inventory-table-body">
-                  <!-- Gem distribution will be populated by JavaScript -->
+                <tbody id="polished-gems-table-body">
+                  <!-- Will be populated by JavaScript -->
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <div class="polishing-info" style="margin-top: 30px; padding: 25px; background: rgba(0, 212, 255, 0.05); border: 2px solid rgba(0, 212, 255, 0.2); border-radius: 12px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+              <div style="padding: 15px; background: rgba(0, 0, 0, 0.3); border-radius: 8px;">
+                <h4 style="color: #ff9500; margin-bottom: 8px; font-size: 1em;">
+                  <i class="fas fa-table"></i> 1. Stake Tables
+                </h4>
+                <p style="color: #888; font-size: 0.85em; margin: 0;">
+                  Each Polishing Table NFT unlocks 1 polishing slot. Stake them to activate slots.
+                </p>
+              </div>
+              <div style="padding: 15px; background: rgba(0, 0, 0, 0.3); border-radius: 8px;">
+                <h4 style="color: #ff9500; margin-bottom: 8px; font-size: 1em;">
+                  <i class="fas fa-play"></i> 2. Start Polishing
+                </h4>
+                <p style="color: #888; font-size: 0.85em; margin: 0;">
+                  Select amount (max 500 per slot) and start. Polishing takes 1 hour.
+                </p>
+              </div>
+              <div style="padding: 15px; background: rgba(0, 0, 0, 0.3); border-radius: 8px;">
+                <h4 style="color: #ff9500; margin-bottom: 8px; font-size: 1em;">
+                  <i class="fas fa-gift"></i> 3. Claim Rewards
+                </h4>
+                <p style="color: #888; font-size: 0.85em; margin: 0;">
+                  Receive random polished gem type (1:1 conversion).
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -127,6 +199,19 @@
     </main>
 
     <div id="notifications" class="notifications"></div>
+
+    <!-- Modal -->
+    <div id="modal-overlay" class="modal-overlay">
+      <div class="modal" id="modal">
+        <div class="modal-header">
+          <h3 id="modal-title">Modal Title</h3>
+          <button class="modal-close" onclick="game.closeStakeModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
 
     <script type="module" src="wallet.js"></script>
     <script src="backend-service.js"></script>

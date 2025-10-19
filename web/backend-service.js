@@ -3,12 +3,14 @@
 
 // Backend API Base URL (Firebase Functions)
 // Auto-detect local emulator or use production
+// For local: use empty string to use hosting rewrites on port 5000
+// For production: use full CloudFunctions URL
 const IS_LOCALHOST = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const API_BASE = IS_LOCALHOST 
-    ? 'http://127.0.0.1:5001/tsdgems-trading/us-central1'
+    ? ''  // Use hosting rewrites (same origin, port 5000)
     : 'https://us-central1-tsdgems-trading.cloudfunctions.net';
 
-console.log('[Backend] API Base URL:', API_BASE, '(Localhost:', IS_LOCALHOST, ')');
+console.log('[Backend] API Base URL:', API_BASE || 'Using hosting rewrites', '(Localhost:', IS_LOCALHOST, ')');
 
 class BackendService {
     constructor() {
@@ -58,9 +60,18 @@ class BackendService {
         try {
             console.log('[Backend] ==========================================');
             console.log('[Backend] Fetching dashboard for actor:', actor);
-            const url = new URL(`${this.apiBase}/getDashboard`);
-            url.searchParams.set('actor', actor);
-            console.log('[Backend] Request URL:', url.toString());
+            
+            // Build URL - handle both absolute and relative paths
+            let url;
+            if (this.apiBase) {
+                // Production: use full URL
+                url = new URL(`${this.apiBase}/getDashboard`);
+                url.searchParams.set('actor', actor);
+            } else {
+                // Local: use relative path with query params
+                url = `/getDashboard?actor=${encodeURIComponent(actor)}`;
+            }
+            console.log('[Backend] Request URL:', url.toString ? url.toString() : url);
             
             const response = await fetch(url);
             console.log('[Backend] Response status:', response.status);
@@ -155,8 +166,17 @@ class BackendService {
     async getChartData(days = 30) {
         try {
             console.log('[Backend] Fetching chart data for', days, 'days...');
-            const url = new URL(`${this.apiBase}/getChart`);
-            url.searchParams.set('days', days);
+            
+            // Build URL - handle both absolute and relative paths
+            let url;
+            if (this.apiBase) {
+                // Production: use full URL
+                url = new URL(`${this.apiBase}/getChart`);
+                url.searchParams.set('days', days);
+            } else {
+                // Local: use relative path with query params
+                url = `/getChart?days=${days}`;
+            }
             
             const response = await fetch(url);
             
@@ -182,10 +202,22 @@ class BackendService {
     async getInventory(actor, refresh = false) {
         try {
             console.log('[Backend] Fetching inventory for actor:', actor, 'refresh:', refresh);
-            const url = new URL(`${this.apiBase}/getInventory`);
-            url.searchParams.set('actor', actor);
-            if (refresh) {
-                url.searchParams.set('refresh', '1');
+            
+            // Build URL - handle both absolute and relative paths
+            let url;
+            if (this.apiBase) {
+                // Production: use full URL
+                url = new URL(`${this.apiBase}/getInventory`);
+                url.searchParams.set('actor', actor);
+                if (refresh) {
+                    url.searchParams.set('refresh', 'true');
+                }
+            } else {
+                // Local: use relative path with query params
+                url = `/getInventory?actor=${encodeURIComponent(actor)}`;
+                if (refresh) {
+                    url += '&refresh=true';
+                }
             }
             
             const response = await fetch(url);

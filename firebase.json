@@ -13,7 +13,20 @@
       { "source": "/refreshBasePrice",     "function": "refreshBasePrice" },
 
       { "source": "/getInventory",     "function": "getInventory" },
-      { "source": "/refreshInventory", "function": "refreshInventory" }
+      { "source": "/refreshInventory", "function": "refreshInventory" },
+      
+      { "source": "/seedCities",        "function": "seedCities" },
+      { "source": "/seedBoostsInit",    "function": "seedBoostsInit" },
+      { "source": "/updateBonusesNow",  "function": "updateBonusesNow" },
+      
+      { "source": "/startMining",       "function": "startMining" },
+      { "source": "/getActiveMining",   "function": "getActiveMining" },
+      { "source": "/completeMining",    "function": "completeMining" },
+      { "source": "/unlockMiningSlot",  "function": "unlockMiningSlot" },
+      
+      { "source": "/startPolishing",      "function": "startPolishing" },
+      { "source": "/getActivePolishing",  "function": "getActivePolishing" },
+      { "source": "/completePolishing",   "function": "completePolishing" }
     ]
   }
 ,
