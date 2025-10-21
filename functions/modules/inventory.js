@@ -177,6 +177,7 @@ function classifyAssets(assets) {
   const polishedDetails = {}
   const roughDetails = {}
   const equipmentDetails = {}
+  const assetsList = [] // NEW: Store individual assets with their IDs
 
   for (const a of assets) {
     const tid = Number(a.template?.template_id || a.template_id || a.template_id_num || 0)
@@ -189,6 +190,10 @@ function classifyAssets(assets) {
       continue
     }
 
+    // NEW: Extract asset_id and store individual asset data
+    const assetId = a.asset_id || a.id || null
+    const assetName = a.name || a.data?.name || ''
+    
     byTemplate[tid] = (byTemplate[tid] || 0) + 1
 
     if (TEMPLATES_POLISHED.has(tid)) {
@@ -196,19 +201,41 @@ function classifyAssets(assets) {
       const info = TEMPLATES_POLISHED_DETAILS.get(tid)
       if (info) {
         if (!polishedDetails[tid]) {
-          polishedDetails[tid] = { name: info.name, image: info.image, imagePath: info.imagePath, count: 0 }
+          polishedDetails[tid] = { name: info.name, image: info.image, imagePath: info.imagePath, count: 0, assets: [] }
         }
         polishedDetails[tid].count = byTemplate[tid]
+        polishedDetails[tid].assets.push(assetId) // Store asset ID
       }
+      // NEW: Add to assets list
+      assetsList.push({
+        asset_id: assetId,
+        template_id: tid,
+        name: info?.name || assetName,
+        schema: 'gems',
+        image: info?.image || null,
+        imagePath: info?.imagePath || null,
+        category: 'polished'
+      })
     } else if (TEMPLATES_ROUGH.has(tid)) {
       rough++
       const info = TEMPLATES_ROUGH_DETAILS.get(tid)
       if (info) {
         if (!roughDetails[tid]) {
-          roughDetails[tid] = { name: info.name, image: info.image, imagePath: info.imagePath, count: 0 }
+          roughDetails[tid] = { name: info.name, image: info.image, imagePath: info.imagePath, count: 0, assets: [] }
         }
         roughDetails[tid].count = byTemplate[tid]
+        roughDetails[tid].assets.push(assetId) // Store asset ID
       }
+      // NEW: Add to assets list
+      assetsList.push({
+        asset_id: assetId,
+        template_id: tid,
+        name: info?.name || assetName,
+        schema: 'gems',
+        image: info?.image || null,
+        imagePath: info?.imagePath || null,
+        category: 'rough'
+      })
     } else if (TEMPLATES_EQUIPMENT.has(tid)) {
       equipment++
       const info = TEMPLATES_EQUIPMENT.get(tid)
@@ -216,9 +243,23 @@ function classifyAssets(assets) {
       totalMiningPower += info.mp * count
 
       if (!equipmentDetails[tid]) {
-        equipmentDetails[tid] = { name: info.name, mp: info.mp, image: info.image, imagePath: info.imagePath, count: 0 }
+        equipmentDetails[tid] = { name: info.name, mp: info.mp, image: info.image, imagePath: info.imagePath, count: 0, assets: [] }
       }
       equipmentDetails[tid].count = count
+      equipmentDetails[tid].assets.push(assetId) // Store asset ID
+      
+      // NEW: Add to assets list
+      const schema = Number(tid) === TABLE_ID ? 'tools' : 'equipment'
+      assetsList.push({
+        asset_id: assetId,
+        template_id: tid,
+        name: info?.name || assetName,
+        schema: schema,
+        image: info?.image || null,
+        imagePath: info?.imagePath || null,
+        mp: info.mp,
+        category: schema
+      })
     }
     // else ignore
   }
@@ -279,6 +320,7 @@ function classifyAssets(assets) {
   const polishingSlots = Math.min(tablesCount, 10)
 
   console.log(`[Inventory] Workers:${workersCount} Mines:${minesCount} Tables:${tablesCount} -> miningSlots:${miningSlots} polishingSlots:${polishingSlots}`)
+  console.log(`[Inventory] Total individual assets with IDs: ${assetsList.length}`)
 
   return {
     polished,
@@ -292,6 +334,7 @@ function classifyAssets(assets) {
     polishedDetails,
     roughDetails,
     equipmentDetails,
+    assets: assetsList, // NEW: Array of individual assets with their asset_ids
 
     // NEW fields
     workersCount,
@@ -329,9 +372,16 @@ const getInventory = onRequest((req, res) =>
     const ref = db.collection('players').doc(actor).collection('meta').doc('inventory_summary')
     const snap = await ref.get()
 
+    // Load gems from inventory/gems subcollection
+    const gemsRef = db.collection('players').doc(actor).collection('inventory').doc('gems');
+    const gemsSnap = await gemsRef.get();
+    const gemsData = gemsSnap.exists ? gemsSnap.data() : {};
+    
     if (!force && snap.exists) {
       console.log(`[getInventory] Returning cached data for ${actor}`)
-      return res.json({ ok: true, cached: true, actor, ...snap.data() })
+      const cachedData = snap.data();
+      // Merge gems data
+      return res.json({ ok: true, cached: true, actor, ...cachedData, ...gemsData })
     }
 
     // If force or cache miss → refresh then return
@@ -342,13 +392,15 @@ const getInventory = onRequest((req, res) =>
       await writeInventorySummary(actor, summary)
       const fresh = await ref.get()
       console.log(`[getInventory] Successfully fetched and cached inventory for ${actor}`)
-      return res.json({ ok: true, cached: false, actor, ...fresh.data() })
+      // Merge gems data with inventory summary
+      return res.json({ ok: true, cached: false, actor, ...fresh.data(), ...gemsData })
     } catch (e) {
       console.error('[getInventory] Refresh failed:', e.message, e.stack)
       if (snap.exists) {
         // fallback to stale cache
         console.log(`[getInventory] Returning stale cache for ${actor}`)
-        return res.json({ ok: true, cached: true, stale: true, actor, ...snap.data() })
+        const staleData = snap.data();
+        return res.json({ ok: true, cached: true, stale: true, actor, ...staleData, ...gemsData })
       }
       return res.status(502).json({ error: e.message || 'atomicassets unavailable' })
     }

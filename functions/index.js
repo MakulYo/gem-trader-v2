@@ -10,6 +10,9 @@ const chart     = require('./modules/chart');
 const inventory = require('./modules/inventory');
 const mining    = require('./modules/mining');
 const polishing = require('./modules/polishing');
+const payments  = require('./modules/payments');
+const staking   = require('./modules/staking');
+const trading   = require('./modules/trading');
 
 module.exports = Object.assign(
   { healthcheck },
@@ -18,5 +21,8 @@ module.exports = Object.assign(
   chart,
   inventory,
   mining,
-  polishing
+  polishing,
+  payments,
+  staking,
+  trading
 );

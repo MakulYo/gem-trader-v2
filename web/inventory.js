@@ -9,6 +9,7 @@ class InventoryPage extends TSDGEMSGame {
         this.filteredNFTs = [];
         this.currentActor = null;
         this.collections = new Set();
+        this.stakedAssetIds = new Set(); // Track staked assets
         this.init();
     }
 
@@ -179,11 +180,16 @@ Updated: ${updatedAtStr}</pre>
             this.showLoadingState();
             this.showNotification(forceRefresh ? 'Refreshing inventory from blockchain...' : 'Loading inventory...', 'info');
             
-            // Get full NFT data - we'll need to fetch from AtomicAssets directly for full details
-            // For now, use the inventory summary
-            this.inventoryData = await this.backendService.getInventory(this.currentActor, forceRefresh);
+            // Load inventory and staked assets in parallel
+            const [inventoryData, stakedAssets] = await Promise.all([
+                this.backendService.getInventory(this.currentActor, forceRefresh),
+                this.loadStakedAssetsForInventory(this.currentActor)
+            ]);
+            
+            this.inventoryData = inventoryData;
             
             console.log('[Inventory] Inventory loaded:', this.inventoryData);
+            console.log('[Inventory] Staked assets loaded:', this.stakedAssetIds.size, 'assets');
             
             // For demonstration, we'll show template-based data
             // In production, you'd want to fetch full NFT details
@@ -202,62 +208,143 @@ Updated: ${updatedAtStr}</pre>
         }
     }
 
+    async loadStakedAssetsForInventory(actor) {
+        try {
+            console.log('[Inventory] Loading staked assets for inventory display...');
+            
+            const stakingResponse = await this.backendService.getStakedAssets(actor);
+            console.log('[Inventory] Staking data received:', stakingResponse);
+            
+            // Extract all staked asset IDs
+            this.stakedAssetIds = new Set();
+            
+            if (stakingResponse && stakingResponse.stakingData) {
+                const stakingData = stakingResponse.stakingData;
+                
+                // Check mining page
+                if (stakingData.mining) {
+                    Object.values(stakingData.mining).forEach(slotData => {
+                        if (slotData.mine?.asset_id) {
+                            this.stakedAssetIds.add(slotData.mine.asset_id);
+                        }
+                        if (slotData.workers) {
+                            slotData.workers.forEach(w => {
+                                if (w.asset_id) this.stakedAssetIds.add(w.asset_id);
+                            });
+                        }
+                    });
+                }
+                
+                // Check polishing page
+                if (stakingData.polishing) {
+                    Object.values(stakingData.polishing).forEach(slotData => {
+                        if (slotData.table?.asset_id) {
+                            this.stakedAssetIds.add(slotData.table.asset_id);
+                        }
+                    });
+                }
+            }
+            
+            console.log('[Inventory] Found', this.stakedAssetIds.size, 'staked assets');
+            return this.stakedAssetIds;
+            
+        } catch (error) {
+            console.error('[Inventory] Failed to load staked assets:', error);
+            this.stakedAssetIds = new Set();
+            return this.stakedAssetIds;
+        }
+    }
+
     processInventoryData() {
         console.log('[Inventory] processInventoryData called');
         console.log('[Inventory] inventoryData:', this.inventoryData);
         
-        if (!this.inventoryData || !this.inventoryData.templateCounts) {
-            console.log('[Inventory] No templateCounts data available');
+        // NEW: Use assets array if available (contains real asset IDs)
+        if (this.inventoryData && this.inventoryData.assets && this.inventoryData.assets.length > 0) {
+            console.log('[Inventory] Using assets array with real asset IDs:', this.inventoryData.assets.length, 'assets');
+            
+            this.allNFTs = [];
+            this.collections.clear();
+            
+            this.inventoryData.assets.forEach(asset => {
+                // Build the image path
+                let finalImagePath = null;
+                if (asset.image) {
+                    finalImagePath = `assets/gallery_images/${asset.image}`;
+                }
+                
+                console.log(`[Inventory] Processing asset ${asset.asset_id} (${asset.name}): template=${asset.template_id}, schema="${asset.schema}"`);
+                
+                this.allNFTs.push({
+                    asset_id: asset.asset_id,
+                    template_id: asset.template_id,
+                    collection: this.inventoryData.collection || 'tsdmediagems',
+                    name: asset.name,
+                    image: finalImagePath,
+                    schema: asset.schema,
+                    mining_power: asset.mp || 0,
+                    category: asset.category
+                });
+                
+                this.collections.add(this.inventoryData.collection || 'tsdmediagems');
+            });
+            
+            console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
+            this.filteredNFTs = [...this.allNFTs];
+        }
+        // FALLBACK: Use old templateCounts method if assets array not available
+        else if (this.inventoryData && this.inventoryData.templateCounts) {
+            console.log('[Inventory] Falling back to templateCounts (no assets array):', Object.keys(this.inventoryData.templateCounts).length, 'templates');
+            
+            this.allNFTs = [];
+            this.collections.clear();
+            
+            Object.entries(this.inventoryData.templateCounts).forEach(([key, templateData]) => {
+                const templateId = templateData.template_id;
+                const count = templateData.count;
+                const name = templateData.name;
+                const image = templateData.image;
+                const imagePath = templateData.imagePath;
+                const schema = templateData.schema;
+                const totalMiningPower = templateData.total_mining_power || 0;
+                const mp = templateData.mp || 0;
+
+                console.log(`[Inventory] Processing template ${templateId} (${name}): count=${count}, image="${image}", schema="${schema}"`);
+
+                for (let i = 0; i < count; i++) {
+                    // Use imagePath if available, otherwise build fallback path
+                    let finalImagePath = null;
+                    if (image) {
+                        // Always use the correct path for gallery_images
+                        finalImagePath = `assets/gallery_images/${image}`;
+                    }
+                    
+                    console.log(`[Inventory] Template ${templateId} [${i}]: finalImagePath="${finalImagePath}"`);
+
+                    this.allNFTs.push({
+                        template_id: templateId,
+                        asset_id: `${templateId}-${i}`, // Fallback pseudo-ID
+                        collection: this.inventoryData.collection || 'tsdmediagems',
+                        name: name,
+                        image: finalImagePath,
+                        schema: schema,
+                        mining_power: mp,
+                        total_mining_power: totalMiningPower,
+                        data: templateData
+                    });
+                }
+                this.collections.add(this.inventoryData.collection || 'tsdmediagems');
+            });
+
+            console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
+            this.filteredNFTs = [...this.allNFTs];
+        }
+        else {
+            console.log('[Inventory] No inventory data available');
             this.allNFTs = [];
             this.filteredNFTs = [];
             return;
         }
-
-        // Convert templateCounts data to NFT cards
-        this.allNFTs = [];
-        this.collections.clear();
-        
-        console.log('[Inventory] Processing templateCounts:', Object.keys(this.inventoryData.templateCounts).length, 'templates');
-        
-        Object.entries(this.inventoryData.templateCounts).forEach(([key, templateData]) => {
-            const templateId = templateData.template_id;
-            const count = templateData.count;
-            const name = templateData.name;
-            const image = templateData.image;
-            const imagePath = templateData.imagePath;
-            const schema = templateData.schema;
-            const totalMiningPower = templateData.total_mining_power || 0;
-            const mp = templateData.mp || 0;
-
-            console.log(`[Inventory] Processing template ${templateId} (${name}): count=${count}, image="${image}", schema="${schema}"`);
-
-            for (let i = 0; i < count; i++) {
-                // Use imagePath if available, otherwise build fallback path
-                let finalImagePath = null;
-                if (image) {
-                    // Always use the correct path for gallery_images
-                    finalImagePath = `assets/gallery_images/${image}`;
-                }
-                
-                console.log(`[Inventory] Template ${templateId} [${i}]: finalImagePath="${finalImagePath}"`);
-
-                this.allNFTs.push({
-                    template_id: templateId,
-                    asset_id: `${templateId}-${i}`,
-                    collection: this.inventoryData.collection || 'tsdmediagems',
-                    name: name,
-                    image: finalImagePath,
-                    schema: schema,
-                    mining_power: mp,
-                    total_mining_power: totalMiningPower,
-                    data: templateData
-                });
-            }
-            this.collections.add(this.inventoryData.collection || 'tsdmediagems');
-        });
-
-        console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
-        this.filteredNFTs = [...this.allNFTs];
         
         // Populate collection filter
         const collectionFilter = document.getElementById('collection-filter');
@@ -340,6 +427,9 @@ Updated: ${updatedAtStr}</pre>
         const card = document.createElement('div');
         card.className = 'nft-card';
         
+        // Check if this asset is staked
+        const isStaked = this.stakedAssetIds.has(nft.asset_id);
+        
         // Get schema icon
         const schemaIcon = this.getSchemaIcon(nft.schema);
         
@@ -372,7 +462,7 @@ Updated: ${updatedAtStr}</pre>
         card.innerHTML = `
             <div class="nft-card-header">
                 <span class="nft-template-id">Template #${nft.template_id}</span>
-                <span class="nft-asset-id">${nft.asset_id}</span>
+                ${isStaked ? '<span class="staked-badge" style="background: linear-gradient(135deg, #ff9500, #ff6b00); color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-lock" style="font-size: 0.85em;"></i>Staked</span>' : '<span class="nft-asset-id">' + nft.asset_id + '</span>'}
             </div>
             <div class="nft-image-container">
                 ${imageElement}
@@ -499,7 +589,8 @@ Updated: ${updatedAtStr}</pre>
         this.filteredNFTs = this.allNFTs.filter(nft => {
             const matchesSearch = !searchTerm || 
                 nft.name.toLowerCase().includes(searchTerm) ||
-                nft.template_id.toString().includes(searchTerm);
+                nft.template_id.toString().includes(searchTerm) ||
+                (nft.asset_id && nft.asset_id.toString().includes(searchTerm)); // NEW: Search by asset ID
             
             const matchesCollection = !collection || nft.collection === collection;
 
@@ -542,5 +633,6 @@ let inventoryPage;
 document.addEventListener('DOMContentLoaded', () => {
     inventoryPage = new InventoryPage();
     window.tsdgemsInventory = inventoryPage;
+    window.tsdgemsGame = inventoryPage;  // Also set as tsdgemsGame for global Game $ updates
 });
 

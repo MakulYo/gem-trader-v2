@@ -293,9 +293,24 @@ class MiningGame extends TSDGEMSGame {
     }
 
     async loadMiningData(actor) {
+        // Check if already initialized - skip full reload
+        if (this.isInitialized && this.lastDataLoad && (Date.now() - this.lastDataLoad) < 300000) {
+            console.log('[Mining] Already initialized, skipping full reload');
+            // Just refresh active jobs (quick)
+            await this.fetchActiveMiningJobs(actor);
+            this.renderMiningSlots();
+            return;
+        }
+        
         try {
             console.log('[Mining] ========================================');
             console.log('[Mining] Loading mining data for actor:', actor);
+            
+            // Show skeleton screens
+            const slotsGrid = document.getElementById('mining-slots-grid');
+            if (slotsGrid && window.SkeletonLoader) {
+                window.SkeletonLoader.show('mining-slots-grid', 'slot', 5);
+            }
             
             this.showNotification('📊 Loading mining data...', 'info');
 
@@ -336,6 +351,9 @@ class MiningGame extends TSDGEMSGame {
             
             // Fetch inventory to get Mine NFTs
             await this.fetchInventoryData(actor);
+            
+            // Fetch staked assets
+            await this.loadStakedAssets(actor);
                 
                 // Update debug panel
                 this.updateDebugPanel({
@@ -351,9 +369,18 @@ class MiningGame extends TSDGEMSGame {
                 this.renderMiningSlots();
                 this.updateMiningStats();
             
-            // Start auto-refresh
-            this.startAutoRefresh();
+            // Hide skeleton
+            if (window.SkeletonLoader) {
+                window.SkeletonLoader.hide('mining-slots-grid');
+            }
             
+            // Mark as initialized and track load time
+            this.isInitialized = true;
+            this.lastDataLoad = Date.now();
+            
+            // Start auto-refresh
+                this.startAutoRefresh();
+                
             // Start timer updates
             this.startTimerUpdates();
             
@@ -363,6 +390,12 @@ class MiningGame extends TSDGEMSGame {
             
         } catch (error) {
             console.error('[Mining] Failed to load mining data:', error);
+            
+            // Hide skeleton on error
+            if (window.SkeletonLoader) {
+                window.SkeletonLoader.hide('mining-slots-grid');
+            }
+            
             this.showNotification('❌ Failed to load mining data: ' + error.message, 'error');
             this.updateDebugPanel({ 
                 error: error.message, 
@@ -411,14 +444,15 @@ class MiningGame extends TSDGEMSGame {
                 console.log('[Mining] equipmentDetails type:', typeof inventoryData.equipmentDetails);
                 console.log('[Mining] equipmentDetails:', inventoryData.equipmentDetails);
                 
-                // Convert object to array with template_id
+                // Convert object to array with template_id and asset_ids
                 const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => ({
                     template_id: templateId,
                     name: details.name,
                     count: details.count,
                     mp: details.mp,
                     image: details.image,
-                    imagePath: details.imagePath
+                    imagePath: details.imagePath,
+                    assets: details.assets || [] // Include asset IDs
                 }));
                 
                 // Filter for Mine NFTs
@@ -450,6 +484,89 @@ class MiningGame extends TSDGEMSGame {
             this.mineNFTs = [];
             this.workerNFTs = [];
         }
+    }
+
+    async loadStakedAssets(actor) {
+        try {
+            console.log('[Mining] Loading staked assets...');
+            
+            const stakingResponse = await this.backendService.getStakedAssets(actor);
+            console.log('[Mining] Staking data received:', stakingResponse);
+            
+            if (stakingResponse && stakingResponse.stakingData) {
+                const stakingData = stakingResponse.stakingData;
+                
+                // Initialize staking data
+                this.stakedMines = {};
+                this.stakedWorkers = {};
+                
+                // Process mining staking data
+                if (stakingData.mining) {
+                    Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
+                        const slotNum = parseInt(slotKey.replace('slot', ''));
+                        
+                        if (slotData.mine) {
+                            this.stakedMines[slotNum] = {
+                                template_id: slotData.mine.template_id,
+                                name: slotData.mine.name,
+                                mp: slotData.mine.mp,
+                                asset_id: slotData.mine.asset_id
+                            };
+                        }
+                        
+                        if (slotData.workers && slotData.workers.length > 0) {
+                            this.stakedWorkers[slotNum] = slotData.workers.map(worker => ({
+                                template_id: worker.template_id,
+                                name: worker.name,
+                                mp: worker.mp,
+                                asset_id: worker.asset_id
+                            }));
+                        }
+                    });
+                }
+                
+                console.log('[Mining] Loaded staked mines:', this.stakedMines);
+                console.log('[Mining] Loaded staked workers:', this.stakedWorkers);
+            } else {
+                console.log('[Mining] No staking data found, initializing empty');
+                this.stakedMines = {};
+                this.stakedWorkers = {};
+            }
+            
+        } catch (error) {
+            console.error('[Mining] Failed to load staked assets:', error);
+            this.stakedMines = {};
+            this.stakedWorkers = {};
+        }
+    }
+
+    /**
+     * Extract all staked asset IDs from staking data
+     * @returns {Set<string>} Set of staked asset_ids
+     */
+    getStakedAssetIds() {
+        const stakedAssetIds = new Set();
+        
+        // Add staked mines
+        Object.values(this.stakedMines).forEach(mine => {
+            if (mine.asset_id) {
+                stakedAssetIds.add(mine.asset_id);
+            }
+        });
+        
+        // Add staked workers
+        Object.values(this.stakedWorkers).forEach(workers => {
+            if (Array.isArray(workers)) {
+                workers.forEach(worker => {
+                    if (worker.asset_id) {
+                        stakedAssetIds.add(worker.asset_id);
+                    }
+                });
+            }
+        });
+        
+        console.log('[Mining] Found', stakedAssetIds.size, 'staked asset IDs');
+        return stakedAssetIds;
     }
 
     renderMiningSlots() {
@@ -510,6 +627,9 @@ class MiningGame extends TSDGEMSGame {
                 const progress = Math.min(100, ((MINING_DURATION_MS - remaining) / MINING_DURATION_MS) * 100);
                 const isComplete = remaining === 0;
                 
+                const slotMP = job.slotMiningPower || 0;
+                const expectedRewards = Math.max(1, Math.floor(slotMP / 20));
+                
                 return `
                     <div class="mining-slot active ${isComplete ? 'complete' : 'in-progress'}" data-job-id="${job.jobId}" style="border: 2px solid ${isComplete ? '#00ff64' : '#00d4ff'}; box-shadow: 0 0 20px ${isComplete ? 'rgba(0, 255, 100, 0.3)' : 'rgba(0, 212, 255, 0.3)'};">
                         <div class="slot-header">
@@ -519,6 +639,20 @@ class MiningGame extends TSDGEMSGame {
                             </span>
                         </div>
                         <div class="slot-info" style="padding: 30px 20px; text-align: center;">
+                            <div style="display: flex; justify-content: space-around; margin-bottom: 20px; padding: 15px; background: rgba(0, 0, 0, 0.3); border-radius: 8px;">
+                                <div style="text-align: center;">
+                                    <p style="color: #888; font-size: 0.85em; margin-bottom: 5px;">Mining Power</p>
+                                    <p style="color: #00d4ff; font-size: 1.3em; font-weight: bold;">
+                                        <i class="fas fa-hammer"></i> ${slotMP.toLocaleString()} MP
+                                    </p>
+                                </div>
+                                <div style="text-align: center;">
+                                    <p style="color: #888; font-size: 0.85em; margin-bottom: 5px;">${isComplete ? 'Rewards' : 'Expected'}</p>
+                                    <p style="color: #ffd700; font-size: 1.3em; font-weight: bold;">
+                                        <i class="fas fa-gem"></i> ${expectedRewards.toLocaleString()} Gems
+                                    </p>
+                                </div>
+                            </div>
                             <p style="font-size: 2.5em; font-weight: bold; color: ${isComplete ? '#00ff64' : '#00d4ff'}; margin-bottom: 20px;">
                                 <span class="timer" data-finish="${job.finishAt}">
                                     ${this.formatTime(remaining)}
@@ -789,9 +923,13 @@ class MiningGame extends TSDGEMSGame {
             const result = data.result;
             const gemKey = result.roughKey || 'rough_gems';
             const amount = result.yieldAmt;
+            const slotMP = result.slotMiningPower || 0;
             
-            // Show success notification with gem details
-            this.showNotification(`💎 Claimed ${amount}x Rough Gems!`, 'success');
+            // Show success notification with gem details and formula
+            this.showNotification(
+                `💎 Claimed ${amount}x Rough Gems! (${slotMP.toLocaleString()} MP ÷ 20)`, 
+                'success'
+            );
             
             // Refresh mining data to clear the completed job
             await this.fetchActiveMiningJobs(this.currentActor);
@@ -833,8 +971,9 @@ class MiningGame extends TSDGEMSGame {
         
         try {
             console.log('[Mining] Unlocking slot:', slotNum, 'Cost:', unlockCost, 'TSDM');
-            this.showNotification(`🔓 Unlocking mining slot ${slotNum} (${unlockCost.toLocaleString()} TSDM)...`, 'info');
+            this.showNotification(`🔓 Creating payment request for slot ${slotNum} (${unlockCost.toLocaleString()} TSDM)...`, 'info');
             
+            // Create payment request
             const response = await fetch(`${this.backendService.apiBase}/unlockMiningSlot`, {
                 method: 'POST',
                 headers: {
@@ -848,27 +987,191 @@ class MiningGame extends TSDGEMSGame {
             
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to unlock slot');
+                throw new Error(errorData.error || 'Failed to create payment request');
             }
             
             const data = await response.json();
-            console.log('[Mining] Slot unlocked:', data);
+            console.log('[Mining] Payment request created:', data);
             
-            this.showNotification(`✅ Mining slot ${slotNum} unlocked! (Cost: ${data.costPaid.toLocaleString()} TSDM)`, 'success');
-            
-            // Reload mining data to reflect changes
-            await this.loadMiningData(this.currentActor);
+            // Show payment modal
+            this.showPaymentModal(data.paymentId, unlockCost, slotNum, 'mining_slot_unlock');
             
         } catch (error) {
-            console.error('[Mining] Failed to unlock slot:', error);
-            this.showNotification('❌ Failed to unlock slot: ' + error.message, 'error');
+            console.error('[Mining] Failed to create payment request:', error);
+            this.showNotification('❌ Failed to create payment request: ' + error.message, 'error');
         }
+    }
+
+    showPaymentModal(paymentId, amount, slotNum, paymentType) {
+        const modalContent = `
+            <div class="payment-modal">
+                <div class="modal-header">
+                    <h3><i class="fas fa-credit-card"></i> Complete Payment</h3>
+                    <button class="modal-close" onclick="game.closePaymentModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="payment-info">
+                        <div class="payment-details">
+                            <h4>Payment Details</h4>
+                            <div class="detail-row">
+                                <span class="label">Amount:</span>
+                                <span class="value">${amount.toLocaleString()} TSDM</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Destination:</span>
+                                <span class="value">tillo1212121</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Purpose:</span>
+                                <span class="value">Unlock Mining Slot ${slotNum}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="payment-status" id="payment-status">
+                            <div class="status-pending">
+                                <i class="fas fa-clock"></i>
+                                <span>Payment request created. Please complete the blockchain transaction.</span>
+                            </div>
+                        </div>
+                        
+                        <div class="payment-actions">
+                            <button id="execute-payment-btn" class="action-btn primary" onclick="game.executePayment('${paymentId}', ${amount}, '${paymentType}', ${slotNum})">
+                                <i class="fas fa-paper-plane"></i> Execute Payment
+                            </button>
+                            <button class="action-btn secondary" onclick="game.cancelPayment('${paymentId}')">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('payment-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'payment-modal';
+            modal.className = 'modal-overlay';
+            document.body.appendChild(modal);
+        }
+        
+        modal.innerHTML = modalContent;
+        modal.style.display = 'flex';
+        
+        // Store payment info for later use
+        this.currentPayment = {
+            paymentId,
+            amount,
+            slotNum,
+            type: paymentType
+        };
+    }
+
+    async executePayment(paymentId, amount, paymentType, slotNum) {
+        try {
+            const executeBtn = document.getElementById('execute-payment-btn');
+            const statusDiv = document.getElementById('payment-status');
+            
+            // Update UI
+            executeBtn.disabled = true;
+            executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            
+            statusDiv.innerHTML = `
+                <div class="status-processing">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Executing blockchain transaction...</span>
+                </div>
+            `;
+            
+            // Execute payment using PaymentService
+            const result = await window.paymentService.processPayment(
+                paymentType,
+                amount,
+                { slotNum },
+                (progress) => {
+                    statusDiv.innerHTML = `
+                        <div class="status-processing">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <span>${progress}</span>
+                        </div>
+                    `;
+                }
+            );
+            
+            if (result.success) {
+                statusDiv.innerHTML = `
+                    <div class="status-success">
+                        <i class="fas fa-check-circle"></i>
+                        <span>Payment completed successfully!</span>
+                        <div class="tx-info">
+                            <small>Transaction ID: ${result.txId}</small>
+                        </div>
+                    </div>
+                `;
+                
+                this.showNotification(`✅ Mining slot ${slotNum} unlocked successfully!`, 'success');
+                
+                // Reload mining data
+                await this.loadMiningData(this.currentActor);
+                
+                // Close modal after delay
+                setTimeout(() => {
+                    this.closePaymentModal();
+                }, 3000);
+                
+            } else {
+                throw new Error('Payment verification failed');
+            }
+            
+        } catch (error) {
+            console.error('[Mining] Payment execution failed:', error);
+            
+            const statusDiv = document.getElementById('payment-status');
+            statusDiv.innerHTML = `
+                <div class="status-error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span>Payment failed: ${error.message}</span>
+                </div>
+            `;
+            
+            const executeBtn = document.getElementById('execute-payment-btn');
+            executeBtn.disabled = false;
+            executeBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Retry Payment';
+            
+            this.showNotification('❌ Payment failed: ' + error.message, 'error');
+        }
+    }
+
+    async cancelPayment(paymentId) {
+        try {
+            await window.paymentService.cancelPayment(paymentId);
+            this.showNotification('Payment cancelled', 'info');
+            this.closePaymentModal();
+        } catch (error) {
+            console.error('[Mining] Failed to cancel payment:', error);
+            this.showNotification('❌ Failed to cancel payment: ' + error.message, 'error');
+        }
+    }
+
+    closePaymentModal() {
+        const modal = document.getElementById('payment-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        this.currentPayment = null;
     }
 
     openStakeMineModal(slotNum) {
         console.log('[Mining] Opening stake mine modal for slot:', slotNum);
         
         this.selectedSlotForStaking = slotNum;
+        
+        // Get staked asset IDs to filter them out
+        const stakedAssetIds = this.getStakedAssetIds();
+        console.log('[Mining] Staked asset IDs:', stakedAssetIds);
         
         // Create modal content
         let galleryContent = '';
@@ -894,21 +1197,53 @@ class MiningGame extends TSDGEMSGame {
             // Show NFT gallery with smaller images - each NFT displayed individually
             const individualMineNFTs = [];
             this.mineNFTs.forEach(nft => {
-                for (let i = 0; i < (nft.count || 1); i++) {
+                // Use actual asset IDs if available, otherwise create placeholder IDs
+                const assets = nft.assets || [];
+                const count = Math.max(assets.length, nft.count || 1);
+                
+                for (let i = 0; i < count; i++) {
                     individualMineNFTs.push({
                         ...nft,
+                        asset_id: assets[i] || `${nft.template_id}-${i}`, // Use real asset ID or placeholder
                         uniqueId: `${nft.template_id}-${i}`
                     });
                 }
             });
             
+            // Filter out already staked mines
+            const availableMines = individualMineNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
+            console.log('[Mining] Available mines after filtering:', availableMines.length, 'of', individualMineNFTs.length);
+            
+            if (availableMines.length === 0) {
+                // All mines are already staked
+                galleryContent = `
+                    <div style="text-align: center; padding: 60px 20px; background: rgba(255, 152, 0, 0.1); border-radius: 8px; border: 2px solid #ff9800;">
+                        <i class="fas fa-check-circle" style="font-size: 64px; color: #ff9800; margin-bottom: 20px;"></i>
+                        <h3 style="color: #ff9800; margin-bottom: 15px; font-size: 1.3em;">All Mines Already Staked!</h3>
+                        <p style="color: #888; margin-bottom: 30px; max-width: 400px; margin-left: auto; margin-right: auto;">
+                            All your mine NFTs are currently staked. Unstake a mine from another slot or purchase more on NeftyBlocks.
+                        </p>
+                        <button class="action-btn secondary" onclick="game.closeStakeModal()">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                `;
+            } else {
+            
             galleryContent = `
                 <p style="margin-bottom: 15px; color: #888;">
                     Select a Mine NFT to stake in this slot. Staked mines provide passive mining power.
                 </p>
+                ${availableMines.length < individualMineNFTs.length ? `
+                    <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 6px; padding: 10px; margin-bottom: 15px;">
+                        <p style="color: #ff9800; margin: 0; font-size: 0.85em;">
+                            <i class="fas fa-info-circle"></i> ${individualMineNFTs.length - availableMines.length} mine(s) already staked
+                        </p>
+                    </div>
+                ` : ''}
                 <div class="nft-gallery-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 500px; overflow-y: auto; padding: 10px;">
-                    ${individualMineNFTs.map(nft => `
-                        <div class="nft-card" style="border: 2px solid #00d4ff; border-radius: 8px; padding: 10px; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s;" onclick="game.stakeMine('${nft.template_id}', ${slotNum}, ${nft.mp}, '${nft.name}')">
+                    ${availableMines.map(nft => `
+                        <div class="nft-card" style="border: 2px solid #00d4ff; border-radius: 8px; padding: 10px; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s;" onclick="game.stakeMine('${nft.template_id}', ${slotNum}, ${nft.mp}, '${nft.name}', '${nft.asset_id}')">
                             ${nft.imagePath ? `
                                 <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
                             ` : ''}
@@ -920,6 +1255,7 @@ class MiningGame extends TSDGEMSGame {
                     `).join('')}
                 </div>
             `;
+            }
         }
         
         const modalContent = `
@@ -953,6 +1289,10 @@ class MiningGame extends TSDGEMSGame {
         console.log('[Mining] Opening stake workers modal for slot:', slotNum);
         
         this.selectedSlotForStaking = slotNum;
+        
+        // Get staked asset IDs to filter them out
+        const stakedAssetIds = this.getStakedAssetIds();
+        console.log('[Mining] Staked asset IDs:', stakedAssetIds);
         
         // Check if mine is staked and get worker limit
         const stakedMine = this.stakedMines[slotNum];
@@ -1001,15 +1341,40 @@ class MiningGame extends TSDGEMSGame {
                 // Show NFT gallery with smaller images - each NFT displayed individually
                 const individualWorkerNFTs = [];
                 this.workerNFTs.forEach(nft => {
-                    for (let i = 0; i < (nft.count || 1); i++) {
+                    // Use actual asset IDs if available, otherwise create placeholder IDs
+                    const assets = nft.assets || [];
+                    const count = Math.max(assets.length, nft.count || 1);
+                    
+                    for (let i = 0; i < count; i++) {
                         individualWorkerNFTs.push({
                             ...nft,
+                            asset_id: assets[i] || `${nft.template_id}-${i}`, // Use real asset ID or placeholder
                             uniqueId: `${nft.template_id}-${i}`
                         });
                     }
                 });
                 
+                // Filter out already staked workers
+                const availableWorkers = individualWorkerNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
+                console.log('[Mining] Available workers after filtering:', availableWorkers.length, 'of', individualWorkerNFTs.length);
+                
                 const remainingSlots = workerLimit - currentWorkers;
+                
+                if (availableWorkers.length === 0) {
+                    // All workers are already staked
+                    galleryContent = `
+                        <div style="text-align: center; padding: 60px 20px; background: rgba(255, 152, 0, 0.1); border-radius: 8px; border: 2px solid #ff9800;">
+                            <i class="fas fa-check-circle" style="font-size: 64px; color: #ff9800; margin-bottom: 20px;"></i>
+                            <h3 style="color: #ff9800; margin-bottom: 15px; font-size: 1.3em;">All Workers Already Staked!</h3>
+                            <p style="color: #888; margin-bottom: 30px; max-width: 400px; margin-left: auto; margin-right: auto;">
+                                All your worker NFTs are currently staked. Unstake workers from another slot or purchase more on NeftyBlocks.
+                            </p>
+                            <button class="action-btn secondary" onclick="game.closeStakeModal()">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                    `;
+                } else {
                 
                 galleryContent = `
                     <div style="background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
@@ -1023,14 +1388,21 @@ class MiningGame extends TSDGEMSGame {
                             </p>
                         </div>
                     </div>
+                    ${availableWorkers.length < individualWorkerNFTs.length ? `
+                        <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 6px; padding: 10px; margin-bottom: 15px;">
+                            <p style="color: #ff9800; margin: 0; font-size: 0.85em;">
+                                <i class="fas fa-info-circle"></i> ${individualWorkerNFTs.length - availableWorkers.length} worker(s) already staked
+                            </p>
+                        </div>
+                    ` : ''}
                     <p style="margin-bottom: 15px; color: #888;">
                         Select multiple Worker NFTs to stake (max ${remainingSlots} more). Click to toggle selection.
                     </p>
                     <div class="nft-gallery-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 400px; overflow-y: auto; padding: 10px;">
-                        ${individualWorkerNFTs.map((nft, idx) => `
+                        ${availableWorkers.map((nft, idx) => `
                             <div class="nft-card worker-select-card" id="worker-card-${idx}" 
                                  style="border: 2px solid #00d4ff; border-radius: 8px; padding: 10px; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s; position: relative;" 
-                                 onclick="game.toggleWorkerSelection(${idx}, '${nft.template_id}', ${nft.mp}, '${nft.name}', ${slotNum}, ${remainingSlots})">
+                                 onclick="game.toggleWorkerSelection(${idx}, '${nft.template_id}', ${nft.mp}, '${nft.name}', ${slotNum}, ${remainingSlots}, '${nft.asset_id}')">
                                 <div class="selection-checkbox" style="position: absolute; top: 5px; right: 5px; width: 24px; height: 24px; border: 2px solid #00d4ff; border-radius: 4px; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center;">
                                     <i class="fas fa-check" style="color: #00ff64; font-size: 14px; display: none;"></i>
                                 </div>
@@ -1053,6 +1425,7 @@ class MiningGame extends TSDGEMSGame {
                         </button>
                     </div>
                 `;
+                }
             }
         }
         
@@ -1092,19 +1465,37 @@ class MiningGame extends TSDGEMSGame {
         this.selectedWorkers = []; // Reset selection when closing modal
     }
 
-    stakeMine(templateId, slotNum, mp, name) {
-        console.log('[Mining] Staking mine:', name, 'to slot:', slotNum);
+    async stakeMine(templateId, slotNum, mp, name, assetId) {
+        console.log('[Mining] Staking mine:', name, 'to slot:', slotNum, 'asset_id:', assetId);
         
-        // Store staked mine (client-side only for now)
-        this.stakedMines[slotNum] = {
-            template_id: templateId,
-            name: name,
-            mp: mp
-        };
-        
-        this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
-        this.closeStakeModal();
-        this.renderMiningSlots();
+        try {
+            const result = await this.backendService.stakeAsset(
+                this.currentActor,
+                'mining',
+                slotNum,
+                'mine',
+                {
+                    asset_id: assetId,
+                    template_id: templateId,
+                    name: name,
+                    mp: mp
+                }
+            );
+            
+            if (result.success) {
+                // Reload staked assets from backend to ensure UI is in sync
+                await this.loadStakedAssets(this.currentActor);
+                
+                this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
+                this.closeStakeModal();
+                this.renderMiningSlots();
+            } else {
+                throw new Error(result.error || 'Failed to stake mine');
+            }
+        } catch (error) {
+            console.error('[Mining] Failed to stake mine:', error);
+            this.showNotification(`❌ Failed to stake mine: ${error.message}`, 'error');
+        }
     }
 
     getWorkerLimit(mineName) {
@@ -1117,7 +1508,7 @@ class MiningGame extends TSDGEMSGame {
         return 10; // Default to small mine limit
     }
 
-    toggleWorkerSelection(cardIdx, templateId, mp, name, slotNum, remainingSlots) {
+    toggleWorkerSelection(cardIdx, templateId, mp, name, slotNum, remainingSlots, assetId) {
         const card = document.getElementById(`worker-card-${cardIdx}`);
         const checkbox = card.querySelector('.selection-checkbox i');
         const countSpan = document.getElementById('selected-worker-count');
@@ -1146,7 +1537,8 @@ class MiningGame extends TSDGEMSGame {
                 cardIdx,
                 template_id: templateId,
                 mp,
-                name
+                name,
+                asset_id: assetId
             });
             card.style.border = '2px solid #00ff64';
             card.style.background = 'rgba(0, 255, 100, 0.1)';
@@ -1165,7 +1557,7 @@ class MiningGame extends TSDGEMSGame {
         }
     }
 
-    confirmStakeWorkers(slotNum) {
+    async confirmStakeWorkers(slotNum) {
         if (this.selectedWorkers.length === 0) {
             this.showNotification('❌ Please select at least one worker!', 'error');
             return;
@@ -1180,30 +1572,45 @@ class MiningGame extends TSDGEMSGame {
             return;
         }
         
-        // Initialize workers array if needed
-        if (!this.stakedWorkers[slotNum]) {
-            this.stakedWorkers[slotNum] = [];
+        try {
+            // Stake each worker individually
+            for (const worker of this.selectedWorkers) {
+                const result = await this.backendService.stakeAsset(
+                    this.currentActor,
+                    'mining',
+                    slotNum,
+                    'worker',
+                    {
+                        asset_id: worker.asset_id,
+                        template_id: worker.template_id,
+                        name: worker.name,
+                        mp: worker.mp
+                    }
+                );
+                
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to stake worker');
+                }
+            }
+            
+            // Reload staked assets from backend to ensure UI is in sync
+            await this.loadStakedAssets(this.currentActor);
+            
+            const count = this.selectedWorkers.length;
+            const workerLimit = this.getWorkerLimit(stakedMine.name);
+            const totalWorkers = this.stakedWorkers[slotNum] ? this.stakedWorkers[slotNum].length : 0;
+            
+            this.showNotification(`✅ Staked ${count} worker${count > 1 ? 's' : ''} to Slot ${slotNum}! (${totalWorkers}/${workerLimit})`, 'success');
+            
+            // Clear selection
+            this.selectedWorkers = [];
+            this.closeStakeModal();
+            this.renderMiningSlots();
+            
+        } catch (error) {
+            console.error('[Mining] Failed to stake workers:', error);
+            this.showNotification(`❌ Failed to stake workers: ${error.message}`, 'error');
         }
-        
-        // Add all selected workers
-        this.selectedWorkers.forEach(worker => {
-            this.stakedWorkers[slotNum].push({
-                template_id: worker.template_id,
-                name: worker.name,
-                mp: worker.mp
-            });
-        });
-        
-        const count = this.selectedWorkers.length;
-        const workerLimit = this.getWorkerLimit(stakedMine.name);
-        const totalWorkers = this.stakedWorkers[slotNum].length;
-        
-        this.showNotification(`✅ Staked ${count} worker${count > 1 ? 's' : ''} to Slot ${slotNum}! (${totalWorkers}/${workerLimit})`, 'success');
-        
-        // Clear selection
-        this.selectedWorkers = [];
-        this.closeStakeModal();
-        this.renderMiningSlots();
     }
 
     stakeWorker(templateId, slotNum, mp, name) {
@@ -1289,7 +1696,7 @@ class MiningGame extends TSDGEMSGame {
         unstakeBtn.style.opacity = count === 0 ? '0.5' : '1';
     }
 
-    unstakeSelectedWorkers(slotNum) {
+    async unstakeSelectedWorkers(slotNum) {
         if (this.selectedWorkersForUnstake.size === 0) {
             this.showNotification('❌ Please select at least one worker to unstake!', 'error');
             return;
@@ -1297,66 +1704,114 @@ class MiningGame extends TSDGEMSGame {
         
         console.log('[Mining] Unstaking multiple workers from slot:', slotNum);
         
-        // Convert Set to array of indices and sort in reverse order
-        const indices = Array.from(this.selectedWorkersForUnstake)
-            .filter(key => key.startsWith(`${slotNum}-`))
-            .map(key => parseInt(key.split('-')[1]))
-            .sort((a, b) => b - a); // Sort descending to remove from end first
-        
-        if (indices.length === 0) return;
-        
-        const workers = this.stakedWorkers[slotNum];
-        if (!workers) return;
-        
-        const removedWorkers = [];
-        
-        // Remove workers in reverse order to maintain correct indices
-        indices.forEach(index => {
-            if (workers[index]) {
-                removedWorkers.push(workers[index]);
-                workers.splice(index, 1);
+        try {
+            // Convert Set to array of indices and sort in reverse order
+            const indices = Array.from(this.selectedWorkersForUnstake)
+                .filter(key => key.startsWith(`${slotNum}-`))
+                .map(key => parseInt(key.split('-')[1]))
+                .sort((a, b) => b - a); // Sort descending to remove from end first
+            
+            if (indices.length === 0) return;
+            
+            const workers = this.stakedWorkers[slotNum];
+            if (!workers) return;
+            
+            // Unstake each worker individually
+            for (const index of indices) {
+                if (workers[index]) {
+                    const result = await this.backendService.unstakeAsset(
+                        this.currentActor,
+                        'mining',
+                        slotNum,
+                        'worker',
+                        workers[index].asset_id
+                    );
+                    
+                    if (!result.success) {
+                        throw new Error(result.error || 'Failed to unstake worker');
+                    }
+                }
             }
-        });
-        
-        // Clean up empty array
-        if (workers.length === 0) {
-            delete this.stakedWorkers[slotNum];
+            
+            // Reload staked assets from backend to ensure UI is in sync
+            await this.loadStakedAssets(this.currentActor);
+            
+            const count = indices.length;
+            this.showNotification(`✅ Unstaked ${count} worker${count > 1 ? 's' : ''} from Slot ${slotNum}!`, 'success');
+            
+            // Clear selection
+            this.selectedWorkersForUnstake.clear();
+            this.renderMiningSlots();
+            
+        } catch (error) {
+            console.error('[Mining] Failed to unstake workers:', error);
+            this.showNotification(`❌ Failed to unstake workers: ${error.message}`, 'error');
         }
-        
-        const count = removedWorkers.length;
-        this.showNotification(`✅ Unstaked ${count} worker${count > 1 ? 's' : ''} from Slot ${slotNum}!`, 'success');
-        
-        // Clear selection
-        this.selectedWorkersForUnstake.clear();
-        this.renderMiningSlots();
     }
 
-    unstakeWorker(slotNum, workerIndex) {
+    async unstakeWorker(slotNum, workerIndex) {
         console.log('[Mining] Unstaking worker at index:', workerIndex, 'from slot:', slotNum);
         
-        if (this.stakedWorkers[slotNum] && this.stakedWorkers[slotNum][workerIndex]) {
-            const worker = this.stakedWorkers[slotNum][workerIndex];
-            this.stakedWorkers[slotNum].splice(workerIndex, 1);
+        const worker = this.stakedWorkers[slotNum] && this.stakedWorkers[slotNum][workerIndex];
+        if (!worker) {
+            this.showNotification('❌ Worker not found!', 'error');
+            return;
+        }
+        
+        try {
+            const result = await this.backendService.unstakeAsset(
+                this.currentActor,
+                'mining',
+                slotNum,
+                'worker',
+                worker.asset_id
+            );
             
-            // Clean up empty array
-            if (this.stakedWorkers[slotNum].length === 0) {
-                delete this.stakedWorkers[slotNum];
+            if (result.success) {
+                // Reload staked assets from backend to ensure UI is in sync
+                await this.loadStakedAssets(this.currentActor);
+                
+                this.showNotification(`✅ Unstaked ${worker.name} from Slot ${slotNum}!`, 'success');
+                this.renderMiningSlots();
+            } else {
+                throw new Error(result.error || 'Failed to unstake worker');
             }
-            
-            this.showNotification(`✅ Unstaked ${worker.name} from Slot ${slotNum}!`, 'success');
-            this.renderMiningSlots();
+        } catch (error) {
+            console.error('[Mining] Failed to unstake worker:', error);
+            this.showNotification(`❌ Failed to unstake worker: ${error.message}`, 'error');
         }
     }
 
-    unstakeMine(slotNum) {
+    async unstakeMine(slotNum) {
         console.log('[Mining] Unstaking mine from slot:', slotNum);
         
-        if (this.stakedMines[slotNum]) {
-            const mine = this.stakedMines[slotNum];
-            delete this.stakedMines[slotNum];
+        const stakedMine = this.stakedMines[slotNum];
+        if (!stakedMine) {
+            this.showNotification('❌ No mine staked in this slot!', 'error');
+            return;
+        }
+        
+        try {
+            const result = await this.backendService.unstakeAsset(
+                this.currentActor,
+                'mining',
+                slotNum,
+                'mine',
+                stakedMine.asset_id
+            );
             
-            this.showNotification(`✅ Unstaked ${mine.name} from Slot ${slotNum}!`, 'success');
-            this.renderMiningSlots();
+            if (result.success) {
+                // Reload staked assets from backend to ensure UI is in sync
+                await this.loadStakedAssets(this.currentActor);
+                
+                this.showNotification(`✅ Unstaked ${stakedMine.name} from Slot ${slotNum}!`, 'success');
+                this.renderMiningSlots();
+            } else {
+                throw new Error(result.error || 'Failed to unstake mine');
+            }
+        } catch (error) {
+            console.error('[Mining] Failed to unstake mine:', error);
+            this.showNotification(`❌ Failed to unstake mine: ${error.message}`, 'error');
         }
     }
 

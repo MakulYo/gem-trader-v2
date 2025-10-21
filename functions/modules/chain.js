@@ -39,4 +39,79 @@ async function getOwnedNfts(account, collection) {
   return Array.isArray(data?.data) ? data.data : [];
 }
 
-module.exports = { getWaxBalance, getTsdmBalance, getOwnedNfts };
+// New payment verification functions
+async function getTransactionHistory(account, limit = 50) {
+  const r = await fetch(`${WAX_API}/v1/history/get_actions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      account_name: account,
+      pos: -1,
+      offset: -limit
+    })
+  });
+  if (!r.ok) throw new Error(`get_actions ${r.status}`);
+  const data = await r.json();
+  return Array.isArray(data?.actions) ? data.actions : [];
+}
+
+async function verifyTsdmTransfer(from, to, amount, memo, timeWindowMs = 10 * 60 * 1000) {
+  try {
+    console.log(`[verifyTsdmTransfer] Checking transfer: from=${from}, to=${to}, amount=${amount}, memo=${memo}`);
+    const now = Date.now();
+    const actions = await getTransactionHistory(to, 100);
+    
+    console.log(`[verifyTsdmTransfer] Found ${actions.length} actions for ${to}`);
+    
+    for (const action of actions) {
+      const actAccount = action.action_trace?.act?.account;
+      const actName = action.action_trace?.act?.name;
+      const data = action.action_trace?.act?.data;
+      
+      // Log TSDM transfers for debugging
+      if (actAccount === TSDM_CONTRACT && actName === 'transfer') {
+        console.log(`[verifyTsdmTransfer] TSDM Transfer found: from=${data?.from}, to=${data?.to}, amount=${data?.quantity}, memo=${data?.memo}`);
+      }
+      
+      if (actAccount !== TSDM_CONTRACT) continue;
+      if (actName !== 'transfer') continue;
+      if (!data) continue;
+      
+      // Check if this is the transfer we're looking for
+      const transferAmount = parseFloat(data.quantity.split(' ')[0]);
+      const actionTime = new Date(action.block_time).getTime();
+      const isWithinWindow = now - actionTime <= timeWindowMs;
+      
+      console.log(`[verifyTsdmTransfer] Comparing: from=${data.from}===${from}, to=${data.to}===${to}, amount=${transferAmount}===${amount}, memo=${data.memo}===${memo}, withinWindow=${isWithinWindow}`);
+      
+      if (data.from === from && 
+          data.to === to && 
+          data.memo === memo &&
+          transferAmount === amount &&
+          isWithinWindow) {
+        
+        console.log(`[verifyTsdmTransfer] ✅ Transfer verified! txId=${action.action_trace?.trx_id}`);
+        return {
+          verified: true,
+          txId: action.action_trace?.trx_id,
+          blockTime: action.block_time,
+          amount: transferAmount
+        };
+      }
+    }
+    
+    console.log('[verifyTsdmTransfer] ❌ Transfer not found');
+    return { verified: false };
+  } catch (error) {
+    console.error('[verifyTsdmTransfer] Error:', error);
+    return { verified: false, error: error.message };
+  }
+}
+
+module.exports = { 
+  getWaxBalance, 
+  getTsdmBalance, 
+  getOwnedNfts,
+  getTransactionHistory,
+  verifyTsdmTransfer
+};

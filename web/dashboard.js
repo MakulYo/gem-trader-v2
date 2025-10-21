@@ -108,6 +108,65 @@ class DashboardGame extends TSDGEMSGame {
             await this.loadBackendData(actor);
         });
         
+        // CRITICAL: Listen for wallet disconnect
+        window.addEventListener('wallet-disconnected', () => {
+            console.log('[Dashboard] 🔌 Wallet disconnected event received');
+            
+            // Clear current actor and login state
+            this.currentActor = null;
+            this.isLoggedIn = false;
+            
+            // Stop polling
+            if (this.pollingInterval) {
+                console.log('[Dashboard] Stopping polling interval');
+                clearInterval(this.pollingInterval);
+                this.pollingInterval = null;
+            }
+            
+            // Reset UI values to disconnected state
+            const elements = {
+                'tsd-balance': '0.00',
+                'active-workers': '0',
+                'rough-gems-count': '0',
+                'polished-gems-count': '0',
+                'mining-slots-count': '0/10',
+                'tsdm-balance': '0.00',
+                'header-game-dollars': 'Game $: 0'
+            };
+            
+            Object.entries(elements).forEach(([id, value]) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            });
+            
+            // Hide wallet balance only (address is handled by wallet.js button)
+            const walletBalance = document.getElementById('wallet-balance');
+            if (walletBalance) {
+                walletBalance.textContent = '0.00 TSD';
+                walletBalance.classList.add('hidden');
+                console.log('[Dashboard] Wallet balance hidden');
+            }
+            
+            // Ensure Connect button is visible (wallet.js should handle this, but double-check)
+            const connectBtn = document.getElementById('connectWalletBtn');
+            if (connectBtn) {
+                connectBtn.classList.remove('hidden');
+                console.log('[Dashboard] Connect button visibility ensured');
+            }
+            
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) {
+                logoutBtn.classList.add('hidden');
+                console.log('[Dashboard] Logout button hidden');
+            }
+            
+            // Clear notifications and show disconnect message
+            this.showNotification('👋 Disconnected from wallet', 'info');
+            this.updateDebugPanel(null);
+            
+            console.log('[Dashboard] ✅ Dashboard cleaned up after disconnect');
+        });
+        
         console.log('[Dashboard] ✅ Wallet event listeners registered');
         
         // Check if wallet already has session info (in case event was missed)
@@ -191,6 +250,18 @@ class DashboardGame extends TSDGEMSGame {
         }
 
         const timestamp = new Date().toLocaleTimeString();
+        
+        // Handle null/undefined data (e.g., after disconnect)
+        if (!data) {
+            content.innerHTML = `
+                <div style="color: #888; padding: 10px; text-align: center;">
+                    <p>🔌 Disconnected</p>
+                    <p style="font-size: 10px;">Last update: ${timestamp}</p>
+                </div>
+            `;
+            return;
+        }
+        
         const source = data.source || 'initial-load';
         const endpoint = data.endpoint || 'N/A';
         
@@ -257,40 +328,11 @@ class DashboardGame extends TSDGEMSGame {
     setupWalletIntegration() {
         console.log('[Dashboard] Setting up wallet integration...');
         
-        const connectBtn = document.getElementById('connectWalletBtn');
-        if (connectBtn) {
-            console.log('[Dashboard] Connect button found, adding listener');
-            
-            // Remove existing wallet.js listener first
-            const newConnectBtn = connectBtn.cloneNode(true);
-            connectBtn.parentNode.replaceChild(newConnectBtn, connectBtn);
-            
-            // Add our own listener that uses backend-service
-            newConnectBtn.addEventListener('click', async () => {
-                console.log('[Dashboard] Connect button clicked!');
-                await this.connectWallet();
-            });
-        } else {
-            console.warn('[Dashboard] Connect button NOT found!');
-        }
+        // DON'T override wallet.js buttons - just listen for events instead
+        // wallet.js handles the connect/disconnect buttons and dispatches events
         
-        // Setup disconnect button
-        const logoutBtn = document.getElementById('logoutBtn');
-        if (logoutBtn) {
-            console.log('[Dashboard] Logout button found, adding listener');
-            
-            // Remove existing listener
-            const newLogoutBtn = logoutBtn.cloneNode(true);
-            logoutBtn.parentNode.replaceChild(newLogoutBtn, logoutBtn);
-            
-            // Add our own listener
-            newLogoutBtn.addEventListener('click', async () => {
-                console.log('[Dashboard] Logout button clicked!');
-                await this.disconnectWallet();
-            });
-        } else {
-            console.warn('[Dashboard] Logout button NOT found!');
-        }
+        console.log('[Dashboard] Relying on wallet.js for button handling');
+        console.log('[Dashboard] Dashboard will respond to wallet-connected and wallet-disconnected events');
     }
 
     async connectWallet() {
@@ -308,6 +350,23 @@ class DashboardGame extends TSDGEMSGame {
             }
             
             this.showNotification('🔗 Connecting to wallet...', 'info');
+            
+            // Wait for wallet.js to be ready
+            console.log('[Dashboard] Checking if wallet.js is ready...');
+            if (typeof window.walletConnect !== 'function') {
+                console.warn('[Dashboard] window.walletConnect not available yet, waiting...');
+                
+                // Wait up to 5 seconds for wallet.js to load
+                let attempts = 0;
+                while (typeof window.walletConnect !== 'function' && attempts < 50) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
+                }
+                
+                if (typeof window.walletConnect !== 'function') {
+                    throw new Error('Wallet module not loaded. Please refresh the page.');
+                }
+            }
             
             // Use wallet.js to connect
             console.log('[Dashboard] Calling window.walletConnect()...');
@@ -364,7 +423,19 @@ class DashboardGame extends TSDGEMSGame {
             // Initialize player and get all data from backend (FAST mode)
             console.log('[Dashboard] Calling backendService.initializeFast() for instant load...');
             const startTime = performance.now();
-            const data = await this.backendService.initializeFast(actor);
+            
+            // Load dashboard and staking data in parallel
+            const [data, stakedData] = await Promise.all([
+                this.backendService.initializeFast(actor),
+                this.backendService.getStakedAssets(actor).catch(e => {
+                    console.warn('[Dashboard] Failed to load staking data:', e);
+                    return { stakingData: {} };
+                })
+            ]);
+            
+            // Store staked assets for worker count
+            this.stakedAssets = stakedData.stakingData || {};
+            
             const loadTime = ((performance.now() - startTime) / 1000).toFixed(2);
             
             console.log('[Dashboard] Backend initialize response:', data);
@@ -454,8 +525,15 @@ class DashboardGame extends TSDGEMSGame {
 
         const activeWorkers = document.getElementById('active-workers');
         if (activeWorkers) {
-            // Count workers from mining slots (if available)
-            let totalWorkers = player.miningSlotsUnlocked || 0;
+            // Count staked workers from mining slots
+            let totalWorkers = 0;
+            if (this.stakedAssets && this.stakedAssets.mining) {
+                Object.values(this.stakedAssets.mining).forEach(slot => {
+                    if (slot.workers && Array.isArray(slot.workers)) {
+                        totalWorkers += slot.workers.length;
+                    }
+                });
+            }
             activeWorkers.textContent = totalWorkers;
         }
 
@@ -486,13 +564,7 @@ class DashboardGame extends TSDGEMSGame {
             });
         }
 
-        // Update wallet display
-        const walletAddress = document.getElementById('wallet-address');
-        if (walletAddress) {
-            walletAddress.textContent = this.currentActor || player.account || 'Unknown';
-            walletAddress.classList.remove('hidden');
-        }
-
+        // Update wallet balance only (address is shown in button)
         const walletBalance = document.getElementById('wallet-balance');
         if (walletBalance) {
             const tsdm = balances.TSDM || 0;
@@ -500,11 +572,8 @@ class DashboardGame extends TSDGEMSGame {
             walletBalance.classList.remove('hidden');
         }
 
-        // Update button state
-        const connectBtn = document.getElementById('connectWalletBtn');
-        const logoutBtn = document.getElementById('logoutBtn');
-        if (connectBtn) connectBtn.classList.add('hidden');
-        if (logoutBtn) logoutBtn.classList.remove('hidden');
+        // DON'T update button states here - wallet.js handles that
+        // This was causing conflicts with wallet.js
 
         console.log('[Dashboard] ✅ UI successfully updated!');
         console.log('[Dashboard] Final values displayed:');

@@ -24,26 +24,101 @@ class BackendService {
     }
 
     /**
+     * Generic GET request helper
+     * @param {string} endpoint - API endpoint
+     * @param {object} params - Query parameters
+     * @returns {Promise<any>}
+     */
+    async get(endpoint, params = {}) {
+        const queryString = new URLSearchParams(params).toString();
+        const url = `${this.apiBase}${endpoint}${queryString ? '?' + queryString : ''}`;
+        
+        console.log(`[Backend] GET request: ${url}`);
+        
+        this.showLoadingIndicator(endpoint);
+        
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`GET ${endpoint} failed: ${response.status} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            this.hideLoadingIndicator(endpoint);
+            return data;
+        } catch (error) {
+            this.hideLoadingIndicator(endpoint);
+            throw error;
+        }
+    }
+
+    /**
+     * Generic POST request helper
+     * @param {string} endpoint - API endpoint
+     * @param {object} data - Request body data
+     * @returns {Promise<any>}
+     */
+    async post(endpoint, data = {}) {
+        const url = `${this.apiBase}${endpoint}`;
+        
+        console.log(`[Backend] POST request: ${url}`, data);
+        
+        this.showLoadingIndicator(endpoint);
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`POST ${endpoint} failed: ${response.status} - ${errorText}`);
+            }
+
+            const result = await response.json();
+            this.hideLoadingIndicator(endpoint);
+            return result;
+        } catch (error) {
+            this.hideLoadingIndicator(endpoint);
+            throw error;
+        }
+    }
+
+    /**
+     * Show loading indicator
+     * @param {string} endpoint 
+     */
+    showLoadingIndicator(endpoint) {
+        window.dispatchEvent(new CustomEvent('loading:start', { detail: { endpoint } }));
+    }
+
+    /**
+     * Hide loading indicator
+     * @param {string} endpoint 
+     */
+    hideLoadingIndicator(endpoint) {
+        window.dispatchEvent(new CustomEvent('loading:end', { detail: { endpoint } }));
+    }
+
+    /**
      * Initialize player in backend
      * @param {string} actor - WAX account name
      */
     async initPlayer(actor) {
         try {
             console.log('[Backend] Initializing player:', actor);
-            const response = await fetch(`${this.apiBase}/initPlayer`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ actor })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`initPlayer failed: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json();
+            const data = await this.post('/initPlayer', { actor });
             console.log('[Backend] Player initialized:', data);
             return data;
         } catch (error) {
@@ -99,6 +174,13 @@ class BackendService {
                 console.log('[Backend] - Player ingameCurrency:', this.dashboardData.player.ingameCurrency);
                 console.log('[Backend] - Player balances:', this.dashboardData.player.balances);
                 console.log('[Backend] - Player TSDM:', this.dashboardData.player.balances?.TSDM);
+                
+                // Auto-update Game $ in header on all pages
+                const currency = data.profile.ingameCurrency || 0;
+                window.dispatchEvent(new CustomEvent('gameDollars:update', {
+                    detail: { amount: currency, animate: false }
+                }));
+                console.log('[Backend] Dispatched gameDollars:update event:', currency);
             } else {
                 console.warn('[Backend] No profile in response, using data as-is');
                 this.dashboardData = data;
@@ -363,6 +445,158 @@ class BackendService {
      */
     async refreshBasePrice() {
         return await this.getBasePrice();
+    }
+
+    // ========================================
+    // STAKING METHODS
+    // ========================================
+
+    /**
+     * Stake an asset to a specific slot
+     * @param {string} actor - WAX account name
+     * @param {string} page - Page type ('mining' or 'polishing')
+     * @param {number} slotNum - Slot number
+     * @param {string} assetType - Asset type ('mine', 'worker', 'table')
+     * @param {object} assetData - Asset data including asset_id
+     * @returns {Promise<any>}
+     */
+    async stakeAsset(actor, page, slotNum, assetType, assetData) {
+        console.log(`[Backend] Staking ${assetType} to ${page} slot ${slotNum} for ${actor}`);
+        return await this.post('/stakeAsset', { 
+            actor, 
+            page, 
+            slotNum, 
+            assetType, 
+            assetData 
+        });
+    }
+
+    /**
+     * Unstake an asset from a specific slot
+     * @param {string} actor - WAX account name
+     * @param {string} page - Page type ('mining' or 'polishing')
+     * @param {number} slotNum - Slot number
+     * @param {string} assetType - Asset type ('mine', 'worker', 'table')
+     * @param {string} assetId - Asset ID to unstake
+     * @returns {Promise<any>}
+     */
+    async unstakeAsset(actor, page, slotNum, assetType, assetId) {
+        console.log(`[Backend] Unstaking ${assetType} ${assetId} from ${page} slot ${slotNum} for ${actor}`);
+        return await this.post('/unstakeAsset', { 
+            actor, 
+            page, 
+            slotNum, 
+            assetType, 
+            assetId 
+        });
+    }
+
+    /**
+     * Get all staked assets for an actor
+     * @param {string} actor - WAX account name
+     * @returns {Promise<any>}
+     */
+    async getStakedAssets(actor) {
+        console.log(`[Backend] Getting staked assets for ${actor}`);
+        return await this.get('/getStakedAssets', { actor });
+    }
+
+    // ========================================
+    // GEM STAKING METHODS
+    // ========================================
+
+    /**
+     * Stake a gem to a specific slot
+     * @param {string} actor - WAX account name
+     * @param {number} slotNum - Slot number
+     * @param {object} assetData - Gem asset data
+     * @returns {Promise<any>}
+     */
+    async stakeGem(actor, slotNum, assetData) {
+        console.log(`[Backend] Staking gem to slot ${slotNum} for ${actor}`);
+        return await this.stakeAsset(actor, 'gems', slotNum, 'gem', assetData);
+    }
+
+    /**
+     * Unstake a gem from a specific slot
+     * @param {string} actor - WAX account name
+     * @param {number} slotNum - Slot number
+     * @param {string} assetId - Asset ID to unstake
+     * @returns {Promise<any>}
+     */
+    async unstakeGem(actor, slotNum, assetId) {
+        console.log(`[Backend] Unstaking gem from slot ${slotNum} for ${actor}`);
+        return await this.unstakeAsset(actor, 'gems', slotNum, 'gem', assetId);
+    }
+
+    /**
+     * Get all staked gems for an actor
+     * @param {string} actor - WAX account name
+     * @returns {Promise<any>}
+     */
+    async getStakedGems(actor) {
+        console.log(`[Backend] Getting staked gems for ${actor}`);
+        const result = await this.getStakedAssets(actor);
+        return result.stakingData?.gems || {};
+    }
+
+    // ========================================
+    // GEM SELLING METHODS
+    // ========================================
+
+    /**
+     * Sell gems with city boost and gem staking boost
+     * @param {string} actor - WAX account name
+     * @param {string} gemType - Gem type (e.g., 'Diamond', 'Ruby')
+     * @param {number} amount - Amount to sell
+     * @param {string} cityId - City ID for boost calculation
+     * @returns {Promise<any>}
+     */
+    async sellGems(actor, gemType, amount, cityId) {
+        console.log(`[Backend] Selling ${amount}x ${gemType} in ${cityId} for ${actor}`);
+        return await this.post('/sellGems', { 
+            actor, 
+            gemType, 
+            amount, 
+            cityId 
+        });
+    }
+
+    /**
+     * Get sales history for an actor
+     * @param {string} actor - WAX account name
+     * @returns {Promise<any>}
+     */
+    async getSalesHistory(actor) {
+        console.log(`[Backend] Getting sales history for ${actor}`);
+        return await this.get('/getSalesHistory', { actor });
+    }
+
+    // ========================================
+    // LEADERBOARD METHODS
+    // ========================================
+
+    /**
+     * Get leaderboard data
+     * @param {string|null} actor - Optional: Current player's actor name
+     * @param {number} limit - Number of top players to fetch (max 100)
+     * @returns {Promise<{topPlayers: Array, currentPlayer: Object|null, totalPlayers: number, lastUpdated: any}>}
+     */
+    async getLeaderboard(actor = null, limit = 100) {
+        console.log(`[Backend] Fetching leaderboard (limit: ${limit}${actor ? `, actor: ${actor}` : ''})`);
+        const params = { limit: limit.toString() };
+        if (actor) params.actor = actor;
+        
+        return await this.get('/getLeaderboard', params);
+    }
+
+    /**
+     * Manually trigger leaderboard refresh (for testing)
+     * @returns {Promise<any>}
+     */
+    async triggerLeaderboardRefresh() {
+        console.log('[Backend] Triggering manual leaderboard refresh');
+        return await this.post('/triggerLeaderboardRefresh', {});
     }
 }
 

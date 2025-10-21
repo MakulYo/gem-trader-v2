@@ -5,6 +5,20 @@ const POLISHING_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour
 const MAX_POLISHING_SLOTS = 10;
 const MAX_AMOUNT_PER_SLOT = 500;
 
+// Slot unlock costs (slot 1 is free, already unlocked)
+const POLISHING_SLOT_UNLOCK_COSTS = [
+  0,      // Slot 1 - Free/Already unlocked
+  100,    // Slot 2
+  250,    // Slot 3
+  500,    // Slot 4
+  1000,   // Slot 5
+  2000,   // Slot 6
+  4000,   // Slot 7
+  8000,   // Slot 8
+  12000,  // Slot 9
+  15000   // Slot 10
+];
+
 // Only one general rough gem type (input)
 const ROUGH_GEM_KEY = 'rough_gems';
 
@@ -247,9 +261,25 @@ class PolishingGame extends TSDGEMSGame {
     }
 
     async loadPolishingData(actor) {
+        // Check if already initialized - skip full reload
+        if (this.isInitialized && this.lastDataLoad && (Date.now() - this.lastDataLoad) < 300000) {
+            console.log('[Polishing] Already initialized, skipping full reload');
+            // Just refresh active jobs and gem inventory (quick)
+            await this.fetchActivePolishingJobs(actor);
+            await this.fetchGemInventory(actor);
+            this.renderPolishingSlots();
+            return;
+        }
+        
         try {
             console.log('[Polishing] ========================================');
             console.log('[Polishing] Loading polishing data for actor:', actor);
+            
+            // Show skeleton screens
+            const slotsGrid = document.getElementById('polishing-slots-grid');
+            if (slotsGrid && window.SkeletonLoader) {
+                window.SkeletonLoader.show('polishing-slots-grid', 'slot', 5);
+            }
             
             this.showNotification('📊 Loading polishing data...', 'info');
 
@@ -278,6 +308,9 @@ class PolishingGame extends TSDGEMSGame {
             
             // Fetch gem inventory from backend
             await this.fetchGemInventory(actor);
+            
+            // Fetch staked assets
+            await this.loadStakedAssets(actor);
                 
             // Update debug panel
             this.updateDebugPanel({
@@ -295,6 +328,15 @@ class PolishingGame extends TSDGEMSGame {
             this.renderPolishingSlots();
             this.updatePolishingStats();
             
+            // Hide skeleton
+            if (window.SkeletonLoader) {
+                window.SkeletonLoader.hide('polishing-slots-grid');
+            }
+            
+            // Mark as initialized and track load time
+            this.isInitialized = true;
+            this.lastDataLoad = Date.now();
+            
             // Start auto-refresh
             this.startAutoRefresh();
             
@@ -307,6 +349,12 @@ class PolishingGame extends TSDGEMSGame {
             
         } catch (error) {
             console.error('[Polishing] Failed to load polishing data:', error);
+            
+            // Hide skeleton on error
+            if (window.SkeletonLoader) {
+                window.SkeletonLoader.hide('polishing-slots-grid');
+            }
+            
             this.showNotification('❌ Failed to load polishing data: ' + error.message, 'error');
             this.updateDebugPanel({ 
                 error: error.message, 
@@ -358,7 +406,8 @@ class PolishingGame extends TSDGEMSGame {
                     name: details.name,
                     count: details.count,
                     image: details.image,
-                    imagePath: details.imagePath
+                    imagePath: details.imagePath,
+                    assets: details.assets || [] // CRITICAL: Include actual asset IDs
                 }));
                 
                 this.polishingTableNFTs = equipmentArray.filter(nft => {
@@ -410,6 +459,65 @@ class PolishingGame extends TSDGEMSGame {
         }
     }
 
+    async loadStakedAssets(actor) {
+        try {
+            console.log('[Polishing] Loading staked assets...');
+            
+            const stakingResponse = await this.backendService.getStakedAssets(actor);
+            console.log('[Polishing] Staking data received:', stakingResponse);
+            
+            if (stakingResponse && stakingResponse.stakingData) {
+                const stakingData = stakingResponse.stakingData;
+                
+                // Initialize staking data
+                this.stakedTables = {};
+                
+                // Process polishing staking data
+                if (stakingData.polishing) {
+                    Object.entries(stakingData.polishing).forEach(([slotKey, slotData]) => {
+                        const slotNum = parseInt(slotKey.replace('slot', ''));
+                        
+                        if (slotData.table) {
+                            this.stakedTables[slotNum] = {
+                                template_id: slotData.table.template_id,
+                                name: slotData.table.name,
+                                imagePath: slotData.table.imagePath || '',
+                                asset_id: slotData.table.asset_id
+                            };
+                        }
+                    });
+                }
+                
+                console.log('[Polishing] Loaded staked tables:', this.stakedTables);
+            } else {
+                console.log('[Polishing] No staking data found, initializing empty');
+                this.stakedTables = {};
+            }
+            
+        } catch (error) {
+            console.error('[Polishing] Failed to load staked assets:', error);
+            this.stakedTables = {};
+        }
+    }
+
+    /**
+     * Extract all staked asset IDs from staking data
+     * @returns {Set<string>} Set of staked asset_ids
+     */
+    getStakedAssetIds() {
+        const stakedAssetIds = new Set();
+        
+        // Add staked polishing tables
+        Object.values(this.stakedTables).forEach(table => {
+            if (table.asset_id) {
+                stakedAssetIds.add(table.asset_id);
+            }
+        });
+        
+        console.log('[Polishing] Found', stakedAssetIds.size, 'staked asset IDs');
+        return stakedAssetIds;
+    }
+
     renderPolishingSlots() {
         const slotsGrid = document.getElementById('polishing-slots-grid');
         if (!slotsGrid) {
@@ -452,19 +560,24 @@ class PolishingGame extends TSDGEMSGame {
 
         slotsGrid.innerHTML = slots.map(slot => {
             if (!slot.isUnlocked) {
+                const unlockCost = POLISHING_SLOT_UNLOCK_COSTS[slot.slotNum - 1] || 0;
                 return `
                     <div class="polishing-slot locked">
-                <div class="slot-header">
+                        <div class="slot-header">
                             <span class="slot-locked">🔒 LOCKED</span>
                         </div>
                         <div class="slot-content-layout">
-                            <p class="slot-description">Purchase Polishing Table NFTs to unlock this slot</p>
+                            <p class="slot-description">Unlock this polishing slot</p>
                         </div>
-                        <div style="margin-top: 15px; padding: 15px; background: rgba(255, 149, 0, 0.1); border: 1px solid rgba(255, 149, 0, 0.3); border-radius: 8px;">
-                            <p style="color: #ff9500; font-size: 0.9em; margin: 0;">
-                                <i class="fas fa-info-circle"></i> Unlock by owning Polishing Table NFTs
-                            </p>
-                </div>
+                        <div class="slot-unlock-requirements">
+                            <h4>Unlock Requirements:</h4>
+                            <div class="unlock-req">
+                                <span>Cost: ${unlockCost.toLocaleString()} TSDM</span>
+                            </div>
+                            <button onclick="game.unlockPolishingSlot(${slot.slotNum})" class="action-btn primary">
+                                <i class="fas fa-unlock"></i> Unlock Slot
+                            </button>
+                        </div>
                     </div>
                 `;
             }
@@ -641,6 +754,10 @@ class PolishingGame extends TSDGEMSGame {
         
         this.selectedSlotForStaking = slotNum;
         
+        // Get staked asset IDs to filter them out
+        const stakedAssetIds = this.getStakedAssetIds();
+        console.log('[Polishing] Staked asset IDs:', stakedAssetIds);
+        
         let galleryContent = '';
         
         if (this.polishingTableNFTs.length === 0) {
@@ -662,21 +779,53 @@ class PolishingGame extends TSDGEMSGame {
         } else {
             const individualTableNFTs = [];
             this.polishingTableNFTs.forEach(nft => {
-                for (let i = 0; i < (nft.count || 1); i++) {
+                // Use actual asset IDs if available from equipmentDetails
+                const assets = nft.assets || [];
+                const count = Math.max(assets.length, nft.count || 1);
+                
+                for (let i = 0; i < count; i++) {
                     individualTableNFTs.push({
                         ...nft,
+                        asset_id: assets[i] || `${nft.template_id}-${i}`, // Use real asset ID or placeholder
                         uniqueId: `${nft.template_id}-${i}`
                     });
                 }
             });
             
+            // Filter out already staked tables
+            const availableTables = individualTableNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
+            console.log('[Polishing] Available tables after filtering:', availableTables.length, 'of', individualTableNFTs.length);
+            
+            if (availableTables.length === 0) {
+                // All tables are already staked
+                galleryContent = `
+                    <div style="text-align: center; padding: 60px 20px; background: rgba(255, 152, 0, 0.1); border-radius: 8px; border: 2px solid #ff9800;">
+                        <i class="fas fa-check-circle" style="font-size: 64px; color: #ff9800; margin-bottom: 20px;"></i>
+                        <h3 style="color: #ff9800; margin-bottom: 15px; font-size: 1.3em;">All Tables Already Staked!</h3>
+                        <p style="color: #888; margin-bottom: 30px; max-width: 400px; margin-left: auto; margin-right: auto;">
+                            All your polishing table NFTs are currently staked. Unstake a table from another slot or purchase more on NeftyBlocks.
+                        </p>
+                        <button class="action-btn secondary" onclick="game.closeStakeModal()">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                `;
+            } else {
+            
             galleryContent = `
                 <p style="margin-bottom: 15px; color: #888;">
                     Select a Polishing Table NFT to stake in this slot.
                 </p>
+                ${availableTables.length < individualTableNFTs.length ? `
+                    <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 6px; padding: 10px; margin-bottom: 15px;">
+                        <p style="color: #ff9800; margin: 0; font-size: 0.85em;">
+                            <i class="fas fa-info-circle"></i> ${individualTableNFTs.length - availableTables.length} table(s) already staked
+                        </p>
+                    </div>
+                ` : ''}
                 <div class="nft-gallery-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 500px; overflow-y: auto; padding: 10px;">
-                    ${individualTableNFTs.map(nft => `
-                        <div class="nft-card" style="border: 2px solid #ff9500; border-radius: 8px; padding: 10px; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s;" onclick="game.stakeTable('${nft.template_id}', ${slotNum}, '${nft.name}', '${nft.imagePath || ''}')">
+                    ${availableTables.map(nft => `
+                        <div class="nft-card" style="border: 2px solid #ff9500; border-radius: 8px; padding: 10px; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s;" onclick="game.stakeTable('${nft.template_id}', ${slotNum}, '${nft.name}', '${nft.imagePath || ''}', '${nft.asset_id}')">
                             ${nft.imagePath ? `
                                 <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
                             ` : ''}
@@ -685,6 +834,7 @@ class PolishingGame extends TSDGEMSGame {
                     `).join('')}
                 </div>
             `;
+            }
         }
         
         const modalContent = `
@@ -942,14 +1092,17 @@ class PolishingGame extends TSDGEMSGame {
             console.log('[Polishing] Polishing completed:', data);
             
             const result = data.result;
-            const amount = result.outAmount;
-            const polishedType = result.polishedType;
+            const totalOut = result.totalOut || 0;
+            const results = result.results || {};
             
-            // Get gem name from type (e.g., "polished_diamond" -> "Diamond")
-            const gemName = polishedType.replace('polished_', '').charAt(0).toUpperCase() + 
-                           polishedType.replace('polished_', '').slice(1);
+            // Build notification message showing all gem types received
+            const gemsList = Object.entries(results).map(([gemType, count]) => {
+                const gemName = gemType.replace('polished_', '').charAt(0).toUpperCase() + 
+                               gemType.replace('polished_', '').slice(1);
+                return `${count}x ${gemName}`;
+            }).join(', ');
             
-            this.showNotification(`💎 Claimed ${amount.toLocaleString()}x Polished ${gemName}!`, 'success');
+            this.showNotification(`💎 Claimed ${totalOut} Polished Gems: ${gemsList}!`, 'success');
             
             // Refresh polishing data
             await this.fetchActivePolishingJobs(this.currentActor);
@@ -980,6 +1133,209 @@ class PolishingGame extends TSDGEMSGame {
         }
     }
 
+    async unlockPolishingSlot(slotNum) {
+        if (!this.currentActor) {
+            this.showNotification('Please connect your wallet first', 'error');
+            return;
+        }
+        
+        const unlockCost = POLISHING_SLOT_UNLOCK_COSTS[slotNum - 1] || 0;
+        
+        try {
+            console.log('[Polishing] Unlocking slot:', slotNum, 'Cost:', unlockCost, 'TSDM');
+            this.showNotification(`🔓 Creating payment request for slot ${slotNum} (${unlockCost.toLocaleString()} TSDM)...`, 'info');
+            
+            // Create payment request
+            const response = await fetch(`${this.backendService.apiBase}/unlockPolishingSlot`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    actor: this.currentActor,
+                    targetSlot: slotNum
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to create payment request');
+            }
+            
+            const data = await response.json();
+            console.log('[Polishing] Payment request created:', data);
+            
+            // Show payment modal
+            this.showPaymentModal(data.paymentId, unlockCost, slotNum, 'polishing_slot_unlock');
+            
+        } catch (error) {
+            console.error('[Polishing] Failed to create payment request:', error);
+            this.showNotification('❌ Failed to create payment request: ' + error.message, 'error');
+        }
+    }
+
+    showPaymentModal(paymentId, amount, slotNum, paymentType) {
+        const modalContent = `
+            <div class="payment-modal">
+                <div class="modal-header">
+                    <h3><i class="fas fa-credit-card"></i> Complete Payment</h3>
+                    <button class="modal-close" onclick="game.closePaymentModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="payment-info">
+                        <div class="payment-details">
+                            <h4>Payment Details</h4>
+                            <div class="detail-row">
+                                <span class="label">Amount:</span>
+                                <span class="value">${amount.toLocaleString()} TSDM</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Destination:</span>
+                                <span class="value">tillo1212121</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Purpose:</span>
+                                <span class="value">Unlock Polishing Slot ${slotNum}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="payment-status" id="payment-status">
+                            <div class="status-pending">
+                                <i class="fas fa-clock"></i>
+                                <span>Payment request created. Please complete the blockchain transaction.</span>
+                            </div>
+                        </div>
+                        
+                        <div class="payment-actions">
+                            <button id="execute-payment-btn" class="action-btn primary" onclick="game.executePayment('${paymentId}', ${amount}, '${paymentType}', ${slotNum})">
+                                <i class="fas fa-paper-plane"></i> Execute Payment
+                            </button>
+                            <button class="action-btn secondary" onclick="game.cancelPayment('${paymentId}')">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('payment-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'payment-modal';
+            modal.className = 'modal-overlay';
+            document.body.appendChild(modal);
+        }
+        
+        modal.innerHTML = modalContent;
+        modal.style.display = 'flex';
+        
+        // Store payment info for later use
+        this.currentPayment = {
+            paymentId,
+            amount,
+            slotNum,
+            type: paymentType
+        };
+    }
+
+    async executePayment(paymentId, amount, paymentType, slotNum) {
+        try {
+            const executeBtn = document.getElementById('execute-payment-btn');
+            const statusDiv = document.getElementById('payment-status');
+            
+            // Update UI
+            executeBtn.disabled = true;
+            executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            
+            statusDiv.innerHTML = `
+                <div class="status-processing">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Executing blockchain transaction...</span>
+                </div>
+            `;
+            
+            // Execute payment using PaymentService
+            const result = await window.paymentService.processPayment(
+                paymentType,
+                amount,
+                { slotNum },
+                (progress) => {
+                    statusDiv.innerHTML = `
+                        <div class="status-processing">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <span>${progress}</span>
+                        </div>
+                    `;
+                }
+            );
+            
+            if (result.success) {
+                statusDiv.innerHTML = `
+                    <div class="status-success">
+                        <i class="fas fa-check-circle"></i>
+                        <span>Payment completed successfully!</span>
+                        <div class="tx-info">
+                            <small>Transaction ID: ${result.txId}</small>
+                        </div>
+                    </div>
+                `;
+                
+                this.showNotification(`✅ Polishing slot ${slotNum} unlocked successfully!`, 'success');
+                
+                // Reload polishing data
+                await this.loadPolishingData(this.currentActor);
+                
+                // Close modal after delay
+                setTimeout(() => {
+                    this.closePaymentModal();
+                }, 3000);
+                
+            } else {
+                throw new Error('Payment verification failed');
+            }
+            
+        } catch (error) {
+            console.error('[Polishing] Payment execution failed:', error);
+            
+            const statusDiv = document.getElementById('payment-status');
+            statusDiv.innerHTML = `
+                <div class="status-error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span>Payment failed: ${error.message}</span>
+                </div>
+            `;
+            
+            const executeBtn = document.getElementById('execute-payment-btn');
+            executeBtn.disabled = false;
+            executeBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Retry Payment';
+            
+            this.showNotification('❌ Payment failed: ' + error.message, 'error');
+        }
+    }
+
+    async cancelPayment(paymentId) {
+        try {
+            await window.paymentService.cancelPayment(paymentId);
+            this.showNotification('Payment cancelled', 'info');
+            this.closePaymentModal();
+        } catch (error) {
+            console.error('[Polishing] Failed to cancel payment:', error);
+            this.showNotification('❌ Failed to cancel payment: ' + error.message, 'error');
+        }
+    }
+
+    closePaymentModal() {
+        const modal = document.getElementById('payment-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        this.currentPayment = null;
+    }
+
     closeStakeModal() {
         const modalOverlay = document.getElementById('modal-overlay');
         if (modalOverlay) {
@@ -988,29 +1344,69 @@ class PolishingGame extends TSDGEMSGame {
         this.selectedSlotForStaking = null;
     }
 
-    stakeTable(templateId, slotNum, name, imagePath) {
-        console.log('[Polishing] Staking table:', name, 'to slot:', slotNum);
+    async stakeTable(templateId, slotNum, name, imagePath, assetId) {
+        console.log('[Polishing] Staking table:', name, 'to slot:', slotNum, 'asset_id:', assetId);
         
-        this.stakedTables[slotNum] = {
-            template_id: templateId,
-            name: name,
-            imagePath: imagePath
-        };
-        
-        this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
-        this.closeStakeModal();
-        this.renderPolishingSlots();
+        try {
+            const result = await this.backendService.stakeAsset(
+                this.currentActor,
+                'polishing',
+                slotNum,
+                'table',
+                {
+                    asset_id: assetId,
+                    template_id: templateId,
+                    name: name,
+                    imagePath: imagePath
+                }
+            );
+            
+            if (result.success) {
+                // Update local state with backend data
+                await this.loadStakedAssets(this.currentActor);
+                
+                this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
+                this.closeStakeModal();
+                this.renderPolishingSlots();
+            } else {
+                throw new Error(result.error || 'Failed to stake table');
+            }
+        } catch (error) {
+            console.error('[Polishing] Failed to stake table:', error);
+            this.showNotification(`❌ Failed to stake table: ${error.message}`, 'error');
+        }
     }
 
-    unstakeTable(slotNum) {
+    async unstakeTable(slotNum) {
         console.log('[Polishing] Unstaking table from slot:', slotNum);
         
-        if (this.stakedTables[slotNum]) {
-            const table = this.stakedTables[slotNum];
-            delete this.stakedTables[slotNum];
+        const stakedTable = this.stakedTables[slotNum];
+        if (!stakedTable) {
+            this.showNotification('❌ No table staked in this slot!', 'error');
+            return;
+        }
+        
+        try {
+            const result = await this.backendService.unstakeAsset(
+                this.currentActor,
+                'polishing',
+                slotNum,
+                'table',
+                stakedTable.asset_id
+            );
             
-            this.showNotification(`✅ Unstaked ${table.name} from Slot ${slotNum}!`, 'success');
-            this.renderPolishingSlots();
+            if (result.success) {
+                // Update local state with backend data
+                await this.loadStakedAssets(this.currentActor);
+                
+                this.showNotification(`✅ Unstaked ${stakedTable.name} from Slot ${slotNum}!`, 'success');
+                this.renderPolishingSlots();
+            } else {
+                throw new Error(result.error || 'Failed to unstake table');
+            }
+        } catch (error) {
+            console.error('[Polishing] Failed to unstake table:', error);
+            this.showNotification(`❌ Failed to unstake table: ${error.message}`, 'error');
         }
     }
 

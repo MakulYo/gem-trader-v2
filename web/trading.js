@@ -13,15 +13,70 @@ class TradingGame extends TSDGEMSGame {
         this.boostsData = null;
         this.chartData = null;
         this.currentChartDays = 30;
+        this.stakedGems = {};
+        this.inventoryData = null;
         this.init();
     }
 
     init() {
         this.setupTradingSubpages();
         this.setupChartControls();
+        this.setupActorListener();
         this.createDebugPanel();
         this.loadInitialData();
         this.showNotification('Loading trading markets...', 'info');
+        
+        // Check if actor is already available after a short delay
+        setTimeout(() => {
+            if (this.currentActor) {
+                console.log('[Trading] Actor detected during init:', this.currentActor);
+                this.updateStakingGrid();
+            }
+        }, 1000);
+    }
+
+    setupActorListener() {
+        // Listen for actor changes from wallet
+        window.addEventListener('walletConnected', (e) => {
+            this.currentActor = e.detail.actor;
+            console.log('[Trading] Actor connected:', this.currentActor);
+            // Load staked gems to show active benefits
+            this.loadStakedGems();
+            this.updateStakingGrid();
+        });
+
+        window.addEventListener('wallet-session-restored', (e) => {
+            this.currentActor = e.detail.actor;
+            console.log('[Trading] Actor session restored:', this.currentActor);
+            // Load staked gems to show active benefits
+            this.loadStakedGems();
+            this.updateStakingGrid();
+        });
+
+        window.addEventListener('walletDisconnected', (e) => {
+            this.currentActor = null;
+            console.log('[Trading] Actor disconnected');
+            this.stakedGems = {};
+            this.renderActiveBenefits();
+            this.updateStakingGrid();
+        });
+
+        // Also check if actor is already set
+        if (window.walletSessionInfo && window.walletSessionInfo.actor) {
+            this.currentActor = window.walletSessionInfo.actor;
+            console.log('[Trading] Actor already set:', this.currentActor);
+            // Load staked gems immediately to show active benefits
+            this.loadStakedGems();
+            this.updateStakingGrid();
+        }
+    }
+
+    updateStakingGrid() {
+        // Re-render staking grid when actor changes
+        const stakingSubpage = document.getElementById('trading-subpage-staking');
+        if (stakingSubpage && stakingSubpage.classList.contains('active')) {
+            this.renderStakingGrid();
+        }
     }
 
     async loadInitialData() {
@@ -60,7 +115,7 @@ class TradingGame extends TSDGEMSGame {
             this.renderBasePriceDisplay();
             this.renderCityMatrix();
             this.initializeGemPriceChart();
-            this.renderStakingGrid();
+            // Don't render staking grid here - will be rendered when actor is set
             
             this.showNotification('Trading markets loaded!', 'success');
             
@@ -521,18 +576,22 @@ class TradingGame extends TSDGEMSGame {
 
             const boost = this.boostsData[city]?.[gem] || 0;
             const basePrice = this.basePriceData.basePrice || 0;
-            const stakingBonus = 0; // TODO: Get from player data
             
-            const totalMultiplier = 1 + boost + stakingBonus;
-            const estimatedPayout = basePrice * totalMultiplier * amount;
+            // Get gem boost from staked gems
+            const gemBoost = this.getGemBoostForType(gem);
+            
+            // boost is already a decimal (0.019 = 1.9%), gemBoost is also decimal (0.05 = 5%)
+            const cityMultiplier = 1 + boost;
+            const gemMultiplier = 1 + gemBoost;
+            const estimatedPayout = basePrice * cityMultiplier * gemMultiplier * amount;
 
             // Update summary
             const boostEl = document.getElementById('matrix-summary-boost');
             const stakingEl = document.getElementById('matrix-summary-staking');
             const priceEl = document.getElementById('matrix-summary-price');
 
-            if (boostEl) boostEl.textContent = `Boost: +${(boost * 100).toFixed(1)}%`;
-            if (stakingEl) stakingEl.textContent = `Staking Bonus: +${(stakingBonus * 100).toFixed(1)}%`;
+            if (boostEl) boostEl.textContent = `City Boost: +${(boost * 100).toFixed(1)}%`;
+            if (stakingEl) stakingEl.textContent = `Gem Staking Bonus: +${(gemBoost * 100).toFixed(0)}%`;
             if (priceEl) priceEl.textContent = `Est. Payout: ${estimatedPayout.toFixed(2)} Game $`;
         };
 
@@ -541,17 +600,22 @@ class TradingGame extends TSDGEMSGame {
         if (amountInput) amountInput.addEventListener('input', updateSummary);
 
         if (sellBtn) {
-            sellBtn.addEventListener('click', () => {
+            sellBtn.addEventListener('click', async () => {
                 const city = citySelect?.value;
                 const gem = gemSelect?.value;
-                const amount = amountInput?.value;
+                const amount = parseInt(amountInput?.value);
                 
-                if (!city || !gem) {
-                    this.showNotification('Please select a city and gem type!', 'warning');
+                if (!city || !gem || !amount) {
+                    this.showNotification('Please select a city, gem type, and amount!', 'warning');
                     return;
                 }
                 
-                this.showNotification(`Selling ${amount} ${this.formatGemName(gem)} in ${city.toUpperCase()} - Coming soon!`, 'info');
+                if (!this.currentActor) {
+                    this.showNotification('Please connect your wallet first', 'error');
+                    return;
+                }
+                
+                await this.handleGemSale(city, gem, amount);
             });
         }
 
@@ -787,7 +851,7 @@ class TradingGame extends TSDGEMSGame {
         const subpageToggle = document.getElementById('trading-subpage-toggle');
         if (!subpageToggle) return;
 
-        subpageToggle.addEventListener('click', (event) => {
+        subpageToggle.addEventListener('click', async (event) => {
             const button = event.target.closest('.toggle-btn');
             if (!button) return;
             const target = button.getAttribute('data-target');
@@ -800,33 +864,512 @@ class TradingGame extends TSDGEMSGame {
             document.querySelectorAll('.trading-subpage').forEach(section => {
                 section.classList.toggle('active', section.id === `trading-subpage-${target}`);
             });
+
+            // Load specific data when switching to staking page
+            if (target === 'staking') {
+                await this.renderStakingGrid();
+            }
         });
     }
 
-    renderStakingGrid() {
+    async renderStakingGrid() {
         const stakingGrid = document.getElementById('staking-grid');
         if (!stakingGrid) return;
 
-        const stakingSlots = Array.from({ length: 10 }, (_, i) => ({
-            id: i + 1,
-            staked: false,
-            gemType: null,
-            bonus: 0
-        }));
+        // Load staked gems if we have an actor
+        if (this.currentActor) {
+            await this.loadStakedGems();
+        } else {
+            // Clear staked gems if no actor
+            this.stakedGems = {};
+        }
 
-        stakingGrid.innerHTML = stakingSlots.map(slot => `
-            <div class="staking-slot ${slot.staked ? 'active' : 'empty'}">
-                <div class="slot-header">
-                    <h4>Slot ${slot.id}</h4>
-                    ${slot.staked ? `<span class="bonus">+${slot.bonus}%</span>` : ''}
-                </div>
-                ${slot.staked ? `
-                    <p>Gem: ${slot.gemType}</p>
-                ` : `
-                    <p>Stake a gem to activate</p>
-                `}
+        stakingGrid.innerHTML = `
+            <div class="staking-slots-container">
+                ${Array.from({length: 10}, (_, i) => i + 1).map(slotNum => {
+                    const slot = this.stakedGems[`slot${slotNum}`] || null;
+                    return this.renderGemStakingSlot(slotNum, slot);
+                }).join('')}
             </div>
-        `).join('');
+        `;
+    }
+
+    getSlotGemType(slotNum) {
+        const slotGemTypes = {
+            1: 'Diamond',
+            2: 'Ruby', 
+            3: 'Sapphire',
+            4: 'Emerald',
+            5: 'Jade',
+            6: 'Tanzanite',
+            7: 'Opal',
+            8: 'Aquamarine',
+            9: 'Topaz',
+            10: 'Amethyst'
+        };
+        return slotGemTypes[slotNum] || 'Unknown';
+    }
+
+    getGemColor(gemType) {
+        const gemColors = {
+            'Diamond': '#b9f2ff',
+            'Ruby': '#ff6b9d',
+            'Sapphire': '#4169e1',
+            'Emerald': '#50c878',
+            'Jade': '#00a86b',
+            'Tanzanite': '#5d3fd3',
+            'Opal': '#a8c3bc',
+            'Aquamarine': '#7fffd4',
+            'Topaz': '#ffc87c',
+            'Amethyst': '#9966cc'
+        };
+        return gemColors[gemType] || '#ffffff';
+    }
+
+    renderGemStakingSlot(slotNum, slotData) {
+        const expectedGemType = this.getSlotGemType(slotNum);
+        const gemColor = this.getGemColor(expectedGemType);
+        
+        if (!slotData) {
+            // Empty slot - show stake button or connect wallet message
+            if (!this.currentActor) {
+                return `
+                    <div class="gem-staking-slot empty" style="border-color: ${gemColor};">
+                        <div class="slot-number" style="color: ${gemColor};">${expectedGemType}</div>
+                        <div class="slot-placeholder">
+                            <i class="fas fa-wallet fa-3x" style="opacity: 0.3; color: ${gemColor};"></i>
+                            <p>Connect Wallet</p>
+                            <small>Connect your wallet to stake gems</small>
+                        </div>
+                        <button class="action-btn primary" disabled style="border-color: ${gemColor};">
+                            <i class="fas fa-lock"></i> Connect Wallet First
+                        </button>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="gem-staking-slot empty" style="border-color: ${gemColor};">
+                    <div class="slot-number" style="color: ${gemColor};">${expectedGemType}</div>
+                    <div class="slot-placeholder">
+                        <i class="fas fa-gem fa-3x" style="opacity: 0.3; color: ${gemColor};"></i>
+                        <p style="color: ${gemColor};">Empty Slot</p>
+                        <small>Stake ${expectedGemType} NFTs here</small>
+                    </div>
+                    <button class="action-btn primary" onclick="game.openGemStakingModal(${slotNum})" style="background: linear-gradient(135deg, ${gemColor}, ${gemColor}dd); border-color: ${gemColor};">
+                        <i class="fas fa-plus"></i> Stake ${expectedGemType}
+                    </button>
+                </div>
+            `;
+        }
+
+        // Staked slot - show gem and bonus
+        const gem = slotData.gem;
+        return `
+            <div class="gem-staking-slot staked" style="border: 2px solid ${gemColor}; box-shadow: 0 0 20px ${gemColor}33;">
+                <div class="slot-header">
+                    <span class="slot-number" style="color: ${gemColor};">${expectedGemType}</span>
+                    <span class="gem-type-badge" style="background: ${gemColor}33; color: ${gemColor}; border-color: ${gemColor}55;">${gem.isPolished ? 'Polished' : 'Rough'}</span>
+                </div>
+                <div class="gem-display">
+                    <img src="${gem.imagePath}" alt="${gem.name}" onerror="this.src='assets/gallery_images/(1).png'">
+                    <h4 style="color: ${gemColor};">${gem.name}</h4>
+                    <div class="bonus-indicator" style="background: linear-gradient(135deg, ${gemColor}, ${gemColor}cc); color: #000;">
+                        <i class="fas fa-arrow-up"></i> +${(gem.bonus * 100).toFixed(0)}% Selling Bonus
+            </div>
+                </div>
+                <button class="action-btn danger" onclick="game.unstakeGem(${slotNum}, '${gem.asset_id}')" style="border-color: #ff4444;">
+                    <i class="fas fa-times"></i> Unstake
+                </button>
+            </div>
+        `;
+    }
+
+    // ========================================
+    // GEM STAKING METHODS
+    // ========================================
+
+    async loadStakedGems() {
+        if (!this.currentActor) return;
+        
+        try {
+            console.log('[Trading] Loading staked gems for', this.currentActor);
+            this.stakedGems = await this.backendService.getStakedGems(this.currentActor);
+            console.log('[Trading] Loaded staked gems:', this.stakedGems);
+            
+            // Update active benefits display
+            this.renderActiveBenefits();
+        } catch (error) {
+            console.error('[Trading] Failed to load staked gems:', error);
+            this.stakedGems = {};
+        }
+    }
+
+    renderActiveBenefits() {
+        const benefitsDisplay = document.getElementById('benefits-display');
+        if (!benefitsDisplay) return;
+
+        if (!this.currentActor) {
+            benefitsDisplay.innerHTML = `
+                <p style="color: #888;">Connect your wallet to view your active benefits</p>
+            `;
+            return;
+        }
+
+        // Collect all active gem bonuses
+        const activeBonuses = [];
+        Object.entries(this.stakedGems).forEach(([slotKey, slotData]) => {
+            if (slotData && slotData.gem) {
+                const gem = slotData.gem;
+                activeBonuses.push({
+                    gemType: gem.gemType,
+                    bonus: gem.bonus,
+                    isPolished: gem.isPolished,
+                    name: gem.name,
+                    imagePath: gem.imagePath
+                });
+            }
+        });
+
+        if (activeBonuses.length === 0) {
+            benefitsDisplay.innerHTML = `
+                <p style="color: #888;">
+                    <i class="fas fa-info-circle"></i> No active gem staking bonuses. 
+                    Stake gems in the "Gems Staking" tab to unlock selling bonuses!
+                </p>
+            `;
+            return;
+        }
+
+        // Render active bonuses
+        benefitsDisplay.innerHTML = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
+                ${activeBonuses.map(bonus => {
+                    const gemColor = this.getGemColor(bonus.gemType);
+                    return `
+                        <div style="background: rgba(0, 0, 0, 0.4); border: 2px solid ${gemColor}; border-radius: 8px; padding: 15px; text-align: center;">
+                            <img src="${bonus.imagePath}" alt="${bonus.name}" style="width: 60px; height: 60px; object-fit: contain; margin-bottom: 10px;" onerror="this.src='assets/gallery_images/(1).png'">
+                            <h4 style="color: ${gemColor}; margin: 5px 0; font-size: 0.95em;">${bonus.gemType}</h4>
+                            <p style="color: #888; font-size: 0.85em; margin: 5px 0;">${bonus.isPolished ? 'Polished' : 'Rough'}</p>
+                            <div style="background: linear-gradient(135deg, ${gemColor}, ${gemColor}cc); color: #000; padding: 6px 10px; border-radius: 6px; font-weight: bold; font-size: 0.9em; margin-top: 8px;">
+                                <i class="fas fa-arrow-up"></i> +${(bonus.bonus * 100).toFixed(0)}% Selling Bonus
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    async openGemStakingModal(slotNum) {
+        console.log(`[Trading] openGemStakingModal called for slot ${slotNum}`);
+        
+        if (!this.currentActor) {
+            console.error('[Trading] No actor connected');
+            this.showNotification('Please connect your wallet first', 'error');
+            return;
+        }
+
+        try {
+            const expectedGemType = this.getSlotGemType(slotNum);
+            console.log(`[Trading] Expected gem type: ${expectedGemType}`);
+
+            // Load inventory data if not already loaded
+            if (!this.inventoryData) {
+                console.log('[Trading] Loading inventory data...');
+                this.inventoryData = await this.backendService.getInventory(this.currentActor);
+                console.log('[Trading] Inventory data loaded');
+            }
+
+            // Get gem NFTs from inventory
+            const gemNFTs = this.extractGemNFTsFromInventory();
+            console.log(`[Trading] Found ${gemNFTs.length} total gem NFTs in inventory`);
+            
+            // Filter for the expected gem type only
+            const typeGems = gemNFTs.filter(nft => nft.gemType === expectedGemType);
+            console.log(`[Trading] Found ${typeGems.length} ${expectedGemType} NFTs`);
+            
+            // Filter out already staked gems
+            const stakedAssetIds = this.getStakedAssetIds();
+            console.log(`[Trading] ${stakedAssetIds.size} gems currently staked`);
+            const availableGems = typeGems.filter(nft => !stakedAssetIds.has(nft.asset_id));
+            console.log(`[Trading] ${availableGems.length} ${expectedGemType} NFTs available for staking`);
+
+            if (availableGems.length === 0) {
+                if (typeGems.length === 0) {
+                    console.log(`[Trading] User owns no ${expectedGemType} NFTs`);
+                    this.showNotification(`You don't own any ${expectedGemType} NFTs`, 'warning');
+                } else {
+                    console.log(`[Trading] All ${expectedGemType} NFTs are already staked`);
+                    this.showNotification(`All your ${expectedGemType} NFTs are already staked`, 'warning');
+                }
+                return;
+            }
+
+            console.log(`[Trading] Opening modal with ${availableGems.length} gems`);
+            this.showGemStakingModal(slotNum, availableGems);
+        } catch (error) {
+            console.error('[Trading] Error in openGemStakingModal:', error);
+            this.showNotification('Failed to load gems: ' + error.message, 'error');
+        }
+    }
+
+    extractGemNFTsFromInventory() {
+        const gemNFTs = [];
+        
+        if (!this.inventoryData) {
+            console.log('[Trading] No inventory data available');
+            return gemNFTs;
+        }
+
+        // Gem Type Mapping (support both string and number keys)
+        const GEM_TYPE_MAP = {
+            // Polished
+            '894387': 'Diamond', '894388': 'Ruby', '894389': 'Sapphire', '894390': 'Emerald',
+            '894391': 'Jade', '894392': 'Tanzanite', '894393': 'Opal', '894394': 'Aquamarine',
+            '894395': 'Topaz', '894396': 'Amethyst',
+            // Rough
+            '894397': 'Diamond', '894398': 'Ruby', '894399': 'Sapphire', '894400': 'Emerald',
+            '894401': 'Jade', '894402': 'Tanzanite', '894403': 'Opal', '894404': 'Aquamarine',
+            '894405': 'Topaz', '894406': 'Amethyst'
+        };
+
+        console.log('[Trading] Extracting gem NFTs from inventory...');
+        console.log('[Trading] Available inventory keys:', Object.keys(this.inventoryData));
+        
+        // Process polished gems from polishedDetails
+        if (this.inventoryData.polishedDetails) {
+            console.log('[Trading] Processing polished gems...');
+            Object.entries(this.inventoryData.polishedDetails).forEach(([templateId, details]) => {
+                const gemType = GEM_TYPE_MAP[templateId];
+                if (gemType && details.assets) {
+                    console.log(`[Trading] Found ${details.assets.length}x Polished ${gemType} NFTs (template ${templateId})`);
+                    details.assets.forEach(assetId => {
+                        gemNFTs.push({
+                            asset_id: assetId,
+                            template_id: templateId,
+                            name: details.name,
+                            gemType: gemType,
+                            isPolished: true,
+                            imagePath: details.imagePath || `assets/gallery_images/${details.image || '(1).png'}`
+                        });
+                    });
+                }
+            });
+        }
+        
+        // Process rough gems from roughDetails
+        if (this.inventoryData.roughDetails) {
+            console.log('[Trading] Processing rough gems...');
+            Object.entries(this.inventoryData.roughDetails).forEach(([templateId, details]) => {
+                const gemType = GEM_TYPE_MAP[templateId];
+                if (gemType && details.assets) {
+                    console.log(`[Trading] Found ${details.assets.length}x Rough ${gemType} NFTs (template ${templateId})`);
+                    details.assets.forEach(assetId => {
+                        gemNFTs.push({
+                            asset_id: assetId,
+                            template_id: templateId,
+                            name: details.name,
+                            gemType: gemType,
+                            isPolished: false,
+                            imagePath: details.imagePath || `assets/gallery_images/${details.image || '(1).png'}`
+                        });
+                    });
+                }
+            });
+        }
+
+        console.log(`[Trading] Total gem NFTs extracted: ${gemNFTs.length}`);
+        return gemNFTs;
+    }
+
+    getStakedAssetIds() {
+        const stakedAssetIds = new Set();
+        Object.values(this.stakedGems).forEach(slotData => {
+            if (slotData.gem && slotData.gem.asset_id) {
+                stakedAssetIds.add(slotData.gem.asset_id);
+            }
+        });
+        return stakedAssetIds;
+    }
+
+    showGemStakingModal(slotNum, availableGems) {
+        console.log(`[Trading] showGemStakingModal called with ${availableGems.length} gems`);
+        
+        // Remove existing modal if present
+        const existingModal = document.getElementById('gem-staking-modal');
+        if (existingModal) {
+            console.log('[Trading] Removing existing modal');
+            existingModal.remove();
+        }
+        
+        const expectedGemType = this.getSlotGemType(slotNum);
+
+        const modalHTML = `
+            <div class="modal-overlay" id="gem-staking-modal" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; align-items: center; justify-content: center;">
+                <div class="modal-content" style="background: rgba(20, 20, 30, 0.95); border: 2px solid #00d4ff; border-radius: 12px; padding: 30px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto;">
+                    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="color: #00d4ff; margin: 0;">Stake ${expectedGemType} - Slot ${slotNum}</h3>
+                        <button class="close-btn" onclick="game.closeGemStakingModal()" style="background: transparent; border: none; color: #fff; font-size: 2em; cursor: pointer; padding: 0; width: 40px; height: 40px;">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="color: #888; margin-bottom: 20px;">
+                            Select a ${expectedGemType} gem to stake in slot ${slotNum}. Staked gems provide selling bonuses for their specific type.
+                        </p>
+                        <div class="gem-selection-grid">
+                            <div class="gem-type-group">
+                                <h4 style="color: #00d4ff; margin-bottom: 15px;">${expectedGemType} NFTs (${availableGems.length} available)</h4>
+                                <div class="gem-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px;">
+                                    ${availableGems.map(gem => `
+                                        <div class="gem-card" onclick="game.stakeGemToSlot(${slotNum}, '${gem.asset_id}', ${gem.template_id}, '${gem.name}', '${gem.gemType}', '${gem.imagePath}')" style="background: rgba(0, 0, 0, 0.4); border: 2px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: all 0.3s;">
+                                            <img src="${gem.imagePath}" alt="${gem.name}" onerror="this.src='assets/gallery_images/(1).png'" style="width: 100%; height: 100px; object-fit: contain; margin-bottom: 10px;">
+                                            <p style="color: #fff; margin: 5px 0; font-weight: 600;">${gem.name}</p>
+                                            <small style="color: #888;">ID: ${gem.asset_id}</small>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        console.log('[Trading] Inserting modal HTML into body');
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        console.log('[Trading] Modal inserted, checking if visible');
+        const insertedModal = document.getElementById('gem-staking-modal');
+        if (insertedModal) {
+            console.log('[Trading] Modal element found in DOM');
+        } else {
+            console.error('[Trading] Modal element NOT found in DOM after insertion!');
+        }
+    }
+
+    async stakeGemToSlot(slotNum, assetId, templateId, name, gemType, imagePath) {
+        try {
+            console.log(`[Trading] Staking gem ${assetId} to slot ${slotNum}`);
+            
+            const result = await this.backendService.stakeGem(this.currentActor, slotNum, {
+                asset_id: assetId,
+                template_id: templateId,
+                name: name,
+                imagePath: imagePath
+            });
+
+            if (result.success) {
+                await this.loadStakedGems();
+                this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
+                this.closeGemStakingModal();
+                await this.renderStakingGrid();
+            }
+        } catch (error) {
+            console.error('[Trading] Failed to stake gem:', error);
+            this.showNotification('Failed to stake gem: ' + error.message, 'error');
+        }
+    }
+
+    async unstakeGem(slotNum, assetId) {
+        try {
+            console.log(`[Trading] Unstaking gem ${assetId} from slot ${slotNum}`);
+            
+            const result = await this.backendService.unstakeGem(this.currentActor, slotNum, assetId);
+
+            if (result.success) {
+                await this.loadStakedGems();
+                this.showNotification(`✅ Unstaked gem from Slot ${slotNum}!`, 'success');
+                await this.renderStakingGrid();
+            }
+        } catch (error) {
+            console.error('[Trading] Failed to unstake gem:', error);
+            this.showNotification('Failed to unstake gem: ' + error.message, 'error');
+        }
+    }
+
+    closeGemStakingModal() {
+        const modal = document.getElementById('gem-staking-modal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    // ========================================
+    // GEM SELLING METHODS
+    // ========================================
+
+    getGemBoostForType(gemType) {
+        // Convert gemType from "polished_amethyst" to "Amethyst"
+        let cleanGemType = gemType.replace('polished_', '').replace('rough_', '');
+        cleanGemType = cleanGemType.charAt(0).toUpperCase() + cleanGemType.slice(1).toLowerCase();
+        
+        console.log(`[Trading] Looking for gem boost: ${gemType} → ${cleanGemType}`);
+        
+        // Search through staked gems for the requested gem type
+        for (const [slotKey, slotData] of Object.entries(this.stakedGems)) {
+            if (slotData && slotData.gem && slotData.gem.gemType === cleanGemType) {
+                console.log(`[Trading] Found staked ${cleanGemType} with ${slotData.gem.bonus * 100}% bonus`);
+                return slotData.gem.bonus || 0;
+            }
+        }
+        
+        console.log(`[Trading] No staked ${cleanGemType} found`);
+        return 0;
+    }
+
+    async handleGemSale(cityId, gemType, amount) {
+        try {
+            console.log(`[Trading] Selling ${amount}x ${gemType} in ${cityId} for ${this.currentActor}`);
+            
+            // Backend now accepts both formats (polished_emerald or Emerald)
+            const result = await this.backendService.sellGems(this.currentActor, gemType, amount, cityId);
+            
+            if (result.success) {
+                // Format gem name nicely
+                const gemName = this.formatGemName(gemType);
+                
+                this.showNotification(
+                    `💰 Sold ${amount}x ${gemName} for ${result.totalPayout.toFixed(2)} Game $! (+${result.totalPayout.toFixed(2)} Game $)`, 
+                    'success'
+                );
+                
+                // Refresh displays
+                await this.loadPlayerData();
+                await this.loadStakedGems();
+                
+                console.log('[Trading] Updated Game $:', result.totalPayout);
+                
+                // Update summary to reflect new boost calculations
+                this.setupSellControls();
+            }
+        } catch (error) {
+            console.error('[Trading] Failed to sell gems:', error);
+            this.showNotification(`Failed to sell gems: ${error.message}`, 'error');
+        }
+    }
+
+    async loadPlayerData() {
+        if (!this.currentActor) return;
+        
+        try {
+            const dashboardData = await this.backendService.getDashboard(this.currentActor);
+            console.log('[Trading] Dashboard data loaded:', dashboardData);
+            
+            if (dashboardData && dashboardData.profile) {
+                const currency = dashboardData.profile.ingameCurrency || 0;
+                console.log('[Trading] Updating header with new currency:', currency);
+                
+                // Dispatch global event to update Game $ with animation
+                window.dispatchEvent(new CustomEvent('gameDollars:update', {
+                    detail: { amount: currency, animate: true }
+                }));
+                console.log('[Trading] Dispatched gameDollars:update event');
+            } else {
+                console.warn('[Trading] No profile data in dashboard response');
+            }
+        } catch (error) {
+            console.error('[Trading] Failed to load player data:', error);
+        }
     }
 
     capitalizeFirst(str) {
@@ -839,4 +1382,5 @@ let game;
 document.addEventListener('DOMContentLoaded', () => {
     game = new TradingGame();
     window.tsdgemsGame = game;
+    window.game = game; // Make globally accessible for onclick handlers
 });

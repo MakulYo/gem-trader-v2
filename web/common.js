@@ -3,6 +3,26 @@
 
 console.log('[Common] Loading common.js...');
 
+// Loading events are still dispatched for potential use by components
+// But no global loading bar - using local skeleton screens instead
+window.addEventListener('loading:start', (e) => {
+    console.log('[Common] Loading started:', e.detail?.endpoint);
+});
+
+window.addEventListener('loading:end', (e) => {
+    console.log('[Common] Loading ended:', e.detail?.endpoint);
+});
+
+// Global Game $ update event
+window.addEventListener('gameDollars:update', (e) => {
+    const { amount, animate } = e.detail;
+    console.log('[Common] Game $ update event:', amount, 'animate:', animate);
+    
+    if (window.tsdgemsGame && typeof window.tsdgemsGame.updateGameDollars === 'function') {
+        window.tsdgemsGame.updateGameDollars(amount, animate);
+    }
+});
+
 // Backend event listener
 window.addEventListener('backend:ready', (e) => {
   console.log('[Common] Backend ready event received:', e.detail);
@@ -11,8 +31,89 @@ window.addEventListener('backend:ready', (e) => {
   }
 });
 
+// Visibility change handler - refresh stale data when page becomes visible
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && window.tsdgemsGame) {
+        // Page became visible - refresh only if data is stale
+        const staleThreshold = 60000; // 1 minute
+        const lastLoad = window.tsdgemsGame.lastDataLoad || 0;
+        const timeSinceLoad = Date.now() - lastLoad;
+        
+        if (timeSinceLoad > staleThreshold) {
+            console.log(`[Common] Page visible after ${Math.floor(timeSinceLoad / 1000)}s - refreshing stale data`);
+            if (typeof window.tsdgemsGame.refreshStaleData === 'function') {
+                window.tsdgemsGame.refreshStaleData();
+            }
+        } else {
+            console.log(`[Common] Page visible, data still fresh (${Math.floor(timeSinceLoad / 1000)}s old)`);
+        }
+    }
+});
+
 // Base Game State (shared across all pages)
 class TSDGEMSGame {
+    constructor() {
+        this.currentGameDollars = 0;
+        this.lastDataLoad = null;
+        this.isInitialized = false;
+        this.gameState = this.getInitialGameState();
+        this.backendData = {
+            player: null,
+            cities: [],
+            boosts: {}
+        };
+        this.setupMobileNavigation();
+        console.log('[Game] TSDGEMSGame instance created');
+    }
+
+    // Animate Game $ counting up
+    animateGameDollars(fromValue, toValue, duration = 1000) {
+        const header = document.getElementById('header-game-dollars');
+        if (!header) return;
+
+        const startTime = Date.now();
+        const difference = toValue - fromValue;
+
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Easing function (ease-out)
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            
+            const currentValue = fromValue + (difference * easeProgress);
+            header.textContent = `Game $: ${Math.floor(currentValue).toLocaleString()}`;
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                header.textContent = `Game $: ${toValue.toLocaleString()}`;
+                this.currentGameDollars = toValue;
+            }
+        };
+
+        requestAnimationFrame(animate);
+    }
+
+    // Update Game $ with animation
+    updateGameDollars(newValue, animate = true) {
+        const oldValue = this.currentGameDollars;
+        
+        // Only animate if we have a valid old value and it's different
+        if (animate && oldValue > 0 && Math.abs(newValue - oldValue) > 0) {
+            console.log(`[Game] Animating Game $ from ${oldValue} to ${newValue}`);
+            this.animateGameDollars(oldValue, newValue);
+        } else {
+            // Direct update (first load or no change)
+            const header = document.getElementById('header-game-dollars');
+            if (header) {
+                header.textContent = `Game $: ${newValue.toLocaleString()}`;
+            }
+            this.currentGameDollars = newValue;
+            console.log(`[Game] Set Game $ to ${newValue} (no animation)`);
+        }
+    }
+
     applyBackendData(detail = {}) {
         const { player = {}, cities = [] } = detail;
 
@@ -28,9 +129,8 @@ class TSDGEMSGame {
         const dollars = Number(player.ingameCurrency ?? 0);
         const tsdm    = Number(player.balances?.TSDM ?? 0);
 
-        // Header chip
-        const header = document.getElementById('header-game-dollars');
-        if (header) header.textContent = `Game $: ${dollars.toLocaleString()}`;
+        // Header chip with animation
+        this.updateGameDollars(dollars, true);
 
         // Dashboard "Ingame $"
         const tsdEl = document.getElementById('tsd-balance');
@@ -42,17 +142,6 @@ class TSDGEMSGame {
 
         // (Optional) Keep cities for later
         this.gameState.trading.citiesFromBackend = cities;
-    }
-
-    constructor() {
-        this.gameState = this.getInitialGameState();
-        this.backendData = {
-            player: null,
-            cities: [],
-            boosts: {}
-        };
-        this.setupMobileNavigation();
-        console.log('[Game] TSDGEMSGame instance created');
     }
 
     getInitialGameState() {

@@ -19,9 +19,23 @@ function requireActor(req, res) {
   return actor
 }
 
-const POLISHING_DURATION_MS = 1 * 60 * 60 * 1000
+const POLISHING_DURATION_MS = 30 * 1000  // 30 seconds (for testing)
 const MAX_SLOTS = 10
 const MAX_AMOUNT_PER_SLOT = 500
+
+// Slot unlock costs (slot 1 is free, already unlocked)
+const POLISHING_SLOT_UNLOCK_COSTS = [
+  0,      // Slot 1 - Free/Already unlocked
+  100,    // Slot 2
+  250,    // Slot 3
+  500,    // Slot 4
+  1000,   // Slot 5
+  2000,   // Slot 6
+  4000,   // Slot 7
+  8000,   // Slot 8
+  12000,  // Slot 9
+  15000   // Slot 10
+]
 
 // Only one general rough gem type (input)
 const ROUGH_GEM_KEY = 'rough_gems'
@@ -72,6 +86,7 @@ function refs(actor) {
     gems: root.collection('inventory').doc('gems'),
     active: root.collection('polishing_active'),
     history: root.collection('polishing_history'),
+    pendingPayments: root.collection('pending_payments'),
   }
 }
 
@@ -80,13 +95,14 @@ async function getEffectivePolishingSlots(actor) {
   const [invSnap, profSnap] = await Promise.all([invSummary.get(), root.get()])
 
   const inv = invSnap.exists ? (invSnap.data() || {}) : {}
-  const capacity = Math.min(Number(inv.polishingSlots || 0) || 0, MAX_SLOTS)
+  const nftSlots = Math.min(Number(inv.polishingSlots || 0) || 0, MAX_SLOTS)
 
   const prof = profSnap.exists ? (profSnap.data() || {}) : {}
-  const unlocked = Number(prof.polishingSlotsUnlocked || 0)
+  const unlockedSlots = Number(prof.polishingSlotsUnlocked || 0)
 
-  const gate = unlocked > 0 ? unlocked : capacity
-  return Math.min(capacity, gate, MAX_SLOTS)
+  // Use the maximum of NFT-based slots and manually unlocked slots
+  // This allows players to unlock slots either by buying NFTs OR by spending TSDM
+  return Math.min(Math.max(nftSlots, unlockedSlots), MAX_SLOTS)
 }
 
 async function getActiveCount(actor) {
@@ -187,28 +203,41 @@ const completePolishing = onRequest((req, res) =>
       const now = Date.now()
       if (now < job.finishAt) return res.status(400).json({ error: 'job still in progress' })
 
-      // 1:1 conversion - no yield variation
-      const out = job.amountIn
+      // Roll for each gem individually
+      const amountIn = job.amountIn
+      const results = {}
       
-      // Randomly select polished gem type
-      const polishedType = pickPolishedType()
+      // Roll drop chance for each individual gem
+      for (let i = 0; i < amountIn; i++) {
+        const polishedType = pickPolishedType()
+        results[polishedType] = (results[polishedType] || 0) + 1
+      }
+      
+      console.log(`[completePolishing] Rolled ${amountIn} gems:`, results)
 
       await db.runTransaction(async (tx) => {
         const gSnap = await tx.get(gems)
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
-        const have = Number(cur[polishedType] || 0)
-        tx.set(gems, { ...cur, [polishedType]: have + out }, { merge: true })
+        
+        // Add each polished gem type to inventory
+        const updated = { ...cur }
+        Object.entries(results).forEach(([gemType, count]) => {
+          const have = Number(updated[gemType] || 0)
+          updated[gemType] = have + count
+        })
+        
+        tx.set(gems, updated, { merge: true })
         tx.set(history.doc(jobId), { 
           ...job, 
           status: 'done', 
-          polishedType: polishedType,
-          outAmount: out, 
+          results: results,  // Store all results
+          totalOut: amountIn,
           completedAt: now 
         })
         tx.delete(jobRef)
       })
 
-      res.json({ ok: true, result: { polishedType, outAmount: out, completedAt: now } })
+      res.json({ ok: true, result: { results, totalOut: amountIn, completedAt: now } })
     } catch (e) {
       console.error('[completePolishing]', e)
       res.status(500).json({ error: e.message })
@@ -216,4 +245,67 @@ const completePolishing = onRequest((req, res) =>
   })
 )
 
-module.exports = { startPolishing, getActivePolishing, completePolishing }
+// POST /unlockPolishingSlot { actor, targetSlot }
+const unlockPolishingSlot = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
+    const actor = requireActor(req, res); if (!actor) return
+    const targetSlot = Number(req.body?.targetSlot || 0)
+
+    try {
+      const { root } = refs(actor)
+      const snap = await root.get()
+      if (!snap.exists) return res.status(404).json({ error: 'player not found' })
+
+      const profile = snap.data()
+      const currentSlots = Number(profile.polishingSlotsUnlocked || 0)
+      
+      // Target slot must be the next one in sequence
+      const nextSlotToUnlock = currentSlots + 1
+      if (targetSlot !== nextSlotToUnlock) {
+        return res.status(400).json({ 
+          error: `Please unlock slots in order. Next available slot is ${nextSlotToUnlock}` 
+        })
+      }
+      
+      if (currentSlots >= MAX_SLOTS) {
+        return res.status(400).json({ error: 'maximum slots already unlocked' })
+      }
+
+      // Get cost for this specific slot (0-indexed array)
+      const unlockCost = POLISHING_SLOT_UNLOCK_COSTS[targetSlot - 1] || 0
+
+      // Create payment request directly in Firestore
+      const { pendingPayments } = refs(actor)
+      const now = Date.now()
+      const paymentId = `payment_${now}_${Math.floor(Math.random()*1e6)}`
+      
+      const paymentData = {
+        paymentId,
+        actor,
+        type: 'polishing_slot_unlock',
+        amount: unlockCost,
+        destination: process.env.PAYMENT_DESTINATION_ADDRESS || 'tillo1212121',
+        status: 'pending',
+        metadata: { slotNum: targetSlot },
+        createdAt: now,
+        memo: `payment:${paymentId}`
+      }
+
+      await pendingPayments.doc(paymentId).set(paymentData)
+
+      res.json({ 
+        ok: true, 
+        paymentId,
+        unlockCost,
+        slotNumber: targetSlot,
+        message: 'Payment request created. Please complete payment to unlock slot.'
+      })
+    } catch (e) {
+      console.error('[unlockPolishingSlot]', e)
+      res.status(500).json({ error: e.message })
+    }
+  })
+)
+
+module.exports = { startPolishing, getActivePolishing, completePolishing, unlockPolishingSlot }

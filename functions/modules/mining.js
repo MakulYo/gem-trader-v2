@@ -19,8 +19,8 @@ function requireActor(req, res) {
   return actor
 }
 
-const MINING_DURATION_MS = 3 * 60 * 60 * 1000   // 3 hours
-const MINING_COST_TSDM   = 50                   // recorded only (no debit yet)
+const MINING_DURATION_MS = 30 * 1000   // 30 seconds (for testing)
+const MINING_COST_TSDM   = 50          // recorded only (no debit yet)
 const MAX_SLOTS          = 10
 
 // Slot unlock costs (slot 1 is free, already unlocked)
@@ -48,6 +48,7 @@ function refs(actor) {
     gems: root.collection('inventory').doc('gems'),
     active: root.collection('mining_active'),
     history: root.collection('mining_history'),
+    pendingPayments: root.collection('pending_payments'),
   }
 }
 
@@ -110,6 +111,37 @@ const startMining = onRequest((req, res) =>
       const slotNum = getNextAvailableSlot(existingJobs, slots)
       if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
 
+      // Calculate slot-specific mining power from staked assets
+      const stakingRef = db.collection('staking').doc(actor)
+      const stakingSnap = await stakingRef.get()
+      let slotMiningPower = 0
+
+      if (stakingSnap.exists) {
+        const stakingData = stakingSnap.data()
+        const slotKey = `slot${slotNum}`
+        
+        if (stakingData.mining && stakingData.mining[slotKey]) {
+          const slotData = stakingData.mining[slotKey]
+          
+          // Add mine MP
+          if (slotData.mine && slotData.mine.mp) {
+            slotMiningPower += Number(slotData.mine.mp) || 0
+            console.log(`[startMining] Slot ${slotNum} mine MP:`, slotData.mine.mp)
+          }
+          
+          // Add all worker MPs
+          if (slotData.workers && Array.isArray(slotData.workers)) {
+            slotData.workers.forEach(worker => {
+              const workerMP = Number(worker.mp) || 0
+              slotMiningPower += workerMP
+              console.log(`[startMining] Slot ${slotNum} worker MP:`, workerMP)
+            })
+          }
+        }
+      }
+
+      console.log(`[startMining] Slot ${slotNum} total mining power:`, slotMiningPower)
+
       const now = Date.now()
       const jobId = `job_${now}_${Math.floor(Math.random()*1e6)}`
       const slotId = `slot_${slotNum}`
@@ -117,9 +149,10 @@ const startMining = onRequest((req, res) =>
 
       await active.doc(jobId).set({
         jobId, slotId, slotNum, actor, startedAt: now, finishAt, status: 'active',
-        costTsdm: MINING_COST_TSDM
+        costTsdm: MINING_COST_TSDM,
+        slotMiningPower  // NEW: Store slot-specific mining power
       })
-      res.json({ ok: true, jobId, slotId, slotNum, finishAt })
+      res.json({ ok: true, jobId, slotId, slotNum, finishAt, slotMiningPower })
     } catch (e) {
       console.error('[startMining]', e)
       res.status(500).json({ error: e.message })
@@ -159,23 +192,33 @@ const completeMining = onRequest((req, res) =>
       const now = Date.now()
       if (now < job.finishAt) return res.status(400).json({ error: 'job still in progress' })
 
-      const invSnap = await invSummary.get()
-      const totalMP = Number(invSnap.exists ? (invSnap.data()?.totalMiningPower || 0) : 0)
+      // Use slot-specific mining power for rewards calculation
+      // Formula: Mining Power / 20 = Rough Gems (minimum 1)
+      const slotMP = Number(job.slotMiningPower) || 0
+      const amt = Math.max(1, Math.floor(slotMP / 20))
+      
+      console.log(`[completeMining] Slot ${job.slotNum}: ${slotMP} MP ÷ 20 = ${amt} rough gems`)
 
       // Mining now produces only one type: rough_gems
-      const key   = 'rough_gems'
-      const amt   = computeYield(totalMP)
+      const key = 'rough_gems'
 
       await db.runTransaction(async (tx) => {
         const gSnap = await tx.get(gems)
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
         const have = Number(cur[key] || 0)
         tx.set(gems, { ...cur, [key]: have + amt }, { merge: true })
-        tx.set(history.doc(jobId), { ...job, status: 'done', completedAt: now, roughKey: key, yieldAmt: amt })
+        tx.set(history.doc(jobId), { 
+          ...job, 
+          status: 'done', 
+          completedAt: now, 
+          roughKey: key, 
+          yieldAmt: amt,
+          slotMiningPower: slotMP  // Store MP for history tracking
+        })
         tx.delete(jobRef)
       })
 
-      res.json({ ok: true, result: { roughKey: key, yieldAmt: amt, completedAt: now } })
+      res.json({ ok: true, result: { roughKey: key, yieldAmt: amt, completedAt: now, slotMiningPower: slotMP } })
     } catch (e) {
       console.error('[completeMining]', e)
       res.status(500).json({ error: e.message })
@@ -212,29 +255,32 @@ const unlockMiningSlot = onRequest((req, res) =>
 
       // Get cost for this specific slot (0-indexed array)
       const unlockCost = SLOT_UNLOCK_COSTS[targetSlot - 1] || 0
-      const currentTSDM = Number(profile.balances?.TSDM || 0)
 
-      if (currentTSDM < unlockCost) {
-        return res.status(400).json({ 
-          error: `insufficient TSDM balance (need ${unlockCost}, have ${currentTSDM})` 
-        })
+      // Create payment request directly in Firestore
+      const { pendingPayments } = refs(actor)
+      const now = Date.now()
+      const paymentId = `payment_${now}_${Math.floor(Math.random()*1e6)}`
+      
+      const paymentData = {
+        paymentId,
+        actor,
+        type: 'mining_slot_unlock',
+        amount: unlockCost,
+        destination: process.env.PAYMENT_DESTINATION_ADDRESS || 'tillo1212121',
+        status: 'pending',
+        metadata: { slotNum: targetSlot },
+        createdAt: now,
+        memo: `payment:${paymentId}`
       }
 
-      // Deduct TSDM and unlock slot
-      const newTSDM = currentTSDM - unlockCost
-      const newSlots = currentSlots + 1
-
-      await root.update({
-        'balances.TSDM': newTSDM,
-        miningSlotsUnlocked: newSlots
-      })
+      await pendingPayments.doc(paymentId).set(paymentData)
 
       res.json({ 
         ok: true, 
-        slotsUnlocked: newSlots,
-        tsdmRemaining: newTSDM,
-        costPaid: unlockCost,
-        slotNumber: targetSlot
+        paymentId,
+        unlockCost,
+        slotNumber: targetSlot,
+        message: 'Payment request created. Please complete payment to unlock slot.'
       })
     } catch (e) {
       console.error('[unlockMiningSlot]', e)

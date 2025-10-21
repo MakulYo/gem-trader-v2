@@ -26,7 +26,17 @@
       
       { "source": "/startPolishing",      "function": "startPolishing" },
       { "source": "/getActivePolishing",  "function": "getActivePolishing" },
-      { "source": "/completePolishing",   "function": "completePolishing" }
+      { "source": "/completePolishing",   "function": "completePolishing" },
+      { "source": "/unlockPolishingSlot", "function": "unlockPolishingSlot" },
+      
+      { "source": "/createPaymentRequest", "function": "createPaymentRequest" },
+      { "source": "/getPendingPayments",   "function": "getPendingPayments" },
+      { "source": "/verifyPayment",        "function": "verifyPayment" },
+      { "source": "/cancelPayment",        "function": "cancelPayment" },
+      
+      { "source": "/stakeAsset",           "function": "stakeAsset" },
+      { "source": "/unstakeAsset",         "function": "unstakeAsset" },
+      { "source": "/getStakedAssets",      "function": "getStakedAssets" }
     ]
   }
 ,
