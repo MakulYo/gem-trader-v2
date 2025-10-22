@@ -1,7 +1,7 @@
 section#gallery .gallery-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 1.125rem;
 }
 
 section#gallery .gallery-card {
@@ -37,7 +37,7 @@ section#gallery .gallery-image img {
 }
 
 section#gallery .gallery-content {
-    padding: 1.5rem;
+    padding: 1.125rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -53,7 +53,7 @@ section#gallery .gallery-content h3 {
 .worker-gallery-modal {
     max-width: 90vw;
     max-height: 85vh;
-    width: 1200px;
+    width: 1600px;
     margin-top: 5vh;
     align-self: flex-start;
 }
@@ -82,8 +82,8 @@ section#gallery .gallery-content h3 {
 
 .worker-gallery-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 0.75rem;
     padding: 0 1rem;
 }
 
@@ -491,8 +491,8 @@ body {
     background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
     color: white;
     border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 8px;
+    padding: 0.56rem 1.125rem;
+    border-radius: 6px;
     cursor: pointer;
     font-weight: 600;
     transition: all 0.3s ease;
@@ -510,8 +510,8 @@ body {
 
 .section {
     display: none;
-    padding: 1rem;
-    max-width: 1200px;
+    padding: 0.75rem;
+    max-width: 1600px;
     margin: 0 auto;
 }
 
@@ -764,10 +764,10 @@ body {
 }
 
 .action-btn {
-    padding: 1rem 2rem;
+    padding: 0.75rem 1.5rem;
     border: none;
     border-radius: 12px;
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -811,7 +811,7 @@ body {
 /* Mining Section */
 .mining-container {
     display: grid;
-    gap: 2rem;
+    gap: 1.5rem;
 }
 
 .mining-controls {
@@ -1318,8 +1318,8 @@ body {
 .slot-actions .action-btn {
     width: 100%;
     justify-content: center;
-    padding: 0.7rem 1rem;
-    font-size: 0.9rem;
+    padding: 0.53rem 0.75rem;
+    font-size: 0.85rem;
     border-radius: 12px;
     transition: all 0.3s ease;
     clear: both;
@@ -2603,7 +2603,7 @@ body {
     }
     
     .section {
-        padding: 1rem;
+        padding: 0.75rem;
     }
     
     .stats-grid {
@@ -3569,7 +3569,7 @@ body {
     }
     
     .section {
-        padding: 1rem;
+        padding: 0.75rem;
     }
     
     .stats-grid {
@@ -5109,8 +5109,8 @@ body {
 
 .staking-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
 }
 
 .staking-slot {
@@ -5286,7 +5286,7 @@ body {
     }
     
     .staking-grid {
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
     }
 }
 
