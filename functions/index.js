@@ -13,6 +13,7 @@ const polishing = require('./modules/polishing');
 const payments  = require('./modules/payments');
 const staking   = require('./modules/staking');
 const trading   = require('./modules/trading');
+const leaderboard = require('./modules/leaderboard');
 
 module.exports = Object.assign(
   { healthcheck },
@@ -24,5 +25,6 @@ module.exports = Object.assign(
   polishing,
   payments,
   staking,
-  trading
+  trading,
+  leaderboard
 );
