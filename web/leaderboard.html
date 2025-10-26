@@ -13,6 +13,22 @@
     </style>
 </head>
 <body>
+<script>
+  // Load cached Game $ value immediately to prevent flash
+  const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+  if (cachedValue && parseFloat(cachedValue) > 0) {
+    // Wait for DOM ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() {
+        const header = document.getElementById('header-game-dollars');
+        if (header) header.textContent = 'Game $: ' + parseFloat(cachedValue).toLocaleString();
+      });
+    } else {
+      const header = document.getElementById('header-game-dollars');
+      if (header) header.textContent = 'Game $: ' + parseFloat(cachedValue).toLocaleString();
+    }
+  }
+</script>
   <nav class="navbar">
     <div class="nav-container">
       <div class="nav-left-group">
@@ -37,11 +53,13 @@
       </div>
 
       <div class="nav-wallet" id="nav-wallet" data-auth="signed-out">
+        <button id="connectWalletBtn" class="connect-wallet-btn" data-action="connect">Connect Wallet</button>
+
+        <span id="walletStatus" class="wallet-status hidden" style="margin-right:.75rem;color:#a0d9ff;"></span>
         <span id="wallet-address" class="wallet-address hidden"></span>
         <span id="wallet-balance" class="wallet-balance hidden" data-token="TSD">0.00 TSD</span>
-        <button id="connectWalletBtn" class="connect-wallet-btn" data-action="connect">Connect Wallet</button>
+
         <button id="logoutBtn" class="connect-wallet-btn hidden" data-action="disconnect">Disconnect</button>
-        <span id="walletStatus" style="margin-left:.75rem;color:#a0d9ff;"></span>
       </div>
     </div>
   </nav>

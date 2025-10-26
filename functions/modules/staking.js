@@ -82,6 +82,7 @@ function refs(actor) {
 
 /**
  * Validate asset ownership via AtomicAssets API with fallbacks
+ * Tests all APIs in parallel and uses the fastest response
  * @param {string} actor - WAX account name
  * @param {string[]} assetIds - Array of asset IDs to validate
  * @returns {Promise<{valid: boolean, ownedAssets: any[], apiError?: boolean}>}
@@ -94,23 +95,25 @@ async function validateAssetOwnership(actor, assetIds) {
   const idsParam = assetIds.join(',')
   console.log(`[Staking] Validating ownership for ${actor}:`, assetIds)
   
-  // Try each API in sequence
-  for (let i = 0; i < ATOMIC_APIS.length; i++) {
-    const apiBase = ATOMIC_APIS[i]
+  // Create promises for all APIs in parallel
+  const apiPromises = ATOMIC_APIS.map(async (apiBase, index) => {
     const url = `${apiBase}/assets?owner=${actor}&collection_name=${COLLECTION_NAME}&ids=${idsParam}`
     
     try {
-      console.log(`[Staking] Trying API ${i + 1}/${ATOMIC_APIS.length}: ${apiBase}`)
+      const startTime = Date.now()
+      console.log(`[Staking] Testing API ${index + 1}/${ATOMIC_APIS.length}: ${apiBase}`)
       
       const response = await fetch(url, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
-        timeout: 15000
+        timeout: 5000 // Reduced timeout to 5 seconds per API
       })
       
+      const duration = Date.now() - startTime
+      
       if (!response.ok) {
-        console.warn(`[Staking] API ${i + 1} returned ${response.status}`)
-        continue // Try next API
+        console.warn(`[Staking] API ${index + 1} returned ${response.status} (${duration}ms)`)
+        throw new Error(`HTTP ${response.status}`)
       }
 
       const data = await response.json()
@@ -120,16 +123,37 @@ async function validateAssetOwnership(actor, assetIds) {
       const ownedAssetIds = new Set(ownedAssets.map(asset => asset.asset_id))
       const allOwned = assetIds.every(id => ownedAssetIds.has(id))
       
-      console.log(`[Staking] ✅ Success with API: ${apiBase}`)
+      console.log(`[Staking] ✅ Fastest response from API ${index + 1}: ${apiBase} (${duration}ms)`)
       console.log(`[Staking] Validation result: ${allOwned ? 'VALID' : 'INVALID'} (${ownedAssets.length}/${assetIds.length} owned)`)
       
       return {
         valid: allOwned,
-        ownedAssets: ownedAssets
+        ownedAssets: ownedAssets,
+        duration: duration,
+        apiIndex: index
       }
     } catch (error) {
-      console.warn(`[Staking] API ${i + 1} error:`, error.message)
-      // Continue to next API
+      console.warn(`[Staking] API ${index + 1} error:`, error.message)
+      // Return error result instead of throwing
+      return {
+        valid: false,
+        ownedAssets: [],
+        error: error.message,
+        apiIndex: index
+      }
+    }
+  })
+  
+  // Wait for all API calls to complete
+  const results = await Promise.all(apiPromises)
+  
+  // Find the first successful result (fastest valid response)
+  const successfulResult = results.find(r => r.valid !== undefined && !r.error)
+  
+  if (successfulResult) {
+    return {
+      valid: successfulResult.valid,
+      ownedAssets: successfulResult.ownedAssets
     }
   }
   
@@ -216,7 +240,9 @@ async function updateStakingData(actor, stakingData) {
   
   stakingData.updatedAt = FieldValue.serverTimestamp()
   
-  await staking.set(stakingData, { merge: true })
+  // Use .set() without merge to completely replace the document
+  // This ensures deleted workers are actually removed from Firestore
+  await staking.set(stakingData)
   console.log(`[Staking] Updated staking data for ${actor}`)
 }
 
@@ -369,6 +395,107 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
 }
 
 /**
+ * Batch stake multiple workers to a slot (optimized for performance)
+ * @param {string} actor - WAX account name
+ * @param {string} page - Page type ('mining' or 'polishing')
+ * @param {number} slotNum - Slot number
+ * @param {any[]} workers - Array of worker objects { asset_id, template_id, name, mp }
+ * @returns {Promise<any>}
+ */
+async function stakeWorkersBatch(actor, page, slotNum, workers) {
+  console.log(`[Staking] Batch staking ${workers.length} workers to ${page} slot ${slotNum} for ${actor}`)
+  
+  // Validate all workers at once
+  const assetIds = workers.map(w => w.asset_id)
+  const validation = await validateAssetOwnership(actor, assetIds)
+  
+  if (!validation.valid && !validation.apiError) {
+    throw new Error(`Some assets are not owned by ${actor}`)
+  }
+  
+  if (validation.apiError) {
+    console.warn(`[Staking] ⚠️ Staking without validation (API error) - batch workers`)
+  }
+  
+  // Get current staking data ONCE
+  const stakingData = await getStakingData(actor)
+  
+  // Check if any asset_id is already staked anywhere
+  const allStakedAssetIds = new Set()
+  
+  // Check mining page
+  if (stakingData.mining) {
+    Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
+      if (slotData.mine?.asset_id) {
+        allStakedAssetIds.add(slotData.mine.asset_id)
+      }
+      if (slotData.workers) {
+        slotData.workers.forEach(w => {
+          if (w.asset_id) allStakedAssetIds.add(w.asset_id)
+        })
+      }
+    })
+  }
+  
+  // Check polishing page
+  if (stakingData.polishing) {
+    Object.entries(stakingData.polishing).forEach(([slotKey, slotData]) => {
+      if (slotData.table?.asset_id) {
+        allStakedAssetIds.add(slotData.table.asset_id)
+      }
+    })
+  }
+  
+  // Verify all workers are not already staked
+  const alreadyStaked = assetIds.filter(id => allStakedAssetIds.has(id))
+  if (alreadyStaked.length > 0) {
+    throw new Error(`Assets already staked: ${alreadyStaked.join(', ')}`)
+  }
+  
+  console.log(`[Staking] ✅ All ${workers.length} workers validation passed`)
+  
+  // Initialize page data if needed
+  if (!stakingData[page]) {
+    stakingData[page] = {}
+  }
+  
+  // Initialize slot data if needed
+  if (!stakingData[page][`slot${slotNum}`]) {
+    stakingData[page][`slot${slotNum}`] = {}
+  }
+  
+  const slot = stakingData[page][`slot${slotNum}`]
+  
+  // Initialize workers array if needed
+  if (!slot.workers) {
+    slot.workers = []
+  }
+  
+  // Add all workers at once
+  workers.forEach(worker => {
+    // Check if this worker is already staked in this slot
+    if (slot.workers.some(w => w.asset_id === worker.asset_id)) {
+      console.warn(`[Staking] Worker ${worker.asset_id} already in slot ${slotNum}, skipping`)
+      return
+    }
+    
+    slot.workers.push({
+      asset_id: worker.asset_id,
+      template_id: worker.template_id,
+      name: worker.name,
+      mp: worker.mp || 0
+    })
+  })
+  
+  console.log(`[Staking] ✅ Added ${workers.length} workers to slot ${slotNum}`)
+  
+  // Save updated staking data ONCE
+  await updateStakingData(actor, stakingData)
+  
+  return stakingData
+}
+
+/**
  * Unstake an asset from a specific slot
  * @param {string} actor - WAX account name
  * @param {string} page - Page type ('mining' or 'polishing')
@@ -382,6 +509,7 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
   
   // Get current staking data
   const stakingData = await getStakingData(actor)
+  console.log(`[Staking] Current staking data before unstake:`, JSON.stringify(stakingData, null, 2))
   
   // Check if page exists
   if (!stakingData[page]) {
@@ -395,6 +523,7 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
   }
   
   const slot = stakingData[page][slotKey]
+  console.log(`[Staking] Current slot data:`, JSON.stringify(slot, null, 2))
   
   // Handle different asset types
   if (assetType === 'mine' || assetType === 'table') {
@@ -406,18 +535,23 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
   } else if (assetType === 'worker') {
     // Multiple workers per slot
     if (!slot.workers || slot.workers.length === 0) {
+      console.log(`[Staking] ERROR: No workers found in slot ${slotNum}. Slot data:`, slot)
       throw new Error(`No workers staked in slot ${slotNum}`)
     }
     
+    console.log(`[Staking] Workers before unstake:`, slot.workers.map(w => w.asset_id))
     const initialLength = slot.workers.length
     slot.workers = slot.workers.filter(w => w.asset_id !== assetId)
+    console.log(`[Staking] Workers after unstake:`, slot.workers.map(w => w.asset_id))
     
     if (slot.workers.length === initialLength) {
+      console.log(`[Staking] ERROR: Worker ${assetId} not found in slot. Available workers:`, slot.workers.map(w => w.asset_id))
       throw new Error(`Worker ${assetId} not found in slot ${slotNum}`)
     }
     
     // Clean up empty workers array
     if (slot.workers.length === 0) {
+      console.log(`[Staking] No workers left, deleting workers array`)
       delete slot.workers
     }
   } else if (assetType === 'gem') {
@@ -434,13 +568,17 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
   
   // Clean up empty slot
   if (Object.keys(slot).length === 0) {
+    console.log(`[Staking] Slot is now empty, deleting slot ${slotKey}`)
     delete stakingData[page][slotKey]
   }
   
   // Clean up empty page
   if (Object.keys(stakingData[page]).length === 0) {
+    console.log(`[Staking] Page is now empty, deleting ${page} page`)
     delete stakingData[page]
   }
+  
+  console.log(`[Staking] Updated staking data after unstake:`, JSON.stringify(stakingData, null, 2))
   
   // Save updated staking data
   await updateStakingData(actor, stakingData)
@@ -490,6 +628,40 @@ exports.stakeAsset = onRequest((req, res) =>
       })
     } catch (error) {
       console.error('[Staking] stakeAsset error:', error)
+      return res.status(400).json({ error: error.message })
+    }
+  })
+)
+
+/**
+ * Batch stake multiple workers to a slot (optimized for performance)
+ * POST /stakeWorkersBatch
+ * Body: { actor, page, slotNum, workers }
+ */
+exports.stakeWorkersBatch = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'POST only' })
+    }
+    
+    const actor = requireActor(req, res)
+    if (!actor) return
+    
+    const { page, slotNum, workers } = req.body
+    
+    if (!page || !slotNum || !workers || !Array.isArray(workers) || workers.length === 0) {
+      return res.status(400).json({ error: 'Missing required fields or empty workers array' })
+    }
+    
+    try {
+      const stakingData = await stakeWorkersBatch(actor, page, slotNum, workers)
+      
+      return res.status(200).json({
+        success: true,
+        stakingData: stakingData
+      })
+    } catch (error) {
+      console.error('[Staking] stakeWorkersBatch error:', error)
       return res.status(400).json({ error: error.message })
     }
   })

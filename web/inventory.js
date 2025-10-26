@@ -9,7 +9,10 @@ class InventoryPage extends TSDGEMSGame {
         this.filteredNFTs = [];
         this.currentActor = null;
         this.collections = new Set();
+        this.schemas = new Set();
         this.stakedAssetIds = new Set(); // Track staked assets
+        this.currentPage = 1;
+        this.itemsPerPage = 20;
         this.init();
     }
 
@@ -265,6 +268,7 @@ Updated: ${updatedAtStr}</pre>
             
             this.allNFTs = [];
             this.collections.clear();
+            this.schemas.clear();
             
             this.inventoryData.assets.forEach(asset => {
                 // Build the image path
@@ -287,6 +291,9 @@ Updated: ${updatedAtStr}</pre>
                 });
                 
                 this.collections.add(this.inventoryData.collection || 'tsdmediagems');
+                if (asset.schema) {
+                    this.schemas.add(asset.schema);
+                }
             });
             
             console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
@@ -298,6 +305,7 @@ Updated: ${updatedAtStr}</pre>
             
             this.allNFTs = [];
             this.collections.clear();
+            this.schemas.clear();
             
             Object.entries(this.inventoryData.templateCounts).forEach(([key, templateData]) => {
                 const templateId = templateData.template_id;
@@ -334,6 +342,9 @@ Updated: ${updatedAtStr}</pre>
                     });
                 }
                 this.collections.add(this.inventoryData.collection || 'tsdmediagems');
+                if (schema) {
+                    this.schemas.add(schema);
+                }
             });
 
             console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
@@ -346,15 +357,15 @@ Updated: ${updatedAtStr}</pre>
             return;
         }
         
-        // Populate collection filter
-        const collectionFilter = document.getElementById('collection-filter');
-        if (collectionFilter) {
-            collectionFilter.innerHTML = '<option value="">All Collections</option>';
-            this.collections.forEach(collection => {
+        // Populate schema filter
+        const schemaFilter = document.getElementById('schema-filter');
+        if (schemaFilter) {
+            schemaFilter.innerHTML = '<option value="">All Schemas</option>';
+            this.schemas.forEach(schema => {
                 const option = document.createElement('option');
-                option.value = collection;
-                option.textContent = collection;
-                collectionFilter.appendChild(option);
+                option.value = schema;
+                option.textContent = schema.charAt(0).toUpperCase() + schema.slice(1);
+                schemaFilter.appendChild(option);
             });
         }
     }
@@ -408,13 +419,49 @@ Updated: ${updatedAtStr}</pre>
 
         if (this.filteredNFTs.length === 0) {
             this.showEmptyState('no-results');
+            // Hide pagination when no results
+            document.getElementById('pagination-controls').style.display = 'none';
             return;
+        }
+
+        // Calculate pagination
+        const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+        const endIndex = startIndex + this.itemsPerPage;
+        const pageNFTs = this.filteredNFTs.slice(startIndex, endIndex);
+        const maxPages = Math.ceil(this.filteredNFTs.length / this.itemsPerPage);
+
+        // Update pagination info
+        const pageInfo = document.getElementById('page-info');
+        if (pageInfo) {
+            pageInfo.textContent = `Page ${this.currentPage} of ${maxPages}`;
+        }
+
+        // Update pagination button states
+        const prevBtn = document.getElementById('prev-page-btn');
+        const nextBtn = document.getElementById('next-page-btn');
+        
+        if (prevBtn) {
+            prevBtn.disabled = this.currentPage === 1;
+            prevBtn.style.opacity = this.currentPage === 1 ? '0.5' : '1';
+        }
+        
+        if (nextBtn) {
+            nextBtn.disabled = this.currentPage === maxPages;
+            nextBtn.style.opacity = this.currentPage === maxPages ? '0.5' : '1';
+        }
+
+        // Show pagination controls
+        const paginationControls = document.getElementById('pagination-controls');
+        if (paginationControls && maxPages > 1) {
+            paginationControls.style.display = 'flex';
+        } else if (paginationControls) {
+            paginationControls.style.display = 'none';
         }
 
         const grid = document.createElement('div');
         grid.className = 'inventory-grid';
 
-        this.filteredNFTs.forEach(nft => {
+        pageNFTs.forEach(nft => {
             const card = this.createNFTCard(nft);
             grid.appendChild(card);
         });
@@ -573,30 +620,55 @@ Updated: ${updatedAtStr}</pre>
             });
         }
 
-        // Collection filter
-        const collectionFilter = document.getElementById('collection-filter');
-        if (collectionFilter) {
-            collectionFilter.addEventListener('change', () => {
+        // Schema filter
+        const schemaFilter = document.getElementById('schema-filter');
+        if (schemaFilter) {
+            schemaFilter.addEventListener('change', () => {
+                this.currentPage = 1; // Reset to page 1 on filter change
                 this.filterNFTs();
+            });
+        }
+        
+        // Pagination controls
+        const prevBtn = document.getElementById('prev-page-btn');
+        const nextBtn = document.getElementById('next-page-btn');
+        
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                if (this.currentPage > 1) {
+                    this.currentPage--;
+                    this.renderNFTs();
+                }
+            });
+        }
+        
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                const maxPages = Math.ceil(this.filteredNFTs.length / this.itemsPerPage);
+                if (this.currentPage < maxPages) {
+                    this.currentPage++;
+                    this.renderNFTs();
+                }
             });
         }
     }
 
     filterNFTs() {
         const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
-        const collection = document.getElementById('collection-filter')?.value || '';
+        const schema = document.getElementById('schema-filter')?.value || '';
 
         this.filteredNFTs = this.allNFTs.filter(nft => {
             const matchesSearch = !searchTerm || 
                 nft.name.toLowerCase().includes(searchTerm) ||
                 nft.template_id.toString().includes(searchTerm) ||
-                (nft.asset_id && nft.asset_id.toString().includes(searchTerm)); // NEW: Search by asset ID
+                (nft.asset_id && nft.asset_id.toString().includes(searchTerm));
             
-            const matchesCollection = !collection || nft.collection === collection;
+            const matchesSchema = !schema || nft.schema === schema;
 
-            return matchesSearch && matchesCollection;
+            return matchesSearch && matchesSchema;
         });
 
+        this.currentPage = 1; // Reset to page 1 after filtering
         this.renderNFTs();
     }
 

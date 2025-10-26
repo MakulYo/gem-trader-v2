@@ -98,7 +98,10 @@ const startMining = onRequest((req, res) =>
     try {
       const { active } = refs(actor)
       
-      // Get existing jobs to determine available slot
+      // Get the requested slot number from the request body
+      const requestedSlotNum = req.body?.slotNum
+      
+      // Get existing jobs to determine available slots
       const snap = await active.get()
       const existingJobs = snap.docs.map(d => d.data())
       
@@ -107,9 +110,26 @@ const startMining = onRequest((req, res) =>
       
       if (activeCount >= slots) return res.status(400).json({ error: 'no available mining slots' })
 
-      // Find next available slot number
-      const slotNum = getNextAvailableSlot(existingJobs, slots)
-      if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
+      // Use requested slot number if provided, otherwise find next available
+      let slotNum
+      if (requestedSlotNum !== undefined && requestedSlotNum !== null) {
+        slotNum = Number(requestedSlotNum)
+        
+        // Validate that the requested slot is not already in use
+        const isSlotInUse = existingJobs.some(job => job.slotNum === slotNum)
+        if (isSlotInUse) {
+          return res.status(400).json({ error: `slot ${slotNum} is already in use` })
+        }
+        
+        // Validate that the requested slot number is within range
+        if (slotNum < 1 || slotNum > slots) {
+          return res.status(400).json({ error: `slot ${slotNum} is out of range (1-${slots})` })
+        }
+      } else {
+        // Find next available slot number (fallback behavior)
+        slotNum = getNextAvailableSlot(existingJobs, slots)
+        if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
+      }
 
       // Calculate slot-specific mining power from staked assets
       const stakingRef = db.collection('staking').doc(actor)

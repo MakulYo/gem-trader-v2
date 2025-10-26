@@ -15,6 +15,7 @@ class TradingGame extends TSDGEMSGame {
         this.currentChartDays = 30;
         this.stakedGems = {};
         this.inventoryData = null;
+        this.polishedGemsCount = {}; // Track polished gems available for trading
         this.init();
     }
 
@@ -42,6 +43,7 @@ class TradingGame extends TSDGEMSGame {
             console.log('[Trading] Actor connected:', this.currentActor);
             // Load staked gems to show active benefits
             this.loadStakedGems();
+            this.loadPolishedGemsCount();
             this.updateStakingGrid();
         });
 
@@ -50,6 +52,7 @@ class TradingGame extends TSDGEMSGame {
             console.log('[Trading] Actor session restored:', this.currentActor);
             // Load staked gems to show active benefits
             this.loadStakedGems();
+            this.loadPolishedGemsCount();
             this.updateStakingGrid();
         });
 
@@ -57,8 +60,10 @@ class TradingGame extends TSDGEMSGame {
             this.currentActor = null;
             console.log('[Trading] Actor disconnected');
             this.stakedGems = {};
+            this.polishedGemsCount = {};
             this.renderActiveBenefits();
             this.updateStakingGrid();
+            this.renderCityMatrix(); // Re-render matrix without counts
         });
 
         // Also check if actor is already set
@@ -67,7 +72,48 @@ class TradingGame extends TSDGEMSGame {
             console.log('[Trading] Actor already set:', this.currentActor);
             // Load staked gems immediately to show active benefits
             this.loadStakedGems();
+            this.loadPolishedGemsCount();
             this.updateStakingGrid();
+        }
+    }
+
+    async loadPolishedGemsCount() {
+        if (!this.currentActor) {
+            this.polishedGemsCount = {};
+            this.renderCityMatrix(); // Re-render without counts
+            return;
+        }
+
+        try {
+            console.log('[Trading] Loading polished gems count...');
+            const inventoryData = await this.backendService.getInventory(this.currentActor, false);
+            
+            // Extract polished gems count (same format as polishing page)
+            const POLISHED_GEM_TYPES = [
+                'polished_diamond',
+                'polished_ruby',
+                'polished_emerald',
+                'polished_sapphire',
+                'polished_topaz',
+                'polished_amethyst',
+                'polished_aquamarine',
+                'polished_jade',
+                'polished_opal',
+                'polished_tanzanite'
+            ];
+            
+            this.polishedGemsCount = {};
+            POLISHED_GEM_TYPES.forEach(gemType => {
+                this.polishedGemsCount[gemType] = inventoryData[gemType] || 0;
+            });
+            
+            console.log('[Trading] Polished gems count:', this.polishedGemsCount);
+            
+            // Re-render the matrix with updated counts
+            this.renderCityMatrix();
+        } catch (error) {
+            console.error('[Trading] Failed to load polished gems count:', error);
+            this.polishedGemsCount = {};
         }
     }
 
@@ -462,9 +508,10 @@ class TradingGame extends TSDGEMSGame {
         let html = '<table class="city-boost-matrix"><thead><tr>';
         html += '<th></th>';
         
-        // Header row with gem types
+        // Header row with gem types and available counts
         gemTypes.forEach(gemType => {
-            html += `<th><i class="fas fa-gem"></i> ${this.formatGemName(gemType)}</th>`;
+            const availableCount = this.getAvailableGemCount(gemType);
+            html += `<th><i class="fas fa-gem"></i> ${this.formatGemName(gemType)}<br><small style="color: #00ff64; font-size: 0.75em;">Own: ${availableCount}</small></th>`;
         });
         
         html += '</tr></thead><tbody>';
@@ -503,6 +550,15 @@ class TradingGame extends TSDGEMSGame {
         
         // Add click handlers to cells
         this.attachMatrixCellClickHandlers();
+    }
+
+    getAvailableGemCount(gemType) {
+        if (!this.polishedGemsCount) return 0;
+        
+        // Convert gem type to inventory key (e.g., "polished_diamond" -> "polished_diamond")
+        const gemKey = `polished_${gemType.replace(/polished_/, '')}`;
+        
+        return this.polishedGemsCount[gemKey] || 0;
     }
 
     attachMatrixCellClickHandlers() {
@@ -615,12 +671,41 @@ class TradingGame extends TSDGEMSGame {
                     return;
                 }
                 
-                await this.handleGemSale(city, gem, amount);
+                // Show loading state
+                this.setSellButtonLoading(true);
+                
+                try {
+                    await this.handleGemSale(city, gem, amount);
+                } catch (error) {
+                    console.error('[Trading] Error selling gems:', error);
+                    this.showNotification('Failed to sell gems: ' + error.message, 'error');
+                } finally {
+                    this.setSellButtonLoading(false);
+                }
             });
         }
 
         // Initial update
         updateSummary();
+    }
+
+    setSellButtonLoading(isLoading) {
+        const sellBtn = document.getElementById('matrix-sell-btn');
+        if (!sellBtn) return;
+        
+        if (isLoading) {
+            // Disable button and show loading animation
+            sellBtn.disabled = true;
+            sellBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Selling...';
+            sellBtn.style.opacity = '0.7';
+            sellBtn.style.cursor = 'not-allowed';
+        } else {
+            // Re-enable button and restore original content
+            sellBtn.disabled = false;
+            sellBtn.innerHTML = '<i class="fas fa-coins"></i> Sell Gems';
+            sellBtn.style.opacity = '1';
+            sellBtn.style.cursor = 'pointer';
+        }
     }
 
     async initializeGemPriceChart() {
@@ -934,7 +1019,7 @@ class TradingGame extends TSDGEMSGame {
             // Empty slot - show stake button or connect wallet message
             if (!this.currentActor) {
                 return `
-                    <div class="gem-staking-slot empty" style="border-color: ${gemColor};">
+                    <div id="gem-slot-${slotNum}" class="gem-staking-slot empty" style="border-color: ${gemColor};">
                         <div class="slot-number" style="color: ${gemColor};">${expectedGemType}</div>
                         <div class="slot-placeholder">
                             <i class="fas fa-wallet fa-3x" style="opacity: 0.3; color: ${gemColor};"></i>
@@ -949,7 +1034,7 @@ class TradingGame extends TSDGEMSGame {
             }
             
             return `
-                <div class="gem-staking-slot empty" style="border-color: ${gemColor};">
+                <div id="gem-slot-${slotNum}" class="gem-staking-slot empty" style="border-color: ${gemColor};">
                     <div class="slot-number" style="color: ${gemColor};">${expectedGemType}</div>
                     <div class="slot-placeholder">
                         <i class="fas fa-gem fa-3x" style="opacity: 0.3; color: ${gemColor};"></i>
@@ -966,13 +1051,12 @@ class TradingGame extends TSDGEMSGame {
         // Staked slot - show gem and bonus
         const gem = slotData.gem;
         return `
-            <div class="gem-staking-slot staked" style="border: 2px solid ${gemColor}; box-shadow: 0 0 20px ${gemColor}33;">
+            <div id="gem-slot-${slotNum}" class="gem-staking-slot staked" style="border: 2px solid ${gemColor}; box-shadow: 0 0 20px ${gemColor}33;">
                 <div class="slot-header">
                     <span class="slot-number" style="color: ${gemColor};">${expectedGemType}</span>
                     <span class="gem-type-badge" style="background: ${gemColor}33; color: ${gemColor}; border-color: ${gemColor}55;">${gem.isPolished ? 'Polished' : 'Rough'}</span>
                 </div>
-                <div class="gem-display">
-                    <img src="${gem.imagePath}" alt="${gem.name}" onerror="this.src='assets/gallery_images/(1).png'">
+                <div class="gem-display" style="background-image: url('${gem.imagePath}'); background-size: cover; background-position: center; background-repeat: no-repeat;">
                     <h4 style="color: ${gemColor};">${gem.name}</h4>
                     <div class="bonus-indicator" style="background: linear-gradient(135deg, ${gemColor}, ${gemColor}cc); color: #000;">
                         <i class="fas fa-arrow-up"></i> +${(gem.bonus * 100).toFixed(0)}% Selling Bonus
@@ -1047,12 +1131,15 @@ class TradingGame extends TSDGEMSGame {
                 ${activeBonuses.map(bonus => {
                     const gemColor = this.getGemColor(bonus.gemType);
                     return `
-                        <div style="background: rgba(0, 0, 0, 0.4); border: 2px solid ${gemColor}; border-radius: 8px; padding: 15px; text-align: center;">
-                            <img src="${bonus.imagePath}" alt="${bonus.name}" style="width: 60px; height: 60px; object-fit: contain; margin-bottom: 10px;" onerror="this.src='assets/gallery_images/(1).png'">
-                            <h4 style="color: ${gemColor}; margin: 5px 0; font-size: 0.95em;">${bonus.gemType}</h4>
-                            <p style="color: #888; font-size: 0.85em; margin: 5px 0;">${bonus.isPolished ? 'Polished' : 'Rough'}</p>
-                            <div style="background: linear-gradient(135deg, ${gemColor}, ${gemColor}cc); color: #000; padding: 6px 10px; border-radius: 6px; font-weight: bold; font-size: 0.9em; margin-top: 8px;">
-                                <i class="fas fa-arrow-up"></i> +${(bonus.bonus * 100).toFixed(0)}% Selling Bonus
+                        <div style="background-image: url('${bonus.imagePath}'); background-size: cover; background-position: center; background-repeat: no-repeat; border: 2px solid ${gemColor}; border-radius: 8px; padding: 15px; text-align: center; min-height: 200px; position: relative; overflow: hidden; background-color: rgba(0, 0, 0, 0.4); background-blend-mode: overlay; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div style="position: relative; z-index: 2;">
+                                <h4 style="color: ${gemColor}; margin: 5px 0; font-size: 0.95em; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);">${bonus.gemType}</h4>
+                                <p style="color: #fff; font-size: 0.85em; margin: 5px 0; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);">${bonus.isPolished ? 'Polished' : 'Rough'}</p>
+                            </div>
+                            <div style="position: relative; z-index: 2; margin-top: auto;">
+                                <div style="background: linear-gradient(135deg, ${gemColor}, ${gemColor}cc); color: #000; padding: 6px 10px; border-radius: 6px; font-weight: bold; font-size: 0.9em; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);">
+                                    <i class="fas fa-arrow-up"></i> +${(bonus.bonus * 100).toFixed(0)}% Selling Bonus
+                                </div>
                             </div>
                         </div>
                     `;
@@ -1222,7 +1309,7 @@ class TradingGame extends TSDGEMSGame {
                                 <div class="gem-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px;">
                                     ${availableGems.map(gem => `
                                         <div class="gem-card" onclick="game.stakeGemToSlot(${slotNum}, '${gem.asset_id}', ${gem.template_id}, '${gem.name}', '${gem.gemType}', '${gem.imagePath}')" style="background: rgba(0, 0, 0, 0.4); border: 2px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: all 0.3s;">
-                                            <img src="${gem.imagePath}" alt="${gem.name}" onerror="this.src='assets/gallery_images/(1).png'" style="width: 100%; height: 100px; object-fit: contain; margin-bottom: 10px;">
+                                            <img src="${gem.imagePath}" alt="${gem.name}" onerror="this.src='assets/gallery_images/(1).png'" style="width: 100%; height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 10px;">
                                             <p style="color: #fff; margin: 5px 0; font-weight: 600;">${gem.name}</p>
                                             <small style="color: #888;">ID: ${gem.asset_id}</small>
                                         </div>
@@ -1251,6 +1338,13 @@ class TradingGame extends TSDGEMSGame {
         try {
             console.log(`[Trading] Staking gem ${assetId} to slot ${slotNum}`);
             
+            // Close modal first
+            this.closeGemStakingModal();
+            
+            // Show loading state in the slot
+            this.showSlotLoading(slotNum, name);
+            
+            // Now do the actual backend call
             const result = await this.backendService.stakeGem(this.currentActor, slotNum, {
                 asset_id: assetId,
                 template_id: templateId,
@@ -1259,30 +1353,77 @@ class TradingGame extends TSDGEMSGame {
             });
 
             if (result.success) {
+                // Update with actual backend data
                 await this.loadStakedGems();
-                this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
-                this.closeGemStakingModal();
                 await this.renderStakingGrid();
+                this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
+            } else {
+                // Revert on failure
+                await this.renderStakingGrid();
+                this.showNotification('Failed to stake gem', 'error');
             }
         } catch (error) {
             console.error('[Trading] Failed to stake gem:', error);
+            // Revert on error
+            this.stakedGems[`slot${slotNum}`] = null;
+            await this.renderStakingGrid();
             this.showNotification('Failed to stake gem: ' + error.message, 'error');
         }
     }
 
+    showSlotLoading(slotNum, gemName) {
+        const slotElement = document.querySelector(`#gem-slot-${slotNum}`);
+        if (slotElement) {
+            slotElement.innerHTML = `
+                <div style="position: relative; width: 100%; height: 100%; min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                    <div class="loading-spinner" style="font-size: 3em; color: #00d4ff; animation: spin 1s linear infinite; margin-bottom: 20px;">
+                        <i class="fas fa-circle-notch"></i>
+                    </div>
+                    <p style="color: #00d4ff; font-weight: 600; font-size: 1.1em; margin: 0;">Staking ${gemName}...</p>
+                    <p style="color: #888; font-size: 0.9em; margin-top: 5px;">Please wait</p>
+                    <style>
+                        @keyframes spin {
+                            from { transform: rotate(0deg); }
+                            to { transform: rotate(360deg); }
+                        }
+                    </style>
+                </div>
+            `;
+        }
+    }
+    
     async unstakeGem(slotNum, assetId) {
         try {
             console.log(`[Trading] Unstaking gem ${assetId} from slot ${slotNum}`);
             
+            // Store current value for reverting on error
+            const previousSlotData = this.stakedGems[`slot${slotNum}`];
+            
+            // Optimistic UI update - remove from local state immediately
+            this.stakedGems[`slot${slotNum}`] = null;
+            await this.renderStakingGrid();
+            this.showNotification('Unstaking gem...', 'info');
+            
+            // Now do the actual backend call
             const result = await this.backendService.unstakeGem(this.currentActor, slotNum, assetId);
 
             if (result.success) {
+                // Update with actual backend data
                 await this.loadStakedGems();
-                this.showNotification(`✅ Unstaked gem from Slot ${slotNum}!`, 'success');
                 await this.renderStakingGrid();
+                this.showNotification(`✅ Unstaked gem from Slot ${slotNum}!`, 'success');
+            } else {
+                // Revert on failure
+                this.stakedGems[`slot${slotNum}`] = previousSlotData;
+                await this.renderStakingGrid();
+                this.showNotification('Failed to unstake gem', 'error');
             }
         } catch (error) {
             console.error('[Trading] Failed to unstake gem:', error);
+            // Revert on error
+            const previousSlotData = this.stakedGems[`slot${slotNum}`] ? null : previousSlotData;
+            this.stakedGems[`slot${slotNum}`] = previousSlotData;
+            await this.renderStakingGrid();
             this.showNotification('Failed to unstake gem: ' + error.message, 'error');
         }
     }
@@ -1336,6 +1477,7 @@ class TradingGame extends TSDGEMSGame {
                 // Refresh displays
                 await this.loadPlayerData();
                 await this.loadStakedGems();
+                await this.loadPolishedGemsCount(); // Refresh available gems count
                 
                 console.log('[Trading] Updated Game $:', result.totalPayout);
                 

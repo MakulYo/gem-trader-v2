@@ -275,19 +275,22 @@ class PolishingGame extends TSDGEMSGame {
             console.log('[Polishing] ========================================');
             console.log('[Polishing] Loading polishing data for actor:', actor);
             
-            // Show skeleton screens
-            const slotsGrid = document.getElementById('polishing-slots-grid');
-            if (slotsGrid && window.SkeletonLoader) {
-                window.SkeletonLoader.show('polishing-slots-grid', 'slot', 5);
-            }
+            // Show loading state
+            this.showLoadingState(true);
             
             this.showNotification('📊 Loading polishing data...', 'info');
 
-            // Initialize player first
-            await this.backendService.initPlayer(actor);
+            // Fetch all data in parallel for better performance
+            // Note: initPlayer runs in background for new players
+            const results = await Promise.all([
+                this.backendService.getDashboard(actor),
+                this.fetchActivePolishingJobs(actor).catch(() => ({ jobs: [] })),
+                this.fetchInventoryData(actor).catch(() => null),
+                this.fetchGemInventory(actor).catch(() => 0),
+                this.backendService.getStakedAssets(actor).catch(() => ({ stakingData: {} }))
+            ]);
             
-            // Get dashboard to retrieve player info
-            const dashboard = await this.backendService.getDashboard(actor);
+            const [dashboard, activeJobs, inventoryData, gemInventory, stakedAssets] = results;
 
             if (dashboard && dashboard.player) {
                 console.log('[Polishing] Player data loaded:', dashboard.player);
@@ -300,17 +303,67 @@ class PolishingGame extends TSDGEMSGame {
                 }
             }
             
-            // Fetch active polishing jobs
-            await this.fetchActivePolishingJobs(actor);
+            // Process active jobs
+            if (activeJobs && activeJobs.jobs) {
+                this.activeJobs = activeJobs.jobs;
+            }
             
-            // Fetch inventory to get Polishing Table NFTs and Gems
-            await this.fetchInventoryData(actor);
+            // Process gem inventory
+            if (gemInventory) {
+                this.roughGemsCount = gemInventory;
+            }
             
-            // Fetch gem inventory from backend
-            await this.fetchGemInventory(actor);
+            // Process inventory data
+            if (inventoryData) {
+                // Process polish table NFTs
+                if (inventoryData.equipmentDetails) {
+                    const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => ({
+                        template_id: templateId,
+                        name: details.name,
+                        count: details.count,
+                        image: details.image,
+                        imagePath: details.imagePath,
+                        assets: details.assets || []
+                    }));
+                    
+                    this.polishingTableNFTs = equipmentArray.filter(nft => {
+                        const name = (nft.name || '').toLowerCase();
+                        return name.includes('polishing');
+                    });
+                }
+            }
             
-            // Fetch staked assets
-            await this.loadStakedAssets(actor);
+            // Process staked assets
+            if (stakedAssets && stakedAssets.stakingData) {
+                const stakingData = stakedAssets.stakingData;
+                this.stakedTables = {};
+                this.stakedGems = {};
+                
+                if (stakingData.polishing) {
+                    Object.entries(stakingData.polishing).forEach(([slotKey, slotData]) => {
+                        const slotNum = parseInt(slotKey.replace('slot', ''));
+                        
+                        if (slotData.table) {
+                            this.stakedTables[slotNum] = {
+                                template_id: slotData.table.template_id,
+                                name: slotData.table.name,
+                                asset_id: slotData.table.asset_id
+                            };
+                        }
+                        
+                        if (slotData.gem) {
+                            this.stakedGems[slotNum] = {
+                                template_id: slotData.gem.template_id,
+                                name: slotData.gem.name,
+                                gemType: slotData.gem.gemType,
+                                isPolished: slotData.gem.isPolished,
+                                bonus: slotData.gem.bonus,
+                                asset_id: slotData.gem.asset_id
+                            };
+                        }
+                    });
+                }
+            }
                 
             // Update debug panel
             this.updateDebugPanel({
@@ -324,16 +377,14 @@ class PolishingGame extends TSDGEMSGame {
                 timestamp: new Date().toISOString()
             });
                 
-            // Render UI
-            this.renderPolishingSlots();
-            this.updatePolishingStats();
-            
-            // Hide skeleton
-            if (window.SkeletonLoader) {
-                window.SkeletonLoader.hide('polishing-slots-grid');
-            }
-            
-            // Mark as initialized and track load time
+             // Render UI
+             this.renderPolishingSlots();
+             this.updatePolishingStats();
+             
+             // Hide loading state
+             this.showLoadingState(false);
+             
+             // Mark as initialized and track load time
             this.isInitialized = true;
             this.lastDataLoad = Date.now();
             
@@ -350,10 +401,8 @@ class PolishingGame extends TSDGEMSGame {
         } catch (error) {
             console.error('[Polishing] Failed to load polishing data:', error);
             
-            // Hide skeleton on error
-            if (window.SkeletonLoader) {
-                window.SkeletonLoader.hide('polishing-slots-grid');
-            }
+            // Hide loading state on error
+            this.showLoadingState(false);
             
             this.showNotification('❌ Failed to load polishing data: ' + error.message, 'error');
             this.updateDebugPanel({ 
@@ -378,14 +427,19 @@ class PolishingGame extends TSDGEMSGame {
             const data = await response.json();
             console.log('[Polishing] Active polishing jobs response:', data);
             
-            this.activeJobs = data.jobs || [];
+            const jobs = data.jobs || [];
+            this.activeJobs = jobs;
             
             console.log('[Polishing] Active jobs:', this.activeJobs.length);
             console.log('[Polishing] Effective slots:', this.effectiveSlots);
             
+            // Return data for Promise.all usage
+            return { jobs };
+            
         } catch (error) {
             console.error('[Polishing] Failed to fetch active jobs:', error);
             this.activeJobs = [];
+            return { jobs: [] };
         }
     }
 
@@ -396,35 +450,18 @@ class PolishingGame extends TSDGEMSGame {
             const inventoryData = await this.backendService.getInventory(actor, false);
             console.log('[Polishing] Inventory data received:', inventoryData);
             
+            // Update instance variables
             this.inventoryData = inventoryData;
             this.effectiveSlots = inventoryData.polishingSlots || 0;
             
-            // Filter for Polishing Table NFTs from equipmentDetails
-            if (inventoryData && inventoryData.equipmentDetails) {
-                const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => ({
-                    template_id: templateId,
-                    name: details.name,
-                    count: details.count,
-                    image: details.image,
-                    imagePath: details.imagePath,
-                    assets: details.assets || [] // CRITICAL: Include actual asset IDs
-                }));
-                
-                this.polishingTableNFTs = equipmentArray.filter(nft => {
-                    const name = (nft.name || '').toLowerCase();
-                    return name.includes('polishing');
-                });
-                
-                console.log('[Polishing] Polishing Table NFTs found:', this.polishingTableNFTs.length);
-                console.log('[Polishing] Effective slots:', this.effectiveSlots);
-            } else {
-                this.polishingTableNFTs = [];
-            }
+            // Return data for Promise.all usage
+            return inventoryData;
             
         } catch (error) {
             console.error('[Polishing] Failed to fetch inventory:', error);
             this.inventoryData = null;
             this.polishingTableNFTs = [];
+            return null;
         }
     }
 
@@ -436,13 +473,17 @@ class PolishingGame extends TSDGEMSGame {
             console.log('[Polishing] Full inventory data:', inventoryData);
             
             // Extract rough gem count (only one type)
-            this.roughGemsCount = inventoryData[ROUGH_GEM_KEY] || 0;
+            const roughGemsCount = inventoryData[ROUGH_GEM_KEY] || 0;
             
             // Extract all 10 specific polished gem types
-            this.polishedGems = {};
+            const polishedGems = {};
             POLISHED_GEM_TYPES.forEach(gemType => {
-                this.polishedGems[gemType] = inventoryData[gemType] || 0;
+                polishedGems[gemType] = inventoryData[gemType] || 0;
             });
+            
+            // Update instance variables
+            this.roughGemsCount = roughGemsCount;
+            this.polishedGems = polishedGems;
             
             console.log('[Polishing] ROUGH_GEM_KEY:', ROUGH_GEM_KEY);
             console.log('[Polishing] Rough gems count:', this.roughGemsCount);
@@ -452,10 +493,14 @@ class PolishingGame extends TSDGEMSGame {
                 console.warn('[Polishing] No rough gems found! Button will be disabled.');
             }
             
+            // Return data for Promise.all usage
+            return roughGemsCount;
+            
         } catch (error) {
             console.error('[Polishing] Failed to fetch gem inventory:', error);
             this.roughGemsCount = 0;
             this.polishedGems = {};
+            return 0;
         }
     }
 
@@ -700,9 +745,12 @@ class PolishingGame extends TSDGEMSGame {
         const tablesEl = document.getElementById('polishing-tables-count');
         const inventoryEl = document.getElementById('total-inventory-gems');
         
+        // Count staked tables
+        const stakedTablesCount = Object.keys(this.stakedTables).length;
+        
         if (roughEl) roughEl.textContent = this.roughGemsCount.toLocaleString();
         if (polishedEl) polishedEl.textContent = totalPolished.toLocaleString();
-        if (tablesEl) tablesEl.textContent = this.polishingTableNFTs.length;
+        if (tablesEl) tablesEl.textContent = `${stakedTablesCount}/10`;
         if (inventoryEl) inventoryEl.textContent = totalInventory.toLocaleString();
         
         // Update polished gems table
@@ -793,8 +841,13 @@ class PolishingGame extends TSDGEMSGame {
             });
             
             // Filter out already staked tables
-            const availableTables = individualTableNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
-            console.log('[Polishing] Available tables after filtering:', availableTables.length, 'of', individualTableNFTs.length);
+            let availableTables = individualTableNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
+            
+            // Sort by priority/quality if needed (currently sorted by name)
+            // You could add other sorting criteria here
+            availableTables.sort((a, b) => a.name.localeCompare(b.name));
+            
+            console.log('[Polishing] Available tables after filtering and sorting:', availableTables.length, 'of', individualTableNFTs.length);
             
             if (availableTables.length === 0) {
                 // All tables are already staked
@@ -813,23 +866,23 @@ class PolishingGame extends TSDGEMSGame {
             } else {
             
             galleryContent = `
-                <p style="margin-bottom: 15px; color: #888;">
+                <p style="margin-bottom: 10px; color: #888; font-size: 0.9em;">
                     Select a Polishing Table NFT to stake in this slot.
                 </p>
                 ${availableTables.length < individualTableNFTs.length ? `
-                    <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 6px; padding: 10px; margin-bottom: 15px;">
-                        <p style="color: #ff9800; margin: 0; font-size: 0.85em;">
+                    <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 6px; padding: 8px; margin-bottom: 10px;">
+                        <p style="color: #ff9800; margin: 0; font-size: 0.8em;">
                             <i class="fas fa-info-circle"></i> ${individualTableNFTs.length - availableTables.length} table(s) already staked
                         </p>
                     </div>
                 ` : ''}
-                <div class="nft-gallery-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 500px; overflow-y: auto; padding: 10px;">
+                <div class="nft-gallery-grid" style="display: grid; grid-template-columns: repeat(4, 180px); gap: 10px; padding: 5px; justify-content: start; overflow: visible;">
                     ${availableTables.map(nft => `
-                        <div class="nft-card" style="border: 2px solid #ff9500; border-radius: 8px; padding: 10px; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s;" onclick="game.stakeTable('${nft.template_id}', ${slotNum}, '${nft.name}', '${nft.imagePath || ''}', '${nft.asset_id}')">
+                        <div class="nft-card" style="border: 2px solid #ff9500; border-radius: 6px; padding: 8px; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s;" onclick="game.stakeTable('${nft.template_id}', ${slotNum}, '${nft.name}', '${nft.imagePath || ''}', '${nft.asset_id}')">
                             ${nft.imagePath ? `
                                 <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
                             ` : ''}
-                            <h4 style="color: #ff9500; margin-bottom: 5px; font-size: 0.9em;">${nft.name}</h4>
+                            <h4 style="color: #ff9500; margin-bottom: 4px; font-size: 0.85em;">${nft.name}</h4>
                         </div>
                     `).join('')}
                 </div>
@@ -837,25 +890,43 @@ class PolishingGame extends TSDGEMSGame {
             }
         }
         
-        const modalContent = `
-            <div class="nft-stake-modal">
-                <div class="modal-header">
-                    <h3><i class="fas fa-table"></i> Stake Polishing Table to Slot ${slotNum}</h3>
-                    <button class="modal-close" onclick="game.closeStakeModal()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    ${galleryContent}
-                </div>
-            </div>
-        `;
+        const modalContent = `${galleryContent}`;
         
         const modalOverlay = document.getElementById('modal-overlay');
         const modalBody = document.getElementById('modal-body');
         
         if (modalBody) {
             modalBody.innerHTML = modalContent;
+            
+            // Target the .modal container (parent of modalBody) and modal-header
+            const modalContainer = modalBody.parentElement;
+            const modalHeader = modalContainer.querySelector('.modal-header');
+            
+            if (modalHeader) {
+                modalHeader.innerHTML = `
+                    <h3><i class="fas fa-table"></i> Stake Polishing Table to Slot ${slotNum}</h3>
+                    <button class="modal-close" onclick="game.closeStakeModal()" style="background: none; border: none; color: #a0a0a0; font-size: 1.5rem; cursor: pointer;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+            }
+            
+            if (modalContainer) {
+                // Auto-adjust width to fit 4 tables
+                modalContainer.style.maxWidth = '850px';
+                modalContainer.style.width = 'auto';
+                modalContainer.style.maxHeight = '85vh';
+                modalContainer.style.overflow = 'hidden';
+                modalContainer.style.display = 'flex';
+                modalContainer.style.flexDirection = 'column';
+            }
+            
+            modalBody.style.display = 'flex';
+            modalBody.style.flexDirection = 'column';
+            modalBody.style.flex = '1';
+            modalBody.style.overflowY = 'auto';
+            modalBody.style.overflowX = 'hidden';
+            modalBody.style.minHeight = '0';
         }
         
         if (modalOverlay) {
@@ -1070,7 +1141,6 @@ class PolishingGame extends TSDGEMSGame {
         
         try {
             console.log('[Polishing] Completing polishing job:', jobId);
-            this.showNotification('📦 Collecting polished gems...', 'info');
             
             const response = await fetch(`${this.backendService.apiBase}/completePolishing`, {
                 method: 'POST',
@@ -1095,14 +1165,8 @@ class PolishingGame extends TSDGEMSGame {
             const totalOut = result.totalOut || 0;
             const results = result.results || {};
             
-            // Build notification message showing all gem types received
-            const gemsList = Object.entries(results).map(([gemType, count]) => {
-                const gemName = gemType.replace('polished_', '').charAt(0).toUpperCase() + 
-                               gemType.replace('polished_', '').slice(1);
-                return `${count}x ${gemName}`;
-            }).join(', ');
-            
-            this.showNotification(`💎 Claimed ${totalOut} Polished Gems: ${gemsList}!`, 'success');
+            // Show reward popup with actual results
+            this.showRewardPopup(totalOut, 'Polished Gems', results);
             
             // Refresh polishing data
             await this.fetchActivePolishingJobs(this.currentActor);
@@ -1286,7 +1350,8 @@ class PolishingGame extends TSDGEMSGame {
                 
                 this.showNotification(`✅ Polishing slot ${slotNum} unlocked successfully!`, 'success');
                 
-                // Reload polishing data
+                // Force reload polishing data after payment (bypass cache)
+                this.isInitialized = false;
                 await this.loadPolishingData(this.currentActor);
                 
                 // Close modal after delay
@@ -1476,6 +1541,75 @@ class PolishingGame extends TSDGEMSGame {
         });
     }
 
+    showLoadingState(isLoading) {
+        let loader = document.getElementById('polishing-loading-overlay');
+        
+        if (isLoading) {
+            if (!loader) {
+                loader = document.createElement('div');
+                loader.id = 'polishing-loading-overlay';
+                loader.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.9);
+                    backdrop-filter: blur(10px);
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 10000;
+                    animation: fadeIn 0.3s ease;
+                `;
+                
+                loader.innerHTML = `
+                    <div style="text-align: center;">
+                        <div style="font-size: 5rem; color: #ff9500; margin-bottom: 30px; animation: pulse 2s ease-in-out infinite;">
+                            ✨
+                        </div>
+                        <h2 style="color: #ff9500; margin-bottom: 20px; font-size: 2em; font-weight: bold;">Loading Polishing Data</h2>
+                        <div style="color: #888; font-size: 1.2em; margin-bottom: 40px;">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <span style="margin-left: 10px;">Preparing your polishing station...</span>
+                        </div>
+                        <div style="color: #555; font-size: 1em;">
+                            Please wait while we synchronize your data
+                        </div>
+                    </div>
+                `;
+                
+                // Add animation styles
+                if (!document.querySelector('#polishing-loading-styles')) {
+                    const style = document.createElement('style');
+                    style.id = 'polishing-loading-styles';
+                    style.textContent = `
+                        @keyframes pulse {
+                            0%, 100% { transform: scale(1); opacity: 1; }
+                            50% { transform: scale(1.1); opacity: 0.8; }
+                        }
+                        @keyframes fadeIn {
+                            from { opacity: 0; }
+                            to { opacity: 1; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+                
+                document.body.appendChild(loader);
+            }
+            loader.style.display = 'flex';
+        } else {
+            if (loader) {
+                loader.style.animation = 'fadeOut 0.3s ease';
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                }, 300);
+            }
+        }
+    }
+
     async disconnectWallet() {
         console.log('[Polishing] Disconnecting wallet...');
         
@@ -1539,6 +1673,166 @@ class PolishingGame extends TSDGEMSGame {
             status: 'disconnected',
             timestamp: new Date().toISOString()
         });
+    }
+
+    showRewardPopup(amount, gemType, results = null) {
+        // Create popup overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            animation: fadeIn 0.3s ease-out;
+        `;
+        
+        // Create sparkle particles container
+        const sparkleContainer = document.createElement('div');
+        sparkleContainer.style.cssText = 'position: absolute; width: 100%; height: 100%; pointer-events: none; overflow: hidden;';
+        
+        // Generate sparkle particles (orange theme)
+        for (let i = 0; i < 30; i++) {
+            const sparkle = document.createElement('div');
+            sparkle.style.cssText = `
+                position: absolute;
+                width: ${Math.random() * 4 + 2}px;
+                height: ${Math.random() * 4 + 2}px;
+                background: radial-gradient(circle, #ff9500, transparent);
+                border-radius: 50%;
+                left: ${Math.random() * 100}%;
+                top: ${Math.random() * 100}%;
+                opacity: 0;
+                animation: sparkleParticle ${Math.random() * 2 + 1}s infinite;
+                animation-delay: ${Math.random() * 1}s;
+                box-shadow: 0 0 10px rgba(255, 149, 0, 0.8);
+            `;
+            sparkleContainer.appendChild(sparkle);
+        }
+        
+        overlay.appendChild(sparkleContainer);
+        
+        // Gem color mapping (same as polishing table)
+        const gemColors = {
+            'polished_diamond': '#b9f2ff',
+            'polished_ruby': '#ff6b9d',
+            'polished_sapphire': '#4169e1',
+            'polished_emerald': '#50c878',
+            'polished_jade': '#00a86b',
+            'polished_tanzanite': '#5d3fd3',
+            'polished_opal': '#a8c3bc',
+            'polished_aquamarine': '#7fffd4',
+            'polished_topaz': '#ffc87c',
+            'polished_amethyst': '#9966cc'
+        };
+        
+        // Create beautiful breakdown from results if available
+        let breakdownHtml = '';
+        if (results && typeof results === 'object' && Object.keys(results).length > 0) {
+            const gemTypes = Object.entries(results)
+                .filter(([_, count]) => count > 0)
+                .map(([gemType, count]) => ({
+                    type: gemType,
+                    count: count,
+                    name: gemType.replace('polished_', '').replace(/_/g, ' ')
+                        .split(' ')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' '),
+                    color: gemColors[gemType] || '#ff9500'
+                }))
+                .sort((a, b) => b.count - a.count); // Sort by count descending
+            
+            if (gemTypes.length > 0) {
+                breakdownHtml = `
+                    <div style="margin-top: 20px; padding: 20px; background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 10px; max-height: 250px; overflow-y: auto;">
+                        <div style="color: #00d4ff; font-weight: 600; margin-bottom: 15px; font-size: 1.1em;">
+                            <i class="fas fa-gem"></i> Polished Gems:
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            ${gemTypes.map(gem => `
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: ${gem.color}15; border-radius: 8px; border-left: 3px solid ${gem.color};">
+                                    <span style="color: ${gem.color}; font-weight: 500;"><i class="fas fa-gem"></i> ${gem.name}</span>
+                                    <span style="color: ${gem.color}; font-weight: bold; font-size: 1.1em;">${gem.count}x</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Create popup content
+        const popup = document.createElement('div');
+        popup.style.cssText = `
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border: 2px solid #ff9500;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 0 50px rgba(255, 149, 0, 0.5);
+            animation: popIn 0.5s ease-out;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        `;
+        
+        popup.innerHTML = `
+            <h2 style="color: #ff9500; font-size: 2em; margin: 20px 0; text-shadow: 0 0 20px rgba(255, 149, 0, 0.5);">
+                Polished Gems Ready!
+            </h2>
+            <div style="background: rgba(255, 149, 0, 0.1); border: 2px solid #ff9500; border-radius: 15px; padding: 30px; margin: 20px 0;">
+                <div style="font-size: 4em; color: #ff9500; font-weight: bold; margin-bottom: 10px;">
+                    ${amount.toLocaleString()}
+                </div>
+                <div style="font-size: 1.5em; color: #00d4ff; font-weight: 600;">
+                    ${gemType}
+                </div>
+                ${breakdownHtml}
+            </div>
+            <button onclick="this.closest('[style*=\\'position: fixed\\']').remove()" style="
+                background: linear-gradient(135deg, #ff9500, #ff7700);
+                border: none;
+                padding: 15px 40px;
+                border-radius: 8px;
+                color: #000;
+                font-size: 1.2em;
+                font-weight: bold;
+                cursor: pointer;
+                box-shadow: 0 4px 15px rgba(255, 149, 0, 0.3);
+                transition: all 0.3s;
+            ">
+                Awesome!
+            </button>
+        `;
+        
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+        
+        // Add sparkle animation CSS
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes popIn {
+                from { transform: scale(0.5) rotate(-10deg); opacity: 0; }
+                to { transform: scale(1) rotate(0deg); opacity: 1; }
+            }
+            @keyframes sparkleParticle {
+                0% { opacity: 0; transform: scale(0) translateY(0); }
+                20% { opacity: 1; transform: scale(1) translateY(0); }
+                80% { opacity: 1; transform: scale(1) translateY(-20px); }
+                100% { opacity: 0; transform: scale(0) translateY(-40px); }
+            }
+        `;
+        document.head.appendChild(style);
     }
 }
 

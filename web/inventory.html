@@ -10,7 +10,26 @@
     <style>
       .hidden { display: none !important; }
       #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
-      
+    </style>
+</head>
+<body>
+<script>
+  // Load cached Game $ value immediately to prevent flash
+  const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+  if (cachedValue && parseFloat(cachedValue) > 0) {
+    // Wait for DOM ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() {
+        const header = document.getElementById('header-game-dollars');
+        if (header) header.textContent = 'Game $: ' + parseFloat(cachedValue).toLocaleString();
+      });
+    } else {
+      const header = document.getElementById('header-game-dollars');
+      if (header) header.textContent = 'Game $: ' + parseFloat(cachedValue).toLocaleString();
+    }
+  }
+</script>
+<style>
       /* Inventory Grid */
       .inventory-grid {
         display: grid;
@@ -247,11 +266,13 @@
       </div>
 
       <div class="nav-wallet" id="nav-wallet" data-auth="signed-out">
+        <button id="connectWalletBtn" class="connect-wallet-btn" data-action="connect">Connect Wallet</button>
+
+        <span id="walletStatus" class="wallet-status hidden" style="margin-right:.75rem;color:#a0d9ff;"></span>
         <span id="wallet-address" class="wallet-address hidden"></span>
         <span id="wallet-balance" class="wallet-balance hidden" data-token="TSD">0.00 TSD</span>
-        <button id="connectWalletBtn" class="connect-wallet-btn" data-action="connect">Connect Wallet</button>
+
         <button id="logoutBtn" class="connect-wallet-btn hidden" data-action="disconnect">Disconnect</button>
-        <span id="walletStatus" style="margin-left:.75rem;color:#a0d9ff;"></span>
       </div>
     </div>
   </nav>
@@ -293,11 +314,22 @@
 
         <div class="filter-bar">
           <input type="text" id="search-input" class="filter-input" placeholder="Search by name or template ID...">
-          <select id="collection-filter" class="filter-select">
-            <option value="">All Collections</option>
+          <select id="schema-filter" class="filter-select">
+            <option value="">All Schemas</option>
           </select>
           <button id="refresh-inventory-btn" style="background: #00d4ff; color: #000; border: none; border-radius: 8px; padding: 12px 20px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
             <i class="fas fa-sync-alt"></i> Refresh
+          </button>
+        </div>
+        
+        <!-- Pagination -->
+        <div id="pagination-controls" style="display: flex; justify-content: center; align-items: center; gap: 20px; margin: 20px 0; padding: 15px; background: rgba(0, 0, 0, 0.3); border-radius: 8px;">
+          <button id="prev-page-btn" class="filter-select" style="cursor: pointer;">
+            <i class="fas fa-chevron-left"></i> Previous
+          </button>
+          <span id="page-info" style="color: #00d4ff; font-weight: 600;">Page 1 of 1</span>
+          <button id="next-page-btn" class="filter-select" style="cursor: pointer;">
+            Next <i class="fas fa-chevron-right"></i>
           </button>
         </div>
 

@@ -50,10 +50,30 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
+// Load and set cached Game $ value immediately (before page loads fully)
+document.addEventListener('DOMContentLoaded', () => {
+    const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+    const header = document.getElementById('header-game-dollars');
+    if (header && cachedValue) {
+        const value = parseFloat(cachedValue);
+        if (value > 0) {
+            header.textContent = `Game $: ${value.toLocaleString()}`;
+        }
+    }
+});
+
 // Base Game State (shared across all pages)
 class TSDGEMSGame {
     constructor() {
-        this.currentGameDollars = 0;
+        // Load cached Game $ value if available
+        const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+        this.currentGameDollars = cachedValue ? parseFloat(cachedValue) : 0;
+        
+        // Set initial value from cache if available
+        const header = document.getElementById('header-game-dollars');
+        if (header && this.currentGameDollars > 0) {
+            header.textContent = `Game $: ${this.currentGameDollars.toLocaleString()}`;
+        }
         this.lastDataLoad = null;
         this.isInitialized = false;
         this.gameState = this.getInitialGameState();
@@ -98,6 +118,16 @@ class TSDGEMSGame {
     // Update Game $ with animation
     updateGameDollars(newValue, animate = true) {
         const oldValue = this.currentGameDollars;
+        
+        // Don't update if new value is lower than cached value (prevent going back to 0)
+        const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+        if (newValue === 0 && cachedValue && parseFloat(cachedValue) > 0) {
+            console.log('[Game] Ignoring 0 value, keeping cached value:', cachedValue);
+            return; // Keep the existing value
+        }
+        
+        // Cache the new value
+        localStorage.setItem('tsdgems_game_dollars', newValue.toString());
         
         // Only animate if we have a valid old value and it's different
         if (animate && oldValue > 0 && Math.abs(newValue - oldValue) > 0) {

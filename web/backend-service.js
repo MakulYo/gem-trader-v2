@@ -472,6 +472,24 @@ class BackendService {
     }
 
     /**
+     * Batch stake multiple workers to a specific slot (optimized for performance)
+     * @param {string} actor - WAX account name
+     * @param {string} page - Page type ('mining' or 'polishing')
+     * @param {number} slotNum - Slot number
+     * @param {any[]} workers - Array of worker objects { asset_id, template_id, name, mp }
+     * @returns {Promise<any>}
+     */
+    async stakeWorkersBatch(actor, page, slotNum, workers) {
+        console.log(`[Backend] Batch staking ${workers.length} workers to ${page} slot ${slotNum} for ${actor}`);
+        return await this.post('/stakeWorkersBatch', { 
+            actor, 
+            page, 
+            slotNum, 
+            workers 
+        });
+    }
+
+    /**
      * Unstake an asset from a specific slot
      * @param {string} actor - WAX account name
      * @param {string} page - Page type ('mining' or 'polishing')

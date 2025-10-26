@@ -274,25 +274,25 @@ body {
 /* Navigation Styles */
 .navbar {
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    padding: 0.5rem 0;
+    padding: 0;
     position: sticky;
     top: 0;
     z-index: 1000;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     border-bottom: 1px solid rgba(0, 212, 255, 0.1);
-    min-height: 50px;
+    height: 60px;
+    overflow: hidden;
 }
 
 .nav-container {
     max-width: 1400px;
     margin: 0 auto;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 300px 1fr 300px;
     align-items: center;
-    padding: 0 1.5rem;
+    padding: 0.5rem 1.5rem;
     gap: 1rem;
-    height: 100%;
-    flex-wrap: wrap;
+    height: 60px;
 }
 
 .nav-left-group {
@@ -300,6 +300,10 @@ body {
     align-items: center;
     gap: 1rem;
     flex-shrink: 0;
+    height: 50px;
+    position: relative;
+    grid-column: 1;
+    justify-self: start;
 }
 
 .nav-logo {
@@ -327,6 +331,14 @@ body {
     background: rgba(0, 212, 255, 0.1);
     border: 1px solid rgba(0, 212, 255, 0.3);
     border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 120px;
+    max-width: 200px;
+    width: auto;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .nav-logo i {
@@ -338,8 +350,11 @@ body {
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    flex: 1;
     justify-content: center;
+    height: 50px;
+    grid-column: 2;
+    justify-self: center;
+    width: 100%;
 }
 
 .nav-link {
@@ -479,12 +494,83 @@ body {
     display: flex;
     align-items: center;
     gap: 1rem;
+    min-width: 150px;
+    justify-content: flex-end;
+    height: 50px;
+    position: relative;
+    grid-column: 3;
+    justify-self: end;
+}
+
+.nav-wallet .hidden {
+    display: none !important;
+}
+
+.wallet-status {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.wallet-status.hidden {
+    display: none !important;
+}
+
+.wallet-balance,
+.wallet-address {
+    height: 32px;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+#connectWalletBtn,
+#logoutBtn {
+    height: 32px;
+}
+
+.wallet-balance.hidden,
+.wallet-address.hidden {
+    display: none !important;
+}
+
+/* Keep logout button in layout even when hidden to prevent shifts */
+#logoutBtn.hidden {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 140px;
+}
+
+#connectWalletBtn {
+    display: flex !important;
+    width: 140px !important;
+    min-width: 140px !important;
+    max-width: 140px !important;
+    box-sizing: border-box;
+}
+
+#logoutBtn {
+    display: flex !important;
+    width: 140px !important;
+    min-width: 140px !important;
+    max-width: 140px !important;
+    box-sizing: border-box;
+}
+
+#logoutBtn.hidden,
+#connectWalletBtn.hidden {
+    display: none !important;
 }
 
 .wallet-balance {
     color: #00d4ff;
     font-weight: 600;
     font-size: 0.9rem;
+    white-space: nowrap;
 }
 
 .connect-wallet-btn {
@@ -496,6 +582,21 @@ body {
     cursor: pointer;
     font-weight: 600;
     transition: all 0.3s ease;
+    white-space: nowrap;
+    min-width: 140px;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+}
+
+#logoutBtn {
+    min-width: 140px;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .connect-wallet-btn:hover {
@@ -2376,7 +2477,7 @@ body {
     max-width: 500px;
     width: 90%;
     max-height: 80vh;
-    overflow-y: auto;
+    overflow: hidden;
     backdrop-filter: blur(10px);
 }
 
@@ -5359,18 +5460,24 @@ body {
 /* City Boost Matrix Table Styles */
 .city-boost-matrix {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
+    border-collapse: collapse;
     background: rgba(255, 255, 255, 0.03);
-    border-radius: 12px;
-    overflow: hidden;
+    overflow: visible;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
 }
 
 .city-boost-matrix thead {
-    background: rgb(0, 50, 80);
+    background: rgb(0, 50, 80) !important;
     border-bottom: 2px solid rgba(0, 212, 255, 0.5);
+}
+
+.city-boost-matrix thead tr {
+    position: sticky;
+    top: -1px;
+    z-index: 100;
+    background: rgb(0, 50, 80) !important;
 }
 
 .city-boost-matrix th {
@@ -5382,6 +5489,9 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.3px;
     border-right: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgb(0, 50, 80) !important;
+    position: sticky;
+    top: 0;
 }
 
 .city-boost-matrix th:first-child {
@@ -5509,6 +5619,7 @@ body {
     text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
     position: relative;
     z-index: 1;
+    pointer-events: none;
 }
 
 .city-boost-matrix td.boost-cell:hover .boost-bubble {
@@ -5525,11 +5636,19 @@ body {
 }
 
 /* Responsive scrolling for wide tables */
-#city-boost-matrix-wrapper {
-    overflow-x: visible;
+.matrix-table-wrapper {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: auto;
     margin-bottom: 1.5rem;
     border-radius: 12px;
     -webkit-overflow-scrolling: touch;
+}
+
+#city-boost-matrix-wrapper {
+    overflow: visible;
+    margin-bottom: 1.5rem;
+    border-radius: 12px;
 }
 
 .city-boost-matrix {
@@ -5654,16 +5773,12 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-}
-
-.gem-display img {
-  width: 120px;
-  height: 120px;
-  object-fit: contain;
-  margin: 15px auto;
+  width: 100%;
+  min-height: 180px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  padding: 10px;
+  position: relative;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .gem-display h4 {
@@ -5671,6 +5786,9 @@ body {
   font-size: 1.1em;
   margin: 10px 0;
   font-weight: 600;
+  position: relative;
+  z-index: 2;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 
 .bonus-indicator {
@@ -5684,6 +5802,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 .gem-type-badge {
@@ -5752,11 +5873,11 @@ body {
 .gem-card img {
   width: 80px;
   height: 80px;
-  object-fit: contain;
+  object-fit: cover;
   margin-bottom: 8px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.05);
-  padding: 5px;
+  padding: 0;
 }
 
 .gem-card p {

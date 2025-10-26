@@ -68,8 +68,8 @@ const initPlayer = onRequest(CORS, async (req, res) => {
   const lastSync = existingData.nfts?.lastSyncAt?.toMillis ? existingData.nfts.lastSyncAt.toMillis() : 0;
   const syncAge = Date.now() - lastSync;
   
-  // If synced within last 5 minutes, skip sync and return cached data
-  if (syncAge < 5 * 60 * 1000) {
+  // If synced within last 15 minutes, skip sync and return cached data
+  if (syncAge < 15 * 60 * 1000) {
     console.log(`[initPlayer] Using cached data for ${actor} (synced ${Math.floor(syncAge / 1000)}s ago)`);
     res.json({ ok: true, profile: { id: snap.id, ...existingData } });
     return;
