@@ -5705,6 +5705,27 @@ body {
         padding: 0.3rem 0.6rem;
         font-size: 0.75rem;
     }
+
+    /* Fix for boost cells to prevent text overflow */
+    .city-boost-matrix td.boost-cell {
+        overflow: visible !important;
+    }
+
+    .boost-bubble {
+        white-space: nowrap !important;
+        max-width: 100% !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+
+    /* Disable hover effects on mobile to prevent scaling issues */
+    .city-boost-matrix td.boost-cell:hover {
+        transform: none !important;
+    }
+
+    .city-boost-matrix td.boost-cell:hover .boost-bubble {
+        transform: none !important;
+    }
 }
 
 /* ======================================== */
@@ -6070,3 +6091,479 @@ body {
 }
 
 /* Global loading bar removed - using local skeleton screens instead */
+
+/* ==================================================
+   MOBILE LOADING OVERLAY OPTIMIZATION
+   ================================================== */
+
+@media (max-width: 768px) {
+    /* Loading Overlays - Mobile Optimization */
+    #polishing-loading-overlay div,
+    #mining-loading-overlay div {
+        font-size: 1.5rem !important;
+    }
+
+    #polishing-loading-overlay h2,
+    #mining-loading-overlay h2 {
+        font-size: 1.5rem !important;
+    }
+
+    #polishing-loading-overlay div[style*="font-size: 5rem"],
+    #mining-loading-overlay div[style*="font-size: 5rem"] {
+        font-size: 3rem !important;
+        margin-bottom: 20px !important;
+    }
+
+    #polishing-loading-overlay span,
+    #mining-loading-overlay span {
+        display: block !important;
+        margin-left: 0 !important;
+        margin-top: 10px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Even smaller on tiny screens */
+    #polishing-loading-overlay div,
+    #mining-loading-overlay div {
+        font-size: 1.2rem !important;
+    }
+
+    #polishing-loading-overlay h2,
+    #mining-loading-overlay h2 {
+        font-size: 1.2rem !important;
+    }
+
+    #polishing-loading-overlay div[style*="font-size: 5rem"],
+    #mining-loading-overlay div[style*="font-size: 5rem"] {
+        font-size: 2.5rem !important;
+        margin-bottom: 15px !important;
+    }
+
+    /* City Boost Matrix - Extra small screens */
+    .city-boost-container {
+        padding: 1rem !important;
+        margin: 0 !important;
+    }
+
+    .matrix-table-wrapper {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    #city-boost-matrix-wrapper {
+        width: 100% !important;
+        margin: 0 !important;
+        overflow-x: auto !important;
+    }
+
+    .city-boost-matrix {
+        width: auto !important;
+        min-width: 100% !important;
+        table-layout: auto !important;
+    }
+
+    .city-boost-matrix th,
+    .city-boost-matrix td {
+        padding: 0.5rem 0.4rem !important;
+        font-size: 0.7rem !important;
+    }
+
+    .city-boost-matrix td.city-name {
+        min-width: 120px !important;
+        width: auto !important;
+        font-size: 0.7rem !important;
+        padding: 0.6rem 0.5rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        line-height: 1.4 !important;
+    }
+
+    .city-boost-matrix th:first-child {
+        min-width: 120px !important;
+        width: auto !important;
+        font-size: 0.7rem !important;
+        padding: 0.6rem 0.5rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        line-height: 1.4 !important;
+    }
+
+    .city-boost-matrix th:not(:first-child) {
+        font-size: 0.7rem !important;
+        padding: 0.5rem 0.4rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        min-width: 90px !important;
+        width: auto !important;
+    }
+
+    /* Remove bubble style for mobile, show text directly in cells */
+    .city-boost-matrix td.boost-cell {
+        min-width: 85px !important;
+        width: auto !important;
+        padding: 0.5rem 0.35rem !important;
+        text-align: center !important;
+    }
+
+    .city-boost-matrix td.boost-cell .boost-bubble {
+        display: inline-block;
+        padding: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+        color: #00d4ff !important;
+        font-size: 0.7rem !important;
+        white-space: nowrap !important;
+    }
+
+    /* Ensure bubble hover effects are disabled on mobile */
+    .city-boost-matrix td.boost-cell:hover .boost-bubble {
+        background: transparent !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+
+    .city-boost-matrix td.boost-cell:hover {
+        transform: none !important;
+    }
+}
+
+/* ==================================================
+   SEASON LOCK OVERLAY
+   ================================================== */
+
+.season-lock-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0, 0, 0, 0.98) !important;
+    backdrop-filter: blur(20px) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 999999 !important;
+    animation: fadeIn 0.3s ease-in;
+    pointer-events: auto !important;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.season-lock-content {
+    position: relative;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.15), rgba(0, 100, 255, 0.15));
+    border: 2px solid rgba(0, 212, 255, 0.5);
+    border-radius: 20px;
+    padding: 3rem;
+    max-width: 600px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 212, 255, 0.3);
+    z-index: 5;
+}
+
+.particles-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.sparkle-particles {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+}
+
+.sparkle-particle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    animation: sparkle 2s infinite;
+}
+
+@keyframes sparkle {
+    0%, 100% {
+        opacity: 0;
+        transform: scale(0);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.diamond-rain {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.falling-diamond {
+    position: absolute;
+    font-size: 2rem;
+    animation: fall linear;
+    top: -40px;
+}
+
+@keyframes fall {
+    to {
+        transform: translateY(calc(100vh + 40px)) rotate(360deg);
+    }
+}
+
+.season-lock-icon {
+    font-size: 4rem;
+    color: #00d4ff;
+    margin-bottom: 1.5rem;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+}
+
+.season-lock-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 1rem;
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+}
+
+.season-lock-message {
+    font-size: 1.125rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+.season-lock-timer {
+    background: rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(0, 212, 255, 0.3);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.timer-label {
+    display: block;
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.timer-value {
+    display: block;
+    font-size: 3rem;
+    font-weight: 700;
+    color: #00d4ff;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    animation: countdown 1s infinite;
+}
+
+@keyframes countdown {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.season-lock-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9rem;
+}
+
+.season-lock-info i {
+    color: rgba(0, 212, 255, 0.8);
+}
+
+.season-lock-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+.season-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 100, 255, 0.2));
+    border: 2px solid rgba(0, 212, 255, 0.5);
+    border-radius: 12px;
+    color: #ffffff;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.season-nav-btn:hover {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.4), rgba(0, 100, 255, 0.4));
+    border-color: rgba(0, 212, 255, 0.8);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 212, 255, 0.4);
+}
+
+.season-nav-btn i {
+    font-size: 1.125rem;
+    color: #00d4ff;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .season-lock-content {
+        padding: 2rem 1.5rem;
+        margin: 1rem;
+    }
+
+    .season-lock-icon {
+        font-size: 3rem;
+    }
+
+    .season-lock-title {
+        font-size: 1.875rem;
+    }
+
+    .season-lock-message {
+        font-size: 1rem;
+    }
+
+    .timer-value {
+        font-size: 2rem;
+    }
+
+    .season-lock-buttons {
+        flex-direction: column;
+    }
+
+    .season-nav-btn {
+        padding: 0.75rem 1.25rem;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .season-lock-content {
+        padding: 1.5rem;
+    }
+
+    .season-lock-icon {
+        font-size: 2.5rem;
+    }
+
+    .season-lock-title {
+        font-size: 1.5rem;
+    }
+
+    .timer-value {
+        font-size: 1.75rem;
+    }
+
+    .season-nav-btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+    }
+
+    .season-nav-btn i {
+        font-size: 1rem;
+    }
+}
+
+/* Season Timer Section */
+.season-timer-section {
+    display: flex;
+    justify-content: center;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}
+
+.season-timer-card {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.15) 0%, rgba(0, 168, 255, 0.15) 100%);
+    border: 2px solid rgba(0, 212, 255, 0.3);
+    border-radius: 16px;
+    padding: 1.5rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.2);
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+    max-width: 600px;
+    width: 100%;
+}
+
+.season-timer-card:hover {
+    border-color: rgba(0, 212, 255, 0.5);
+    box-shadow: 0 12px 40px rgba(0, 212, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+.season-timer-icon {
+    font-size: 2.5rem;
+    color: #00d4ff;
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+}
+
+.season-timer-content {
+    flex: 1;
+}
+
+.season-timer-content h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 0 0 0.5rem 0;
+}
+
+.season-timer-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #00d4ff;
+    text-shadow: 0 0 15px rgba(0, 212, 255, 0.6);
+    margin: 0;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+}
+
+.season-timer-status {
+    font-size: 0.9rem;
+    color: #a0d9ff;
+    margin: 0.5rem 0 0 0;
+}

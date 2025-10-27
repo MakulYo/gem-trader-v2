@@ -134,6 +134,20 @@
             </div>
           </div>
         </div>
+        
+        <!-- Season Timer -->
+        <div id="season-timer-section" class="season-timer-section" style="display: none;">
+          <div class="season-timer-card">
+            <div class="season-timer-icon">
+              <i class="fas fa-calendar-alt"></i>
+            </div>
+            <div class="season-timer-content">
+              <h3 id="season-timer-label">Season Active</h3>
+              <p class="season-timer-value" id="season-timer-display">--:--:--</p>
+              <p class="season-timer-status" id="season-timer-status"></p>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
 
@@ -144,6 +158,7 @@
     <script type="module" src="wallet.js"></script>
     <script src="common.js"></script>
     <script src="backend-service.js"></script>
+    <script src="season-lock.js"></script>
     <script src="dashboard.js"></script>
   </div>
 </body>

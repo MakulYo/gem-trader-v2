@@ -616,6 +616,48 @@ class BackendService {
         console.log('[Backend] Triggering manual leaderboard refresh');
         return await this.post('/triggerLeaderboardRefresh', {});
     }
+
+    // ========================================
+    // SEASON METHODS
+    // ========================================
+
+    /**
+     * Get current season state and schedule
+     * @returns {Promise<{ok: boolean, season: string, phase: string, lockEndsAt: number|null, ...}>}
+     */
+    async getSeasonState() {
+        console.log('[Backend] Fetching season state');
+        try {
+            const response = await this.get('/getSeasonState');
+            console.log('[Backend] Season state loaded:', response);
+            return response;
+        } catch (error) {
+            console.error('[Backend] Error fetching season state:', error);
+            // Return default state if API fails
+            return {
+                ok: true,
+                season: 'active',
+                phase: 'active',
+                lockEndsAt: null
+            };
+        }
+    }
+
+    /**
+     * Get season schedule with timing information
+     * @returns {Promise<{ok: boolean, season: string, phase: string, startAt: number, lockStartAt: number, lockEndAt: number, offDays: number}>}
+     */
+    async getSeasonSchedule() {
+        console.log('[Backend] Fetching season schedule');
+        try {
+            const response = await this.get('/getSeasonSchedule');
+            console.log('[Backend] Season schedule loaded:', response);
+            return response;
+        } catch (error) {
+            console.error('[Backend] Error fetching season schedule:', error);
+            throw error;
+        }
+    }
 }
 
 // Global instance

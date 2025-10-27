@@ -1552,8 +1552,8 @@ class PolishingGame extends TSDGEMSGame {
                     position: fixed;
                     top: 0;
                     left: 0;
-                    width: 100%;
-                    height: 100%;
+                    width: 100vw;
+                    height: 100vh;
                     background: rgba(0, 0, 0, 0.9);
                     backdrop-filter: blur(10px);
                     display: flex;
@@ -1562,10 +1562,11 @@ class PolishingGame extends TSDGEMSGame {
                     align-items: center;
                     z-index: 10000;
                     animation: fadeIn 0.3s ease;
+                    overflow: hidden;
                 `;
                 
                 loader.innerHTML = `
-                    <div style="text-align: center;">
+                    <div style="text-align: center; padding: 20px; max-width: 90%;">
                         <div style="font-size: 5rem; color: #ff9500; margin-bottom: 30px; animation: pulse 2s ease-in-out infinite;">
                             ✨
                         </div>
