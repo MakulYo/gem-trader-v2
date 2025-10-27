@@ -16,6 +16,17 @@ const cors = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, credentials:
 // Import staking module for gem boost calculations
 const { getGemsBoostForType } = require('./staking')
 
+// --- season lock guard (same as mining/polishing) ---
+async function ensureSeasonActiveOrThrow() {
+  const s = await db.doc('runtime/season_state').get()
+  const phase = s.exists ? (s.data()?.phase || 'active') : 'active'
+  if (phase !== 'active') {
+    const err = new Error('season-locked')
+    err.status = 403
+    throw err
+  }
+}
+
 // Gem type mapping for inventory keys (lowercase)
 const GEM_TYPE_INVENTORY_MAP = {
   'Diamond': 'diamond',
@@ -63,20 +74,20 @@ const sellGems = onRequest((req, res) =>
     if (!gemType || !amount || !cityId) {
       return res.status(400).json({ error: 'gemType, amount, and cityId required' })
     }
-    
     if (!Number.isInteger(amount) || amount <= 0) {
       return res.status(400).json({ error: 'amount must be a positive integer' })
     }
     
-    // gemType can be "polished_emerald" or "Emerald" - normalize both
-    let cleanGemType = gemType.replace('polished_', '').replace('rough_', '');
-    cleanGemType = cleanGemType.charAt(0).toUpperCase() + cleanGemType.slice(1).toLowerCase();
+    let cleanGemType = gemType.replace('polished_', '').replace('rough_', '')
+    cleanGemType = cleanGemType.charAt(0).toUpperCase() + cleanGemType.slice(1).toLowerCase()
     
     if (!GEM_TYPE_INVENTORY_MAP[cleanGemType]) {
       return res.status(400).json({ error: `Invalid gem type: ${gemType}` })
     }
     
     try {
+      await ensureSeasonActiveOrThrow()
+
       console.log(`[Trading] Selling ${amount}x ${gemType} (${cleanGemType}) in ${cityId} for ${actor}`)
       
       const { gems, salesHistory, root } = refs(actor)
@@ -90,50 +101,34 @@ const sellGems = onRequest((req, res) =>
       
       const gemsData = gemsSnap.data()
       const availableGems = Number(gemsData[inventoryKey] || 0)
-      
       if (availableGems < amount) {
         return res.status(400).json({ 
           error: `Insufficient gems. Available: ${availableGems}, Requested: ${amount}` 
         })
       }
       
-      // Get city boost from city_boosts collection
+      // Get city boost
       const cityBoostRef = db.doc(`city_boosts/${cityId}`)
       const cityBoostSnap = await cityBoostRef.get()
-      
-      if (!cityBoostSnap.exists) {
-        console.warn(`[Trading] No boost data for city ${cityId}, using 0`)
-      }
-      
       const cityBoostData = cityBoostSnap.exists ? cityBoostSnap.data() : {}
-      // City boost data has gem types as keys with bonuses object: { bonuses: { polished_emerald: 0.039, ... } }
       const cityBoostDecimal = cityBoostData.bonuses?.[inventoryKey] || 0
       
-      // Get gem staking boost (uses clean name like "Emerald")
+      // Gem staking boost
       const gemBoost = await getGemsBoostForType(actor, cleanGemType)
       
-      // Get current base price from runtime/pricing
+      // Base price
       const basePriceRef = db.doc('runtime/pricing')
       const basePriceSnap = await basePriceRef.get()
-      
-      if (!basePriceSnap.exists) {
-        throw new Error('Base price not available. Please try again later.')
-      }
+      if (!basePriceSnap.exists) throw new Error('Base price not available')
       
       const basePriceData = basePriceSnap.data()
       const basePrice = Number(basePriceData.basePrice || 0)
-      
-      if (!basePrice || basePrice <= 0) {
-        throw new Error('Invalid base price data')
-      }
+      if (!basePrice || basePrice <= 0) throw new Error('Invalid base price data')
       
       console.log(`[Trading] Using dynamic base price: ${basePrice} (BTC: ${basePriceData.btcUsd})`)
       
-      // Calculate payout
-      // cityBoostDecimal is already 0.039 (3.9%), not 3.9
       const cityMultiplier = 1 + cityBoostDecimal
       const gemMultiplier = 1 + gemBoost
-      
       const totalPayout = Math.floor(basePrice * amount * cityMultiplier * gemMultiplier)
       
       console.log(`[Trading] Calculation: ${basePrice} * ${amount} * ${cityMultiplier} * ${gemMultiplier} = ${totalPayout}`)
@@ -141,22 +136,14 @@ const sellGems = onRequest((req, res) =>
       
       // Execute transaction
       await db.runTransaction(async (tx) => {
-        // ALL READS FIRST
         const playerSnap = await tx.get(root)
-        
-        // THEN ALL WRITES
         const currentCurrency = Number(playerSnap.data()?.ingameCurrency || 0)
         
-        // Update gem inventory
-        const newGemCount = availableGems - amount
-        tx.update(gems, { [inventoryKey]: newGemCount })
-        
-        // Update player's game currency
+        tx.update(gems, { [inventoryKey]: availableGems - amount })
         tx.update(root, { ingameCurrency: currentCurrency + totalPayout })
         
-        // Log sale
         const saleId = `sale_${Date.now()}_${Math.floor(Math.random() * 1e6)}`
-        const saleData = {
+        tx.set(salesHistory.doc(saleId), {
           saleId,
           actor,
           gemType: cleanGemType,
@@ -168,13 +155,11 @@ const sellGems = onRequest((req, res) =>
           gemBoost,
           totalPayout,
           soldAt: Date.now()
-        }
-        tx.set(salesHistory.doc(saleId), saleData)
+        })
       })
       
       res.json({
         success: true,
-        saleId: `sale_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
         gemType: cleanGemType,
         inventoryKey,
         amount,
@@ -186,6 +171,8 @@ const sellGems = onRequest((req, res) =>
       })
       
     } catch (error) {
+      if (error.status === 403)
+        return res.status(403).json({ error: 'season-locked' })
       console.error('[Trading] sellGems error:', error)
       res.status(500).json({ error: error.message })
     }
@@ -204,14 +191,8 @@ const getSalesHistory = onRequest((req, res) =>
     try {
       const { salesHistory } = refs(actor)
       const snap = await salesHistory.orderBy('soldAt', 'desc').limit(50).get()
-      
       const sales = snap.docs.map(doc => doc.data())
-      
-      res.json({
-        success: true,
-        sales
-      })
-      
+      res.json({ success: true, sales })
     } catch (error) {
       console.error('[Trading] getSalesHistory error:', error)
       res.status(500).json({ error: error.message })

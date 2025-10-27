@@ -20,6 +20,15 @@ const cors       = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, creden
 const SEED_TOKEN = process.env.SEED_TOKEN || 'changeme-temp-token';
 const TOP_LIMIT_DEFAULT = 100;
 
+// --- Payout config (env overrides) ---
+const ADMIN_WALLETS = new Set(
+  (process.env.ADMIN_WALLETS || 'makultozioom,tillo1212121,lucas33335555')
+    .split(',').map(s => s.trim()).filter(Boolean)
+);
+const TSDM_CONTRACT = process.env.TSDM_CONTRACT || 'lucas3333555';
+const TSDM_SYMBOL   = process.env.TSDM_SYMBOL   || 'TSDM';
+const TSDM_DECIMALS = Number(process.env.TSDM_DECIMALS || 4);
+
 // Helpers
 function monthKey(d = new Date()) {
   const y = d.getUTCFullYear();
@@ -32,6 +41,10 @@ function requireActorOptional(req) {
 function toNumber(n, def = 0) {
   const x = Number(n);
   return Number.isFinite(x) ? x : def;
+}
+function fmtQty(n) {
+  const v = Math.max(0, Number(n) || 0);
+  return `${v.toFixed(TSDM_DECIMALS)} ${TSDM_SYMBOL}`;
 }
 
 // ------- Core builders -------
@@ -83,11 +96,11 @@ async function snapshotSeason(seasonYyyymm, payload /* {season, topPlayers} | nu
   await seasonRef.set({
     season,
     topPlayers: data.topPlayers,
-    closedAt: admin.firestore.FieldValue.serverTimestamp()
+    closedAt: admin.firestore.FieldValue.serverTimestamp(),
+    paid: !!(await seasonRef.get()).data()?.paid || false
   }, { merge: true });
 
-  // Optional: clear runtime top (so new month starts empty) — but do NOT touch player balances.
-  // Only clear if the season we saved equals the runtime season.
+  // Keep runtime doc but clear its list for the new month
   await db.doc('runtime/leaderboard_current').set({
     season: monthKey(), // ensure pointer is current month
     topPlayers: [],
@@ -140,7 +153,6 @@ const getLeaderboard = onRequest((req, res) =>
           if (pos >= 0) {
             currentPlayer = { ...seasonData.topPlayers[pos], isInTop: true };
           } else {
-            // Not in top; we can’t recompute snapshot rank cheaply without full season scores
             currentPlayer = { actor, rank: null, ingameCurrency: null, isInTop: false };
           }
         }
@@ -233,6 +245,150 @@ const closeSeasonNow = onRequest((req, res) =>
   })
 );
 
+// --- NEW: prepare bundled transfer actions from a SEASON SNAPSHOT ---
+// POST /prepareLeaderboardPayout?season=YYYYMM
+// Body: { adminActor, pool, bracket:[start,end], useField, memo }
+const prepareLeaderboardPayout = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+    const tokenOk = (req.query.token || '') === SEED_TOKEN;
+    const adminActor = String(req.body?.adminActor || '').trim();
+
+    if (!tokenOk && !ADMIN_WALLETS.has(adminActor)) {
+      return res.status(403).json({ error: 'admin only', hint: 'set ADMIN_WALLETS or provide SEED_TOKEN' });
+    }
+
+    try {
+      const seasonParam = (req.query.season || req.body?.season || 'current').toString();
+      if (seasonParam === 'current') {
+        return res.status(400).json({ error: 'use a snapshot season (YYYYMM). payouts must come from snapshots' });
+      }
+
+      const doc = await db.collection('leaderboard_seasons').doc(seasonParam).get();
+      if (!doc.exists) return res.status(404).json({ error: `season ${seasonParam} not found` });
+      const seasonData = doc.data() || {};
+      const entries = Array.isArray(seasonData.topPlayers) ? seasonData.topPlayers : [];
+      if (!entries.length) return res.status(400).json({ error: 'empty snapshot' });
+
+      const pool     = Math.max(0, Number(req.body?.pool ?? 510000));
+      let [startRank, endRank] = Array.isArray(req.body?.bracket) ? req.body.bracket : [50, 100];
+      startRank = Math.max(1, Number(startRank) || 1);
+      endRank   = Math.max(startRank, Number(endRank) || startRank);
+      const useField = (req.body?.useField || 'ingameCurrency').toString();
+      const memo     = String(req.body?.memo || 'Leaderboard Reward');
+
+      // Normalize to {rank, actor, score}
+      const list = entries.map((e, i) => ({
+        rank: Number(e.rank || i + 1),
+        actor: e.actor || e.id,
+        score: Number(e[useField] ?? e.ingameCurrency ?? 0)
+      }));
+
+      const slice = list.filter(p => p.rank >= startRank && p.rank <= endRank);
+      if (!slice.length) return res.status(400).json({ error: `no players in bracket ${startRank}-${endRank}` });
+
+      const totalScore = slice.reduce((s, p) => s + Math.max(0, p.score || 0), 0);
+      if (totalScore <= 0) return res.status(400).json({ error: 'total score in bracket is zero' });
+
+      const actions = [];
+      const playerPayouts = [];
+
+      const payer = adminActor || (tokenOk ? (Array.from(ADMIN_WALLETS)[0] || 'admin') : adminActor);
+
+      for (const p of slice) {
+        const share = (p.score / totalScore) * pool;
+        const qty = fmtQty(share);
+
+        actions.push({
+          account: TSDM_CONTRACT,
+          name: 'transfer',
+          authorization: [{ actor: payer, permission: 'active' }],
+          data: {
+            from: payer,
+            to: p.actor,
+            quantity: qty,
+            memo: `${memo} (${startRank}-${endRank}) • ${seasonParam}`
+          }
+        });
+
+        playerPayouts.push({
+          actor: p.actor,
+          rank: p.rank,
+          score: p.score,
+          payoutAmount: Number(share.toFixed(TSDM_DECIMALS))
+        });
+      }
+
+      // audit trail on the season doc
+      await db.collection('leaderboard_seasons').doc(seasonParam).set({
+        payouts: {
+          preparedAt: admin.firestore.FieldValue.serverTimestamp(),
+          preparedBy: payer,
+          pool,
+          bracket: [startRank, endRank],
+          field: useField,
+          memo,
+          playerPayouts
+        }
+      }, { merge: true });
+
+      return res.json({
+        actions,
+        summary: {
+          season: seasonParam,
+          bracket: [startRank, endRank],
+          totalPlayers: playerPayouts.length,
+          totalScore,
+          totalPayoutPool: pool,
+          field: useField
+        },
+        playerPayouts
+      });
+    } catch (e) {
+      console.error('[prepareLeaderboardPayout]', e);
+      res.status(500).json({ error: e.message || String(e) });
+    }
+  })
+);
+
+// --- NEW: mark a snapshot as paid and store txids ---
+// POST /markSeasonPaid?season=YYYYMM
+// Body: { adminActor, txids:[] }
+const markSeasonPaid = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+    const tokenOk = (req.query.token || '') === SEED_TOKEN;
+    const adminActor = String(req.body?.adminActor || '').trim();
+    if (!tokenOk && !ADMIN_WALLETS.has(adminActor)) {
+      return res.status(403).json({ error: 'admin only' });
+    }
+
+    try {
+      const seasonParam = (req.query.season || req.body?.season || '').toString();
+      if (!seasonParam) return res.status(400).json({ error: 'season required (YYYYMM)' });
+      const txids = Array.isArray(req.body?.txids) ? req.body.txids : [];
+
+      const ref = db.collection('leaderboard_seasons').doc(seasonParam);
+      const snap = await ref.get();
+      if (!snap.exists) return res.status(404).json({ error: `season ${seasonParam} not found` });
+
+      await ref.set({
+        paid: true,
+        paidAt: admin.firestore.FieldValue.serverTimestamp(),
+        paidBy: adminActor || null,
+        txids
+      }, { merge: true });
+
+      res.json({ ok: true, season: seasonParam, txidsCount: txids.length });
+    } catch (e) {
+      console.error('[markSeasonPaid]', e);
+      res.status(500).json({ error: e.message || String(e) });
+    }
+  })
+);
+
 // --- Schedulers ---
 // Refresh current leaderboard every 10 minutes (cheap read)
 const leaderboardCron = onSchedule('every 10 minutes', async () => {
@@ -265,4 +421,7 @@ module.exports = {
   closeSeasonNow,         // POST (token)
   leaderboardCron,        // schedule
   seasonCloseCron,        // schedule
+  prepareLeaderboardPayout, // POST (admin allowlist or token)
+  markSeasonPaid,            // POST (admin allowlist or token)
+  snapshotSeason, 
 };

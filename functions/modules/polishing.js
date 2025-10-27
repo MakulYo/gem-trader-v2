@@ -19,13 +19,24 @@ function requireActor(req, res) {
   return actor
 }
 
+// --- season lock guard (central switch) ---
+async function ensureSeasonActiveOrThrow() {
+  const s = await db.doc('runtime/season_state').get()
+  const phase = s.exists ? (s.data()?.phase || 'active') : 'active'
+  if (phase !== 'active') {
+    const err = new Error('season-locked')
+    err.status = 403
+    throw err
+  }
+}
+
 const POLISHING_DURATION_MS = 30 * 1000  // 30 seconds (for testing)
 const MAX_SLOTS = 10
 const MAX_AMOUNT_PER_SLOT = 500
 
 // Slot unlock costs (slot 1 is free, already unlocked)
 const POLISHING_SLOT_UNLOCK_COSTS = [
-  0,      // Slot 1 - Free/Already unlocked
+  0,      // Slot 1
   100,    // Slot 2
   250,    // Slot 3
   500,    // Slot 4
@@ -37,35 +48,26 @@ const POLISHING_SLOT_UNLOCK_COSTS = [
   15000   // Slot 10
 ]
 
-// Only one general rough gem type (input)
+// single rough type (input)
 const ROUGH_GEM_KEY = 'rough_gems'
 
-// 10 specific polished gem types (output)
+// 10 polished types (output) + weights
 const POLISHED_TYPES = [
-  'polished_diamond',
-  'polished_ruby',
-  'polished_sapphire',
-  'polished_emerald',
-  'polished_jade',
-  'polished_tanzanite',
-  'polished_opal',
-  'polished_aquamarine',
-  'polished_topaz',
-  'polished_amethyst'
+  'polished_diamond','polished_ruby','polished_sapphire','polished_emerald',
+  'polished_jade','polished_tanzanite','polished_opal','polished_aquamarine',
+  'polished_topaz','polished_amethyst'
 ]
-
-// Weights for random polished gem type selection
 const WEIGHTS = {
-  polished_diamond: 0.03,      // 3%
-  polished_ruby: 0.05,          // 5%
-  polished_sapphire: 0.10,      // 10%
-  polished_emerald: 0.10,       // 10%
-  polished_jade: 0.1166,        // 11.66%
-  polished_tanzanite: 0.1166,   // 11.66%
-  polished_opal: 0.1166,        // 11.66%
-  polished_aquamarine: 0.1166,  // 11.66%
-  polished_topaz: 0.1166,       // 11.66%
-  polished_amethyst: 0.1166     // 11.66%
+  polished_diamond: 0.03,
+  polished_ruby: 0.05,
+  polished_sapphire: 0.10,
+  polished_emerald: 0.10,
+  polished_jade: 0.1166,
+  polished_tanzanite: 0.1166,
+  polished_opal: 0.1166,
+  polished_aquamarine: 0.1166,
+  polished_topaz: 0.1166,
+  polished_amethyst: 0.1166
 }
 
 function pickPolishedType() {
@@ -100,8 +102,6 @@ async function getEffectivePolishingSlots(actor) {
   const prof = profSnap.exists ? (profSnap.data() || {}) : {}
   const unlockedSlots = Number(prof.polishingSlotsUnlocked || 0)
 
-  // Use the maximum of NFT-based slots and manually unlocked slots
-  // This allows players to unlock slots either by buying NFTs OR by spending TSDM
   return Math.min(Math.max(nftSlots, unlockedSlots), MAX_SLOTS)
 }
 
@@ -130,18 +130,17 @@ const startPolishing = onRequest((req, res) =>
     if (amount > MAX_AMOUNT_PER_SLOT) return res.status(400).json({ error: `maximum ${MAX_AMOUNT_PER_SLOT} gems per slot` })
 
     try {
+      await ensureSeasonActiveOrThrow()
+
       const { gems, active } = refs(actor)
-      
-      // Get existing jobs to determine available slot
+
       const snap = await active.get()
       const existingJobs = snap.docs.map(d => d.data())
-      
+
       const slots = await getEffectivePolishingSlots(actor)
       const activeCount = existingJobs.length
-      
       if (activeCount >= slots) return res.status(400).json({ error: 'no available polishing slots' })
 
-      // Find next available slot number
       const slotNum = getNextAvailableSlot(existingJobs, slots)
       if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
 
@@ -165,6 +164,7 @@ const startPolishing = onRequest((req, res) =>
 
       res.json({ ok: true, jobId, slotId, slotNum, finishAt })
     } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: 'season-locked' })
       console.error('[startPolishing]', e)
       res.status(400).json({ error: e.message })
     }
@@ -195,6 +195,8 @@ const completePolishing = onRequest((req, res) =>
     if (!jobId) return res.status(400).json({ error: 'jobId required' })
 
     try {
+      await ensureSeasonActiveOrThrow()
+
       const { active, history, gems } = refs(actor)
       const jobRef = active.doc(jobId)
       const snap = await jobRef.get()
@@ -203,35 +205,29 @@ const completePolishing = onRequest((req, res) =>
       const now = Date.now()
       if (now < job.finishAt) return res.status(400).json({ error: 'job still in progress' })
 
-      // Roll for each gem individually
       const amountIn = job.amountIn
       const results = {}
-      
-      // Roll drop chance for each individual gem
+
       for (let i = 0; i < amountIn; i++) {
-        const polishedType = pickPolishedType()
-        results[polishedType] = (results[polishedType] || 0) + 1
+        const t = pickPolishedType()
+        results[t] = (results[t] || 0) + 1
       }
-      
-      console.log(`[completePolishing] Rolled ${amountIn} gems:`, results)
 
       await db.runTransaction(async (tx) => {
         const gSnap = await tx.get(gems)
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
-        
-        // Add each polished gem type to inventory
         const updated = { ...cur }
         Object.entries(results).forEach(([gemType, count]) => {
           const have = Number(updated[gemType] || 0)
           updated[gemType] = have + count
         })
-        
+
         tx.set(gems, updated, { merge: true })
         tx.set(history.doc(jobId), { 
           ...job, 
           status: 'done', 
-          results: results,  // Store all results
-          totalOut: amountIn,
+          results,            // per-type counts
+          totalOut: amountIn, // sum of polished
           completedAt: now 
         })
         tx.delete(jobRef)
@@ -239,6 +235,7 @@ const completePolishing = onRequest((req, res) =>
 
       res.json({ ok: true, result: { results, totalOut: amountIn, completedAt: now } })
     } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: 'season-locked' })
       console.error('[completePolishing]', e)
       res.status(500).json({ error: e.message })
     }
@@ -253,33 +250,22 @@ const unlockPolishingSlot = onRequest((req, res) =>
     const targetSlot = Number(req.body?.targetSlot || 0)
 
     try {
-      const { root } = refs(actor)
+      const { root, pendingPayments } = refs(actor)
       const snap = await root.get()
       if (!snap.exists) return res.status(404).json({ error: 'player not found' })
 
-      const profile = snap.data()
+      const profile = snap.data() || {}
       const currentSlots = Number(profile.polishingSlotsUnlocked || 0)
-      
-      // Target slot must be the next one in sequence
+      if (currentSlots >= MAX_SLOTS) return res.status(400).json({ error: 'maximum slots already unlocked' })
+
       const nextSlotToUnlock = currentSlots + 1
       if (targetSlot !== nextSlotToUnlock) {
-        return res.status(400).json({ 
-          error: `Please unlock slots in order. Next available slot is ${nextSlotToUnlock}` 
-        })
-      }
-      
-      if (currentSlots >= MAX_SLOTS) {
-        return res.status(400).json({ error: 'maximum slots already unlocked' })
+        return res.status(400).json({ error: `Please unlock slots in order. Next available slot is ${nextSlotToUnlock}` })
       }
 
-      // Get cost for this specific slot (0-indexed array)
       const unlockCost = POLISHING_SLOT_UNLOCK_COSTS[targetSlot - 1] || 0
-
-      // Create payment request directly in Firestore
-      const { pendingPayments } = refs(actor)
       const now = Date.now()
       const paymentId = `payment_${now}_${Math.floor(Math.random()*1e6)}`
-      
       const paymentData = {
         paymentId,
         actor,
@@ -294,13 +280,7 @@ const unlockPolishingSlot = onRequest((req, res) =>
 
       await pendingPayments.doc(paymentId).set(paymentData)
 
-      res.json({ 
-        ok: true, 
-        paymentId,
-        unlockCost,
-        slotNumber: targetSlot,
-        message: 'Payment request created. Please complete payment to unlock slot.'
-      })
+      res.json({ ok: true, paymentId, unlockCost, slotNumber: targetSlot, message: 'Payment request created. Please complete payment to unlock slot.' })
     } catch (e) {
       console.error('[unlockPolishingSlot]', e)
       res.status(500).json({ error: e.message })

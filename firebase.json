@@ -8,38 +8,44 @@
       { "source": "/getDashboard",     "function": "getDashboard" },
       { "source": "/getCityMatrix",    "function": "getCityMatrix" },
 
-      { "source": "/getBasePrice",         "function": "getBasePrice" },
-      { "source": "/getChart",             "function": "getChart" },
-      { "source": "/refreshBasePrice",     "function": "refreshBasePrice" },
+      { "source": "/getBasePrice",     "function": "getBasePrice" },
+      { "source": "/getChart",         "function": "getChart" },
+      { "source": "/refreshBasePrice", "function": "refreshBasePrice" },
 
       { "source": "/getInventory",     "function": "getInventory" },
       { "source": "/refreshInventory", "function": "refreshInventory" },
-      
-      { "source": "/seedCities",        "function": "seedCities" },
-      { "source": "/seedBoostsInit",    "function": "seedBoostsInit" },
-      { "source": "/updateBonusesNow",  "function": "updateBonusesNow" },
-      
-      { "source": "/startMining",       "function": "startMining" },
-      { "source": "/getActiveMining",   "function": "getActiveMining" },
-      { "source": "/completeMining",    "function": "completeMining" },
-      { "source": "/unlockMiningSlot",  "function": "unlockMiningSlot" },
-      
+
+      { "source": "/seedCities",       "function": "seedCities" },
+      { "source": "/seedBoostsInit",   "function": "seedBoostsInit" },
+      { "source": "/updateBonusesNow", "function": "updateBonusesNow" },
+
+      { "source": "/startMining",      "function": "startMining" },
+      { "source": "/getActiveMining",  "function": "getActiveMining" },
+      { "source": "/completeMining",   "function": "completeMining" },
+      { "source": "/unlockMiningSlot", "function": "unlockMiningSlot" },
+
       { "source": "/startPolishing",      "function": "startPolishing" },
       { "source": "/getActivePolishing",  "function": "getActivePolishing" },
       { "source": "/completePolishing",   "function": "completePolishing" },
       { "source": "/unlockPolishingSlot", "function": "unlockPolishingSlot" },
-      
+
       { "source": "/createPaymentRequest", "function": "createPaymentRequest" },
       { "source": "/getPendingPayments",   "function": "getPendingPayments" },
       { "source": "/verifyPayment",        "function": "verifyPayment" },
       { "source": "/cancelPayment",        "function": "cancelPayment" },
-      
-      { "source": "/stakeAsset",           "function": "stakeAsset" },
-      { "source": "/unstakeAsset",         "function": "unstakeAsset" },
-      { "source": "/getStakedAssets",      "function": "getStakedAssets" }
+
+      { "source": "/stakeAsset",      "function": "stakeAsset" },
+      { "source": "/unstakeAsset",    "function": "unstakeAsset" },
+      { "source": "/getStakedAssets", "function": "getStakedAssets" },
+
+      { "source": "/prepareLeaderboardPayout", "function": "prepareLeaderboardPayout" },
+      { "source": "/markSeasonPaid",          "function": "markSeasonPaid" },
+      { "source": "/getSeasonState",  "function": "getSeasonState" },
+      { "source": "/enterLockWindow", "function": "enterLockWindow" },
+      { "source": "/openNewSeason",   "function": "openNewSeason" },
+      { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" }
     ]
-  }
-,
+  },
 
   "firestore": {
     "database": "tsdgems",
@@ -47,6 +53,7 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+
   "functions": [
     {
       "source": "functions",
@@ -54,20 +61,12 @@
       "runtime": "nodejs20"
     }
   ],
+
   "emulators": {
-    "functions": {
-      "port": 5001
-    },
-    "firestore": {
-      "port": 8080
-    },
-    "hosting": {
-      "port": 5000
-    },
-    "ui": {
-      "enabled": true,
-      "port": 4000
-    },
+    "functions": { "port": 5001 },
+    "firestore": { "port": 8080 },
+    "hosting":   { "port": 5000 },
+    "ui":        { "enabled": true, "port": 4000 },
     "singleProjectMode": true
   }
 }
