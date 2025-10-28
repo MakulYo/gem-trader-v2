@@ -1,25 +1,24 @@
-// TSDGEMS - Dashboard Page Script (Backend-Connected)
+﻿// TSDGEMS - Dashboard Page Script (Backend-Connected)
 
 class DashboardGame extends TSDGEMSGame {
     constructor() {
         super();
         
         console.log('========================================');
-        console.log('🎮 DashboardGame Constructor');
+        console.log('[GAME] DashboardGame Constructor');
         console.log('========================================');
         
         // Check if backend service exists
         if (!window.backendService) {
-            console.error('❌ Backend Service not found in window object!');
+            console.error('âŒ Backend Service not found in window object!');
             console.error('Available in window:', Object.keys(window).filter(k => k.includes('backend')));
         } else {
-            console.log('✅ Backend Service found:', window.backendService);
+            console.log('[OK] Backend Service found:', window.backendService);
         }
         
         this.backendService = window.backendService;
         this.isLoggedIn = false;
         this.currentActor = null;
-        this.rawBackendData = null;
         this.realtimeUnsubscribers = [];
         
         console.log('Initializing dashboard...');
@@ -29,17 +28,14 @@ class DashboardGame extends TSDGEMSGame {
     init() {
         console.log('[Dashboard] Running init()...');
         this.setupWalletIntegration();
-        this.setupWalletEventListeners();
-        this.createDebugPanel();
-        
-        // Check URL parameters for test mode
+        this.setupWalletEventListeners();// Check URL parameters for test mode
         const urlParams = new URLSearchParams(window.location.search);
         const testMode = urlParams.get('test');
         const testActor = urlParams.get('actor') || 'lucas3333555';
         
         if (testMode === 'true') {
-            console.log('[Dashboard] 🧪 TEST MODE activated with actor:', testActor);
-            this.showNotification(`🧪 Test Mode: Loading data for ${testActor}`, 'info');
+            console.log('[Dashboard] [TEST] TEST MODE activated with actor:', testActor);
+            this.showNotification(`[TEST] Test Mode: Loading data for ${testActor}`, 'info');
             
             // Auto-connect in test mode
             setTimeout(async () => {
@@ -65,7 +61,7 @@ class DashboardGame extends TSDGEMSGame {
         // Listen for new wallet connection
         window.addEventListener('wallet-connected', async (event) => {
             const { actor } = event.detail;
-            console.log('[Dashboard] 🔗 Wallet connected event received, actor:', actor);
+            console.log('[Dashboard] [CONNECT] Wallet connected event received, actor:', actor);
             
             if (!actor) {
                 console.error('[Dashboard] No actor in wallet-connected event');
@@ -82,7 +78,7 @@ class DashboardGame extends TSDGEMSGame {
         // Listen for restored session (already logged in)
         window.addEventListener('wallet-session-restored', async (event) => {
             const { actor } = event.detail;
-            console.log('[Dashboard] 🔄 Wallet session restored event received, actor:', actor);
+            console.log('[Dashboard] [RESTORE] Wallet session restored event received, actor:', actor);
             
             if (!actor) {
                 console.error('[Dashboard] No actor in wallet-session-restored event');
@@ -100,9 +96,9 @@ class DashboardGame extends TSDGEMSGame {
             }
             
             // Load backend data with notifications
-            this.showNotification(`🔄 Welcome back, ${actor}!`, 'info');
+            this.showNotification(`Welcome back, ${actor}!`, 'info');
             setTimeout(() => {
-                this.showNotification('📊 Loading profile data...', 'info');
+                this.showNotification('Loading profile data...', 'info');
             }, 300);
             
             await this.loadBackendData(actor);
@@ -110,7 +106,7 @@ class DashboardGame extends TSDGEMSGame {
         
         // CRITICAL: Listen for wallet disconnect
         window.addEventListener('wallet-disconnected', () => {
-            console.log('[Dashboard] 🔌 Wallet disconnected event received');
+            console.log('[Dashboard] [DISCONNECT] Wallet disconnected event received');
             
             // Clear current actor and login state
             this.currentActor = null;
@@ -161,19 +157,16 @@ class DashboardGame extends TSDGEMSGame {
             }
             
             // Clear notifications and show disconnect message
-            this.showNotification('👋 Disconnected from wallet', 'info');
-            this.updateDebugPanel(null);
-            
-            console.log('[Dashboard] ✅ Dashboard cleaned up after disconnect');
+            this.showNotification('Disconnected from wallet', 'info');console.log('[Dashboard] [OK] Dashboard cleaned up after disconnect');
         });
         
-        console.log('[Dashboard] ✅ Wallet event listeners registered');
+        console.log('[Dashboard] [OK] Wallet event listeners registered');
         
         // Check if wallet already has session info (in case event was missed)
         setTimeout(() => {
             if (window.walletSessionInfo && window.walletSessionInfo.actor && !this.currentActor) {
                 const actor = window.walletSessionInfo.actor;
-                console.log('[Dashboard] 🔍 Found existing wallet session via walletSessionInfo:', actor);
+                console.log('[Dashboard] ðŸ” Found existing wallet session via walletSessionInfo:', actor);
                 this.currentActor = actor;
                 this.isLoggedIn = true;
                 
@@ -184,9 +177,9 @@ class DashboardGame extends TSDGEMSGame {
                     connectBtn.disabled = true;
                 }
                 
-                this.showNotification(`🔄 Welcome back, ${actor}!`, 'info');
+                this.showNotification(`Welcome back, ${actor}!`, 'info');
                 setTimeout(() => {
-                    this.showNotification('📊 Loading profile data...', 'info');
+                    this.showNotification('Loading profile data...', 'info');
                 }, 300);
                 
                 this.loadBackendData(actor);
@@ -194,136 +187,6 @@ class DashboardGame extends TSDGEMSGame {
         }, 200);
     }
 
-    createDebugPanel() {
-        const main = document.querySelector('.main-content');
-        if (!main) return;
-
-        const debugPanel = document.createElement('div');
-        debugPanel.id = 'backend-debug-panel';
-        debugPanel.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 400px;
-            max-height: 500px;
-            background: rgba(20, 20, 30, 0.95);
-            border: 2px solid #00d4ff;
-            border-radius: 8px;
-            padding: 15px;
-            z-index: 9999;
-            font-family: 'Courier New', monospace;
-            font-size: 11px;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3);
-        `;
-
-        debugPanel.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <strong style="color: #00d4ff;">🔍 Backend Data Debug</strong>
-                <button id="toggle-debug" style="background: #00d4ff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; color: #000;">Collapse</button>
-            </div>
-            <div id="debug-content" style="max-height: 440px; overflow-y: auto;">
-                <div style="color: #888; margin-bottom: 10px;">Waiting for backend data...</div>
-            </div>
-        `;
-
-        main.appendChild(debugPanel);
-
-        // Toggle functionality
-        const toggleBtn = document.getElementById('toggle-debug');
-        const content = document.getElementById('debug-content');
-        let collapsed = false;
-
-        toggleBtn.addEventListener('click', () => {
-            collapsed = !collapsed;
-            content.style.display = collapsed ? 'none' : 'block';
-            toggleBtn.textContent = collapsed ? 'Expand' : 'Collapse';
-        });
-    }
-
-    updateDebugPanel(data) {
-        this.rawBackendData = data;
-        const content = document.getElementById('debug-content');
-        if (!content) {
-            console.warn('[Dashboard] Debug panel content element not found');
-            return;
-        }
-
-        const timestamp = new Date().toLocaleTimeString();
-        
-        // Handle null/undefined data (e.g., after disconnect)
-        if (!data) {
-            content.innerHTML = `
-                <div style="color: #888; padding: 10px; text-align: center;">
-                    <p>🔌 Disconnected</p>
-                    <p style="font-size: 10px;">Last update: ${timestamp}</p>
-                </div>
-            `;
-            return;
-        }
-        
-        const source = data.source || 'initial-load';
-        const endpoint = data.endpoint || 'N/A';
-        
-        // Find player data in various possible locations
-        let player = null;
-        if (data.data && data.data.player) {
-            player = data.data.player;
-        } else if (data.data && data.data.dashboard && data.data.dashboard.player) {
-            player = data.data.dashboard.player;
-        } else if (data.player) {
-            player = data.player;
-        } else if (data.dashboard && data.dashboard.player) {
-            player = data.dashboard.player;
-        }
-
-        console.log('[Dashboard] Debug panel update - player found:', !!player);
-        
-        // Extract key info for summary
-        let summary = '';
-        if (player) {
-            const roughGemsCount = player.roughGems ? Object.keys(player.roughGems).length : 0;
-            const polishedGemsCount = player.polishedGems ? Object.keys(player.polishedGems).length : 0;
-            const roughGemsTotal = player.roughGems ? Object.values(player.roughGems).reduce((a, b) => a + b, 0) : 0;
-            const polishedGemsTotal = player.polishedGems ? Object.values(player.polishedGems).reduce((a, b) => a + b, 0) : 0;
-            
-            summary = `
-                <div style="margin: 10px 0; padding: 10px; background: rgba(0, 212, 255, 0.1); border-radius: 6px;">
-                    <div style="color: #00d4ff; font-weight: bold;">Player Summary:</div>
-                    <div style="margin-top: 5px; font-size: 11px; line-height: 1.6;">
-                        Account: <span style="color: #00ff64;">${player.account || this.currentActor || 'N/A'}</span><br>
-                        Game $: <span style="color: #ffc800;">${(player.ingameCurrency || 0).toLocaleString()}</span><br>
-                        TSDM: <span style="color: #ffc800;">${((player.balances?.TSDM) || 0).toFixed(2)}</span><br>
-                        Rough Gems: <span style="color: #ff00c8;">${roughGemsCount} types (${roughGemsTotal} total)</span><br>
-                        Polished Gems: <span style="color: #00ff64;">${polishedGemsCount} types (${polishedGemsTotal} total)</span><br>
-                        Mining Slots: <span style="color: #00d4ff;">${player.miningSlotsUnlocked || 0}/10</span>
-                    </div>
-                </div>
-            `;
-        } else {
-            summary = `
-                <div style="margin: 10px 0; padding: 10px; background: rgba(255, 200, 0, 0.1); border-radius: 6px;">
-                    <div style="color: #ffc800; font-weight: bold;">⚠️ No Player Data Found</div>
-                    <div style="margin-top: 5px; font-size: 11px;">
-                        Connect wallet to load player data
-                    </div>
-                </div>
-            `;
-        }
-        
-        content.innerHTML = `
-            <div style="color: #0f0; margin-bottom: 10px;">
-                ✅ Last Update: ${timestamp} | 
-                Source: <span style="color: #ffc800;">${source}</span> | 
-                Endpoint: <span style="color: #00d4ff;">${endpoint}</span>
-            </div>
-            ${summary}
-            <div style="background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 4px; overflow-x: auto; max-height: 300px; overflow-y: auto;">
-                <div style="color: #00d4ff; font-weight: bold; margin-bottom: 5px;">Full Backend Response:</div>
-                <pre style="margin: 0; color: #a0a0a0; white-space: pre-wrap; word-wrap: break-word; font-size: 10px;">${JSON.stringify(data, null, 2)}</pre>
-            </div>
-        `;
-    }
 
     setupWalletIntegration() {
         console.log('[Dashboard] Setting up wallet integration...');
@@ -349,7 +212,7 @@ class DashboardGame extends TSDGEMSGame {
                 connectBtn.style.cursor = 'wait';
             }
             
-            this.showNotification('🔗 Connecting to wallet...', 'info');
+            this.showNotification('Connecting to wallet...', 'info');
             
             // Wait for wallet.js to be ready
             console.log('[Dashboard] Checking if wallet.js is ready...');
@@ -386,11 +249,11 @@ class DashboardGame extends TSDGEMSGame {
                 connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
             }
             
-            this.showNotification(`✅ Connected as ${actor}`, 'success');
+            this.showNotification(`Connected as ${actor}`, 'success');
             
             // Show loading profile data notification
             setTimeout(() => {
-                this.showNotification('📊 Loading profile data...', 'info');
+                this.showNotification('Loading profile data...', 'info');
             }, 500);
             
             // Initialize backend and load data
@@ -407,9 +270,7 @@ class DashboardGame extends TSDGEMSGame {
                 connectBtn.style.cursor = 'pointer';
             }
             
-            this.showNotification('❌ Failed to connect wallet: ' + error.message, 'error');
-            this.updateDebugPanel({ error: error.message, timestamp: new Date().toISOString() });
-        }
+            this.showNotification('âŒ Failed to connect wallet: ' + error.message, 'error');}
     }
 
     async loadBackendData(actor) {
@@ -450,44 +311,31 @@ class DashboardGame extends TSDGEMSGame {
                 console.log('[Dashboard] - Balances:', data.dashboard.player.balances);
                 console.log('[Dashboard] - TSDM:', data.dashboard.player.balances?.TSDM);
             } else {
-                console.error('[Dashboard] ❌ No player data in response!');
-            }
-            
-            // Update debug panel with raw data
-            this.updateDebugPanel({
-                endpoint: 'initialize',
-                actor: actor,
-                data: data,
-                timestamp: new Date().toISOString()
-            });
-            
-            // Update dashboard with backend data
-            this.updateDashboardFromBackend(data.dashboard);
+                console.error('[Dashboard] âŒ No player data in response!');
+            }            this.updateDashboardFromBackend(data.dashboard);
             
             // Hide loading state
             this.showLoadingState(false);
             
-            this.showNotification(`✅ Loaded in ${loadTime}s!`, 'success');
-            console.log(`[Dashboard] ✅ Backend data loaded and UI updated in ${loadTime}s`);
+            this.showNotification(`Loaded in ${loadTime}s!`, 'success');
+            console.log(`[Dashboard] [OK] Backend data loaded and UI updated in ${loadTime}s`);
             console.log('[Dashboard] ========================================');
             
             // Start auto-refresh
             this.startAutoRefresh();
             
         } catch (error) {
-            console.error('[Dashboard] ❌ Failed to load backend data:', error);
+            console.error('[Dashboard] âŒ Failed to load backend data:', error);
             console.error('[Dashboard] Error details:', error.message);
             console.error('[Dashboard] Stack:', error.stack);
-            this.showNotification('Failed to load game data: ' + error.message, 'error');
-            this.updateDebugPanel({ error: error.message, stack: error.stack, timestamp: new Date().toISOString() });
-        }
+            this.showNotification('Failed to load game data: ' + error.message, 'error');}
     }
 
     updateDashboardFromBackend(dashboard) {
         if (!dashboard || !dashboard.player) {
-            console.error('[Dashboard] ❌ No player data in backend response!');
+            console.error('[Dashboard] âŒ No player data in backend response!');
             console.log('[Dashboard] Received dashboard object:', dashboard);
-            this.showNotification('⚠️ No player data received from backend', 'warning');
+            this.showNotification('âš ï¸ No player data received from backend', 'warning');
             return;
         }
 
@@ -575,7 +423,7 @@ class DashboardGame extends TSDGEMSGame {
         // DON'T update button states here - wallet.js handles that
         // This was causing conflicts with wallet.js
 
-        console.log('[Dashboard] ✅ UI successfully updated!');
+        console.log('[Dashboard] [OK] UI successfully updated!');
         console.log('[Dashboard] Final values displayed:');
         console.log('[Dashboard] - Account:', player.account);
         console.log('[Dashboard] - Ingame $:', ingameCurrency);
@@ -585,9 +433,9 @@ class DashboardGame extends TSDGEMSGame {
         
         // Console validation only (no notification)
         if (balances.TSDM >= 400000000) {
-            console.log('[Dashboard] 🎉 TSDM Balance is correct (>= 400M):', balances.TSDM.toLocaleString());
+            console.log('[Dashboard] [SUCCESS] TSDM Balance is correct (>= 400M):', balances.TSDM.toLocaleString());
         } else {
-            console.warn('[Dashboard] ⚠️ TSDM Balance might be incorrect (<400M):', balances.TSDM);
+            console.warn('[Dashboard] âš ï¸ TSDM Balance might be incorrect (<400M):', balances.TSDM);
         }
         console.log('[Dashboard] ========================================');
     }
@@ -608,14 +456,13 @@ class DashboardGame extends TSDGEMSGame {
             // Reset state
             this.currentActor = null;
             this.isLoggedIn = false;
-            this.rawBackendData = null;
             
             // Reset UI to default values
             this.resetDashboardUI();
             
             // Show success notification
-            this.showNotification('👋 Wallet disconnected', 'success');
-            console.log('[Dashboard] ✅ Wallet disconnected successfully');
+            this.showNotification('Wallet disconnected', 'success');
+            console.log('[Dashboard] [OK] Wallet disconnected successfully');
             
         } catch (error) {
             console.error('[Dashboard] Disconnect failed:', error);
@@ -673,16 +520,7 @@ class DashboardGame extends TSDGEMSGame {
             connectBtn.innerHTML = 'Connect Wallet';
             connectBtn.style.cursor = 'pointer';
         }
-        if (logoutBtn) logoutBtn.classList.add('hidden');
-        
-        // Reset debug panel
-        this.updateDebugPanel({
-            status: 'disconnected',
-            timestamp: new Date().toISOString()
-        });
-        
-        console.log('[Dashboard] UI reset complete');
-    }
+        if (logoutBtn) logoutBtn.classList.add('hidden');    }
 
     async startAutoRefresh() {
         if (!this.currentActor) {
@@ -715,7 +553,7 @@ class DashboardGame extends TSDGEMSGame {
         const [playerUnsubscribe, basePriceUnsubscribe] = window.firebaseRealtimeService.listenToDashboard(
             this.currentActor,
             (data) => {
-                console.log('[Dashboard] 🔥 Dashboard data updated in realtime!', data);
+                console.log('[Dashboard] [REALTIME] Dashboard data updated in realtime!', data);
                 
                 // Firestore listener returns raw player data
                 // Wrap it in the expected structure { player: {...} }
@@ -726,14 +564,6 @@ class DashboardGame extends TSDGEMSGame {
                     };
                     
                     this.updateDashboardFromBackend(normalizedData);
-                    
-                    // Update debug panel
-                    this.updateDebugPanel({
-                        source: 'realtime-listener',
-                        actor: this.currentActor,
-                        data: normalizedData,
-                        timestamp: new Date().toISOString()
-                    });
                 }
             }
         );
@@ -745,11 +575,11 @@ class DashboardGame extends TSDGEMSGame {
             this.cleanupRealtimeListeners();
         });
 
-        console.log('[Dashboard] ✅ Realtime listeners active - instant updates enabled!');
+        console.log('[Dashboard] [OK] Realtime listeners active - instant updates enabled!');
     }
 
     setupPolling() {
-        console.log('[Dashboard] ⏱️ Setting up polling (30s interval)...');
+        console.log('[Dashboard] [POLLING] Setting up polling (30s interval)...');
 
         // Refresh dashboard every 30 seconds
         this.refreshInterval = setInterval(async () => {
@@ -757,16 +587,6 @@ class DashboardGame extends TSDGEMSGame {
                 try {
                     const dashboard = await this.backendService.refreshDashboard();
                     this.updateDashboardFromBackend(dashboard);
-                    
-                    // Update debug panel
-                    this.updateDebugPanel({
-                        source: 'polling',
-                        endpoint: 'refreshDashboard',
-                        actor: this.currentActor,
-                        data: dashboard,
-                        timestamp: new Date().toISOString()
-                    });
-                    
                 } catch (error) {
                     console.error('[Dashboard] Auto-refresh failed:', error);
                 }

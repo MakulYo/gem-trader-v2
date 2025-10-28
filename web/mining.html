@@ -248,8 +248,13 @@
         <div class="section-header">
           <h2>Mining Operations</h2>
           <p>Manage your mining infrastructure and equipment</p>
+          <div class="mining-subpage-toggle" id="mining-subpage-toggle">
+            <button class="toggle-btn active" data-target="operations">Mining Operations</button>
+            <button class="toggle-btn" data-target="speed-boost">Speed Boost Items</button>
+          </div>
         </div>
 
+        <div id="mining-subpage-operations" class="mining-subpage active">
         <div class="mining-container">
           <div class="mining-slots-grid">
             <div class="mining-overview">
@@ -300,6 +305,32 @@
               </div>
               <div class="slots-grid" id="slots-grid">
                 <!-- Mining slots will be populated by JavaScript -->
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <!-- Speed Boost Items Subpage -->
+        <div id="mining-subpage-speed-boost" class="mining-subpage" style="display: none;">
+          <div class="coming-soon-container">
+            <div class="coming-soon-content">
+              <i class="fas fa-rocket" style="font-size: 5rem; color: #00d4ff; margin-bottom: 2rem; text-shadow: 0 0 30px rgba(0, 212, 255, 0.6);"></i>
+              <h2 style="color: #00d4ff; font-size: 2.5rem; margin-bottom: 1rem; text-shadow: 0 0 20px rgba(0, 212, 255, 0.4);">Coming Soon!</h2>
+              <p style="color: #888; font-size: 1.2rem; margin-bottom: 2rem; max-width: 600px;">
+                Speed Boost Items are currently under development. This feature will allow you to stake special NFT items to speed up your mining operations.
+              </p>
+              <div class="boost-features-grid">
+                <div class="boost-feature-card">
+                  <i class="fas fa-rocket" style="font-size: 2rem; color: #00d4ff; margin-bottom: 1rem;"></i>
+                  <h3>Additional Speed Boost</h3>
+                  <p>Get up to 100% additional speed boost</p>
+                </div>
+              </div>
+              <div class="notify-box">
+                <p style="color: #00d4ff; margin-bottom: 0;">
+                  <i class="fab fa-discord"></i> Follow us on Discord
+                </p>
               </div>
             </div>
           </div>
@@ -385,6 +416,7 @@
     <script type="module" src="wallet.js"></script>
     <script src="payment-service.js"></script>
     <script src="season-lock.js"></script>
+    <script src="mining-subpage.js"></script>
     <script src="mining.js"></script>
   </div>
 </body>

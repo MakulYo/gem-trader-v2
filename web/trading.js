@@ -8,7 +8,6 @@ class TradingGame extends TSDGEMSGame {
         this.cityMatrix = null;
         this.basePriceData = null;
         this.currentActor = null;
-        this.rawBackendData = null;
         this.refreshInterval = null;
         this.boostsData = null;
         this.chartData = null;
@@ -22,9 +21,7 @@ class TradingGame extends TSDGEMSGame {
     init() {
         this.setupTradingSubpages();
         this.setupChartControls();
-        this.setupActorListener();
-        this.createDebugPanel();
-        this.loadInitialData();
+        this.setupActorListener();this.loadInitialData();
         this.showNotification('Loading trading markets...', 'info');
         
         // Check if actor is already available after a short delay
@@ -148,17 +145,7 @@ class TradingGame extends TSDGEMSGame {
                 console.log('- boosts type:', typeof cityMatrix.boosts);
                 console.log('- boosts keys:', Object.keys(cityMatrix.boosts));
                 console.log('- first city data:', Object.keys(cityMatrix.boosts)[0], cityMatrix.boosts[Object.keys(cityMatrix.boosts)[0]]);
-            }
-
-            // Update debug panel
-            this.updateDebugPanel({
-                cityMatrix: cityMatrix,
-                basePrice: basePriceData,
-                timestamp: new Date().toISOString()
-            });
-
-            // Render UI components
-            this.renderBasePriceDisplay();
+            }            this.renderBasePriceDisplay();
             this.renderCityMatrix();
             this.initializeGemPriceChart();
             // Don't render staking grid here - will be rendered when actor is set
@@ -170,13 +157,7 @@ class TradingGame extends TSDGEMSGame {
             
         } catch (error) {
             console.error('[Trading] Failed to load initial data:', error);
-            this.showNotification('Failed to load trading data: ' + error.message, 'error');
-            this.updateDebugPanel({ 
-                error: error.message, 
-                stack: error.stack,
-                timestamp: new Date().toISOString() 
-            });
-        }
+            this.showNotification('Failed to load trading data: ' + error.message, 'error');}
     }
 
     async startAutoRefresh() {
@@ -279,75 +260,6 @@ class TradingGame extends TSDGEMSGame {
                 }
             }
         });
-    }
-
-    createDebugPanel() {
-        const main = document.querySelector('.main-content');
-        if (!main) return;
-
-        const debugPanel = document.createElement('div');
-        debugPanel.id = 'backend-debug-panel';
-        debugPanel.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 450px;
-            max-height: 600px;
-            background: rgba(20, 20, 30, 0.95);
-            border: 2px solid #00d4ff;
-            border-radius: 8px;
-            padding: 15px;
-            z-index: 9999;
-            font-family: 'Courier New', monospace;
-            font-size: 11px;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3);
-        `;
-
-        debugPanel.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <strong style="color: #00d4ff;">🔍 Trading Backend Debug</strong>
-                <button id="toggle-debug" style="background: #00d4ff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; color: #000;">Collapse</button>
-            </div>
-            <div id="debug-content" style="max-height: 540px; overflow-y: auto;">
-                <div style="color: #888; margin-bottom: 10px;">Loading backend data...</div>
-            </div>
-        `;
-
-        main.appendChild(debugPanel);
-
-        // Toggle functionality
-        const toggleBtn = document.getElementById('toggle-debug');
-        const content = document.getElementById('debug-content');
-        let collapsed = false;
-
-        toggleBtn.addEventListener('click', () => {
-            collapsed = !collapsed;
-            content.style.display = collapsed ? 'none' : 'block';
-            toggleBtn.textContent = collapsed ? 'Expand' : 'Collapse';
-        });
-    }
-
-    updateDebugPanel(data) {
-        this.rawBackendData = data;
-        const content = document.getElementById('debug-content');
-        if (!content) return;
-
-        const timestamp = new Date().toLocaleTimeString();
-        
-        content.innerHTML = `
-            <div style="color: #0f0; margin-bottom: 10px;">
-                ✅ Connected | Last Update: ${timestamp}
-            </div>
-            <div style="background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 4px; overflow-x: auto; margin-bottom: 10px;">
-                <strong style="color: #ff0;">City Matrix:</strong>
-                <pre style="margin: 5px 0 0 0; color: #00d4ff; white-space: pre-wrap; word-wrap: break-word;">${JSON.stringify(data.cityMatrix || {}, null, 2)}</pre>
-            </div>
-            <div style="background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 4px; overflow-x: auto;">
-                <strong style="color: #ff0;">Base Price:</strong>
-                <pre style="margin: 5px 0 0 0; color: #00d4ff; white-space: pre-wrap; word-wrap: break-word;">${JSON.stringify(data.basePrice || {}, null, 2)}</pre>
-            </div>
-        `;
     }
 
     renderBasePriceDisplay() {
@@ -1293,8 +1205,8 @@ class TradingGame extends TSDGEMSGame {
         const expectedGemType = this.getSlotGemType(slotNum);
 
         const modalHTML = `
-            <div class="modal-overlay" id="gem-staking-modal" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; align-items: center; justify-content: center;">
-                <div class="modal-content" style="background: rgba(20, 20, 30, 0.95); border: 2px solid #00d4ff; border-radius: 12px; padding: 30px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto;">
+            <div class="modal-overlay" id="gem-staking-modal" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; align-items: center; justify-content: center; overflow-y: auto; padding: 2rem 0;">
+                <div class="modal-content" style="background: rgba(20, 20, 30, 0.95); border: 2px solid #00d4ff; border-radius: 12px; padding: 30px; max-width: 800px; width: 90%; max-height: calc(100vh - 4rem); overflow-y: auto;">
                     <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <h3 style="color: #00d4ff; margin: 0;">Stake ${expectedGemType} - Slot ${slotNum}</h3>
                         <button class="close-btn" onclick="game.closeGemStakingModal()" style="background: transparent; border: none; color: #fff; font-size: 2em; cursor: pointer; padding: 0; width: 40px; height: 40px;">&times;</button>
@@ -1329,6 +1241,13 @@ class TradingGame extends TSDGEMSGame {
         const insertedModal = document.getElementById('gem-staking-modal');
         if (insertedModal) {
             console.log('[Trading] Modal element found in DOM');
+            // Scroll to center the modal in viewport
+            setTimeout(() => {
+                const modalContent = insertedModal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                }
+            }, 50);
         } else {
             console.error('[Trading] Modal element NOT found in DOM after insertion!');
         }

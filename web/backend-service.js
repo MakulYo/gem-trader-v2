@@ -186,11 +186,11 @@ class BackendService {
                 this.dashboardData = data;
             }
             
-            console.log('[Backend] ✅ Dashboard data ready');
+            console.log('[Backend] [OK] Dashboard data ready');
             console.log('[Backend] ==========================================');
             return this.dashboardData;
         } catch (error) {
-            console.error('[Backend] ❌ Error fetching dashboard:', error);
+            console.error('[Backend] [ERROR] Error fetching dashboard:', error);
             console.error('[Backend] Error message:', error.message);
             console.error('[Backend] Stack:', error.stack);
             throw error;
@@ -370,7 +370,7 @@ class BackendService {
 
             const endTime = performance.now();
             const duration = ((endTime - startTime) / 1000).toFixed(2);
-            console.log(`[Backend] ✅ All data loaded in ${duration}s`);
+            console.log(`[Backend] [OK] All data loaded in ${duration}s`);
             
             return {
                 dashboard,
@@ -403,11 +403,11 @@ class BackendService {
 
             const endTime = performance.now();
             const duration = ((endTime - startTime) / 1000).toFixed(2);
-            console.log(`[Backend] ⚡ Cached data loaded in ${duration}s`);
+            console.log(`[Backend] [FAST] Cached data loaded in ${duration}s`);
             
             // Trigger blockchain sync in background (don't wait)
             this.initPlayer(actor).then(() => {
-                console.log('[Backend] 🔄 Background blockchain sync completed');
+                console.log('[Backend] [SYNC] Background blockchain sync completed');
             }).catch(error => {
                 console.warn('[Backend] Background sync failed:', error);
             });

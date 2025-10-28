@@ -1,4 +1,4 @@
-// TSDGEMS - NFT Inventory Page
+﻿// TSDGEMS - NFT Inventory Page
 
 class InventoryPage extends TSDGEMSGame {
     constructor() {
@@ -16,10 +16,7 @@ class InventoryPage extends TSDGEMSGame {
         this.init();
     }
 
-    init() {
-        this.createDebugPanel();
-        this.updateDebugPanel();
-        this.setupEventListeners();
+    init() {this.setupEventListeners();
         
         // Delayed wallet check to ensure wallet.js is fully initialized
         setTimeout(() => {
@@ -29,129 +26,19 @@ class InventoryPage extends TSDGEMSGame {
         this.showNotification('Inventory system ready', 'info');
     }
 
-    createDebugPanel() {
-        const main = document.querySelector('.main-content');
-        if (!main) return;
-
-        const debugPanel = document.createElement('div');
-        debugPanel.id = 'inventory-debug-panel';
-        debugPanel.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 450px;
-            max-height: 600px;
-            background: rgba(20, 20, 30, 0.95);
-            border: 2px solid #00d4ff;
-            border-radius: 8px;
-            padding: 15px;
-            z-index: 9999;
-            font-family: 'Courier New', monospace;
-            font-size: 11px;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3);
-        `;
-
-        debugPanel.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <strong style="color: #00d4ff;">🔍 Inventory Debug</strong>
-                <button id="toggle-inventory-debug" style="background: #00d4ff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; color: #000;">Collapse</button>
-            </div>
-            <div id="inventory-debug-content" style="max-height: 540px; overflow-y: auto;">
-                <div style="color: #888; margin-bottom: 10px;">Waiting for inventory data...</div>
-            </div>
-        `;
-
-        main.appendChild(debugPanel);
-
-        // Toggle functionality
-        const toggleBtn = document.getElementById('toggle-inventory-debug');
-        const content = document.getElementById('inventory-debug-content');
-        let collapsed = false;
-
-        toggleBtn.addEventListener('click', () => {
-            collapsed = !collapsed;
-            content.style.display = collapsed ? 'none' : 'block';
-            toggleBtn.textContent = collapsed ? 'Expand' : 'Collapse';
-        });
-    }
-
-    updateDebugPanel() {
-        const content = document.getElementById('inventory-debug-content');
-        if (!content) return;
-
-        const timestamp = new Date().toLocaleTimeString();
-        
-        let html = `
-            <div style="color: ${this.inventoryData ? '#0f0' : '#f80'}; margin-bottom: 10px;">
-                ${this.inventoryData ? '✅' : '⚠️'} ${this.currentActor ? `Connected: ${this.currentActor}` : 'No wallet connected'} | Last Update: ${timestamp}
-            </div>
-        `;
-
-        if (this.inventoryData) {
-            // Parse updatedAt safely
-            let updatedAtStr = 'N/A';
-            if (this.inventoryData.updatedAt) {
-                try {
-                    if (this.inventoryData.updatedAt._seconds) {
-                        updatedAtStr = new Date(this.inventoryData.updatedAt._seconds * 1000).toLocaleString();
-                    } else if (typeof this.inventoryData.updatedAt === 'number') {
-                        updatedAtStr = new Date(this.inventoryData.updatedAt).toLocaleString();
-                    } else if (this.inventoryData.updatedAt.toDate) {
-                        updatedAtStr = this.inventoryData.updatedAt.toDate().toLocaleString();
-                    } else {
-                        updatedAtStr = String(this.inventoryData.updatedAt);
-                    }
-                } catch (e) {
-                    updatedAtStr = 'Parse Error';
-                }
-            }
-
-            html += `
-                <div style="background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 4px; overflow-x: auto; margin-bottom: 10px;">
-                    <strong style="color: #ff0;">Summary:</strong>
-                    <pre style="margin: 5px 0 0 0; color: #0f0; white-space: pre-wrap; word-wrap: break-word;">Total NFTs: ${this.allNFTs.length}
-Polished: ${this.inventoryData.polished || 0}
-Rough: ${this.inventoryData.rough || 0}
-Collections: ${this.collections.size}
-Templates: ${Object.keys(this.inventoryData.byTemplate || {}).length}
-Cached: ${this.inventoryData.cached ? 'Yes' : 'No'}${this.inventoryData.stale ? ' (Stale)' : ''}
-Updated: ${updatedAtStr}</pre>
-                </div>
-                <div style="background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 4px; overflow-x: auto; margin-bottom: 10px;">
-                    <strong style="color: #ff0;">By Template:</strong>
-                    <pre style="margin: 5px 0 0 0; color: #00d4ff; white-space: pre-wrap; word-wrap: break-word; max-height: 150px; overflow-y: auto;">${JSON.stringify(this.inventoryData.byTemplate || {}, null, 2)}</pre>
-                </div>
-                <div style="background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 4px; overflow-x: auto;">
-                    <strong style="color: #ff0;">Full Data:</strong>
-                    <pre style="margin: 5px 0 0 0; color: #00d4ff; white-space: pre-wrap; word-wrap: break-word; max-height: 200px; overflow-y: auto;">${JSON.stringify(this.inventoryData, null, 2)}</pre>
-                </div>
-            `;
-        } else {
-            html += `
-                <div style="background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 4px; text-align: center;">
-                    <p style="color: #888; margin: 0;">No inventory data loaded yet.</p>
-                    <p style="color: #888; margin: 5px 0 0 0; font-size: 10px;">${this.currentActor ? 'Loading inventory...' : 'Connect your wallet to load inventory.'}</p>
-                </div>
-            `;
-        }
-        
-        content.innerHTML = html;
-    }
-
     async checkWalletAndLoadInventory() {
         console.log('[Inventory] Setting up wallet event listeners...');
         
         // Listen for new wallet connection
         window.addEventListener('wallet-connected', async (e) => {
-            console.log('[Inventory] ✅ Wallet connected event received:', e.detail);
+            console.log('[Inventory] [OK] Wallet connected event received:', e.detail);
             this.currentActor = e.detail.actor;
             await this.loadInventory(false);
         });
 
         // Listen for restored session
         window.addEventListener('wallet-session-restored', async (e) => {
-            console.log('[Inventory] ✅ Wallet session restored event received:', e.detail);
+            console.log('[Inventory] [OK] Wallet session restored event received:', e.detail);
             this.currentActor = e.detail.actor;
             await this.loadInventory(false);
         });
@@ -161,10 +48,10 @@ Updated: ${updatedAtStr}</pre>
         
         if (window.walletSessionInfo && window.walletSessionInfo.actor) {
             this.currentActor = window.walletSessionInfo.actor;
-            console.log('[Inventory] ✅ Using existing wallet session:', this.currentActor);
+            console.log('[Inventory] [OK] Using existing wallet session:', this.currentActor);
             await this.loadInventory(false);
         } else {
-            console.log('[Inventory] ⏳ No wallet session found yet, waiting for connection...');
+            console.log('[Inventory] â³ No wallet session found yet, waiting for connection...');
             this.showEmptyState('no-wallet');
         }
     }
@@ -172,9 +59,7 @@ Updated: ${updatedAtStr}</pre>
     async loadInventory(forceRefresh = false) {
         if (!this.currentActor) {
             console.log('[Inventory] No actor connected, skipping inventory load');
-            this.showNotification('Connect your wallet to view inventory', 'info');
-            this.updateDebugPanel();
-            this.showEmptyState('no-wallet');
+            this.showNotification('Connect your wallet to view inventory', 'info');this.showEmptyState('no-wallet');
             return;
         }
 
@@ -198,16 +83,11 @@ Updated: ${updatedAtStr}</pre>
             // In production, you'd want to fetch full NFT details
             this.processInventoryData();
             this.updateStats();
-            this.renderNFTs();
-            this.updateDebugPanel();
-            
-            const cacheStatus = this.inventoryData.cached ? '(cached)' : '(live)';
+            this.renderNFTs();const cacheStatus = this.inventoryData.cached ? '(cached)' : '(live)';
             this.showNotification(`Inventory loaded ${cacheStatus}`, 'success');
         } catch (error) {
             console.error('[Inventory] Failed to load inventory:', error);
-            this.showNotification('Failed to load inventory: ' + error.message, 'error');
-            this.updateDebugPanel();
-            this.showEmptyState('error');
+            this.showNotification('Failed to load inventory: ' + error.message, 'error');this.showEmptyState('error');
         }
     }
 
@@ -496,8 +376,8 @@ Updated: ${updatedAtStr}</pre>
             imageElement = `
                 <img src="${nft.image}" alt="${nft.name}" class="nft-image" 
                      style="width: 100%; height: 100%; object-fit: contain;"
-                     onload="console.log('✅ Image loaded:', this.src);"
-                     onerror="console.log('❌ Image failed:', this.src); this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                     onload="console.log('âœ… Image loaded:', this.src);"
+                     onerror="console.log('âŒ Image failed:', this.src); this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div class="nft-image-fallback" style="display: none; align-items: center; justify-content: center; height: 100%; color: #555;">
                     <i class="fas ${schemaIcon}" style="font-size: 3rem;"></i>
                 </div>
@@ -689,14 +569,10 @@ Updated: ${updatedAtStr}</pre>
             console.log('[Inventory] polishingSlots:', this.inventoryData.polishingSlots);
             this.processInventoryData();
             this.updateStats();
-            this.renderNFTs();
-            this.updateDebugPanel();
-            this.showNotification('Inventory refreshed from blockchain!', 'success');
+            this.renderNFTs();this.showNotification('Inventory refreshed from blockchain!', 'success');
         } catch (error) {
             console.error('[Inventory] Failed to refresh inventory:', error);
-            this.showNotification('Failed to refresh inventory: ' + error.message, 'error');
-            this.updateDebugPanel();
-        }
+            this.showNotification('Failed to refresh inventory: ' + error.message, 'error');}
     }
 }
 

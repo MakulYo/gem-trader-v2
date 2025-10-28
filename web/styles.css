@@ -52,10 +52,11 @@ section#gallery .gallery-content h3 {
 /* Worker Gallery Modal Styles */
 .worker-gallery-modal {
     max-width: 90vw;
-    max-height: 85vh;
+    max-height: calc(100vh - 4rem);
     width: 1600px;
-    margin-top: 5vh;
-    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .worker-gallery-modal .modal-header {
@@ -75,9 +76,10 @@ section#gallery .gallery-content h3 {
 }
 
 .worker-gallery-container {
-    max-height: 50vh;
+    flex: 1;
     overflow-y: auto;
     padding: 1rem 0;
+    min-height: 0; /* Important for flex child to be scrollable */
 }
 
 .worker-gallery-grid {
@@ -85,6 +87,21 @@ section#gallery .gallery-content h3 {
     grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
     gap: 0.75rem;
     padding: 0 1rem;
+}
+
+/* Mobile first override - CRITICAL for small screens */
+@media screen and (max-width: 768px) {
+    #worker-gallery-grid,
+    .worker-gallery-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 0.35rem !important;
+    }
+    
+    #worker-gallery-grid .worker-gallery-item,
+    .worker-gallery-grid .worker-gallery-item {
+        min-width: 0 !important;
+        width: 100% !important;
+    }
 }
 
 .worker-gallery-item {
@@ -144,7 +161,8 @@ section#gallery .gallery-content h3 {
     justify-content: center;
     padding: 1.5rem 0 0 0;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
-    margin-top: 1rem;
+    margin-top: 0;
+    flex-shrink: 0; /* Don't shrink the action buttons */
 }
 
 .worker-gallery-actions .action-btn {
@@ -2460,9 +2478,11 @@ body {
     background: rgba(0, 0, 0, 0.8);
     display: none;
     justify-content: center;
-    align-items: center;
+    align-items: center; /* Center in visible viewport */
     z-index: 2000;
     backdrop-filter: blur(5px);
+    overflow-y: auto;
+    padding: 2rem 0;
 }
 
 .modal-overlay.active {
@@ -2476,7 +2496,7 @@ body {
     padding: 2rem;
     max-width: 500px;
     width: 90%;
-    max-height: 80vh;
+    max-height: calc(100vh - 4rem);
     overflow: hidden;
     backdrop-filter: blur(10px);
 }
@@ -2695,12 +2715,103 @@ body {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    .navbar {
+        padding: 0.5rem 0;
+        min-height: auto !important;
+        height: auto !important;
+    }
+    
     .nav-container {
-        padding: 0 1rem;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+        padding: 0 1rem !important;
+        align-items: center !important;
+        grid-template-columns: none !important;
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    
+    .nav-left-group {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        width: 100% !important;
+        grid-column: unset !important;
+        justify-self: unset !important;
+        height: auto !important;
+        flex-shrink: 1 !important;
+    }
+    
+    .nav-wallet {
+        width: 100% !important;
+        justify-content: center !important;
+        order: 2 !important;
+        gap: 0.5rem !important;
+        padding: 0 0 0.5rem 0 !important;
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        grid-column: unset !important;
+        justify-self: unset !important;
+        position: relative !important;
+        min-width: unset !important;
+        height: auto !important;
+    }
+    
+    .nav-wallet button,
+    .nav-wallet .connect-wallet-btn,
+    .nav-wallet #connectWalletBtn,
+    .nav-wallet #logoutBtn {
+        display: inline-block !important;
+        width: auto !important;
+        min-width: auto !important;
+        flex: 0 0 auto !important;
+        padding: 0.3rem 0.8rem !important;
+        font-size: 0.75rem !important;
+        height: auto !important;
+        line-height: 1.2 !important;
+        white-space: nowrap !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    
+    .nav-wallet .connect-wallet-btn.hidden,
+    .nav-wallet button.hidden,
+    .nav-wallet #connectWalletBtn.hidden,
+    .nav-wallet #logoutBtn.hidden {
+        display: none !important;
+    }
+    
+    .nav-wallet .wallet-status,
+    .nav-wallet .wallet-address,
+    .nav-wallet .wallet-balance {
+        display: inline-block !important;
+        font-size: 0.75rem;
+    }
+    
+    .nav-wallet .wallet-status.hidden,
+    .nav-wallet .wallet-address.hidden,
+    .nav-wallet .wallet-balance.hidden {
+        display: none !important;
     }
     
     .nav-menu {
         display: none;
+    }
+    
+    .nav-logo {
+        font-size: 1.1rem;
+    }
+    
+    .nav-game-dollar {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.8rem;
+    }
+    
+    .mobile-menu-toggle {
+        padding: 0.4rem 0.6rem;
+        font-size: 1.1rem;
     }
     
     .section {
@@ -3424,66 +3535,7 @@ body {
     }
 }
 
-@media (max-width: 768px) {
-    .nav-container {
-        flex-direction: column;
-        gap: 1rem;
-        padding: 0 1rem;
-    }
-    
-    .nav-left-group {
-        gap: 0.8rem;
-    }
-    
-    .nav-menu {
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 0.25rem;
-    }
-    
-    .nav-link {
-        padding: 0.5rem 0.75rem;
-        font-size: 0.85rem;
-    }
-    
-    .dropdown-menu {
-        position: static;
-        opacity: 1;
-        visibility: visible;
-        transform: none;
-        background: rgba(0, 212, 255, 0.05);
-        border: none;
-        box-shadow: none;
-        margin-top: 0.5rem;
-        border-radius: 8px;
-    }
-    
-    .nav-dropdown:hover .dropdown-menu {
-        transform: none;
-    }
-    
-    .dropdown-item {
-        padding: 0.75rem 1rem;
-        font-size: 0.85rem;
-        text-align: center;
-        margin: 0 0.5rem;
-        border-radius: 6px;
-    }
-    
-    .nav-wallet {
-        flex-direction: column;
-        gap: 0.5rem;
-        width: 100%;
-        padding: 1rem;
-        background: rgba(0, 212, 255, 0.05);
-        border-radius: 8px;
-        border: 1px solid rgba(0, 212, 255, 0.1);
-    }
-    
-    .connect-wallet-btn {
-        width: 100%;
-    }
-}
+/* Duplicate removed - nav styles are defined at line 2717 */
 
 @media (max-width: 480px) {
     .nav-container {
@@ -3635,39 +3687,7 @@ body {
         transform: translateX(10px);
     }
     
-    .nav-wallet {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: none !important;
-        border: none !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        width: auto !important;
-        border-width: 0 !important;
-    }
-    
-    .connect-wallet-btn {
-        width: auto;
-        min-width: 120px;
-        height: 18px;
-        padding: 0 8px;
-        font-size: 0.65rem;
-        font-weight: 700;
-        margin: 0;
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border: 1px solid rgba(0, 212, 255, 0.2);
-        color: #ffffff;
-        transition: none;
-        text-decoration: none;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 3px;
-        box-sizing: border-box;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-    }
+    /* nav-wallet styles moved to main mobile block at line 2737 */
     
     .section {
         padding: 0.75rem;
@@ -3712,9 +3732,10 @@ body {
     }
     
     .modal {
-        width: 95%;
-        margin: 1rem auto;
-        max-height: 90vh;
+        width: 96%;
+        margin: 0.5rem auto;
+        max-height: calc(100vh - 2rem);
+        padding: 1.5rem 1rem;
     }
     
     /* New Mobile City Matrix - Card-Based Layout */
@@ -3962,19 +3983,33 @@ body {
     
     /* Worker Gallery Modal Mobile */
     .worker-gallery-modal {
-        width: 95vw;
-        max-height: 90vh;
-        margin-top: 2vh;
+        width: 98vw;
+        max-height: calc(100vh - 2rem);
+        padding: 1rem 0.5rem;
     }
     
-    .worker-gallery-grid {
-        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-        gap: 0.5rem;
+    .worker-gallery-modal .modal-header {
         padding: 0 0.5rem;
+        margin-bottom: 0.75rem;
     }
     
-    .worker-gallery-item {
+    #worker-gallery-grid,
+    .worker-gallery-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important; /* Exactly 4 columns, small as possible */
+        gap: 0.35rem !important;
+        padding: 0 0.4rem !important;
+    }
+    
+    #worker-gallery-grid .worker-gallery-item,
+    .worker-gallery-grid .worker-gallery-item {
         aspect-ratio: 1;
+        border-radius: 6px;
+        width: 100% !important;
+        min-width: 0 !important; /* Allow shrinking below content size */
+    }
+    
+    .worker-gallery-container {
+        padding: 0.5rem 0;
     }
     
     .worker-gallery-actions {
@@ -3986,7 +4021,96 @@ body {
         min-width: auto;
         width: 100%;
     }
+}
+
+/* Extra Small Mobile Optimization (480px and below) */
+@media (max-width: 480px) {
+    /* Worker Gallery Modal Extra Small Mobile */
+    .worker-gallery-modal {
+        width: 99vw;
+        max-height: calc(100vh - 1rem);
+        padding: 0.75rem 0.25rem;
+    }
     
+    #worker-gallery-grid,
+    .worker-gallery-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important; /* Exactly 4 columns, small as possible */
+        gap: 0.25rem !important;
+        padding: 0 0.3rem !important;
+    }
+    
+    #worker-gallery-grid .worker-gallery-item,
+    .worker-gallery-grid .worker-gallery-item {
+        width: 100% !important;
+        min-width: 0 !important; /* Allow shrinking below content size */
+        font-size: 0.7rem !important; /* Smaller text */
+    }
+    
+    .worker-gallery-modal .modal-header h3 {
+        font-size: 1rem;
+    }
+    
+    .worker-selection-info {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.8rem;
+    }
+    
+    .modal {
+        width: 98%;
+        margin: 0.25rem auto;
+        padding: 1rem 0.75rem;
+    }
+    
+    /* Gem Distribution Table Extra Small Mobile */
+    .distribution-table {
+        padding: 0.5rem 0;
+    }
+    
+    .gem-distribution-table {
+        min-width: 500px;
+        width: 500px;
+    }
+    
+    .gem-distribution-table th,
+    .gem-distribution-table td {
+        padding: 0.4rem 0.25rem;
+        font-size: 0.6rem;
+    }
+    
+    .gem-distribution-table th {
+        font-size: 0.55rem;
+        padding: 0.35rem 0.25rem;
+    }
+    
+    .gem-distribution-table th:nth-child(1) {
+        min-width: 120px;
+        padding-left: 0.4rem;
+    }
+    
+    .gem-distribution-table td:nth-child(1) {
+        padding-left: 0.4rem;
+    }
+    
+    .gem-distribution-table th:nth-child(2),
+    .gem-distribution-table td:nth-child(2),
+    .gem-distribution-table th:nth-child(3),
+    .gem-distribution-table td:nth-child(3),
+    .gem-distribution-table th:nth-child(4),
+    .gem-distribution-table td:nth-child(4) {
+        min-width: 65px;
+    }
+    
+    .gem-type-cell {
+        font-size: 0.6rem;
+        gap: 0.2rem;
+    }
+    
+    .gem-type-cell i {
+        font-size: 0.65rem;
+    }
+}
+
+@media (max-width: 768px) {
     /* Polishing Slots Mobile */
     .polishing-slots .slots-grid {
         grid-template-columns: 1fr;
@@ -4014,56 +4138,176 @@ body {
     .slot-actions {
         flex-direction: column;
         gap: 0.5rem;
+        align-items: stretch;
     }
     
-    .slot-actions .action-btn {
-        width: 100%;
-        margin: 0;
+    .slot-actions .action-btn,
+    .slot-actions button,
+    .slot-actions > button,
+    .slot-actions .worker-actions {
+        width: 100% !important;
+        margin: 0 !important;
+        margin-bottom: 0.5rem !important;
+        text-align: center !important;
+        justify-content: center !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+    
+    .slot-actions > button:last-child {
+        margin-bottom: 0 !important;
+    }
+    
+    .worker-actions {
+        flex-direction: column !important;
+        width: 100% !important;
+        gap: 0.5rem !important;
+    }
+    
+    .worker-actions .action-btn {
+        width: 100% !important;
+    }
+    
+    /* Manage Workers dropdown specific */
+    .slot-actions button[onclick*="toggleWorkersList"],
+    .slot-workers button[onclick*="toggleWorkersList"] {
+        width: 100% !important;
+        margin: 0 !important;
+        margin-bottom: 0.5rem !important;
+        padding: 0.6rem !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    
+    /* Slot workers container */
+    .slot-workers {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        align-items: stretch !important;
+    }
+    
+    .slot-workers .worker-info {
+        display: flex !important;
+        justify-content: space-between !important;
+        margin-bottom: 0.5rem !important;
+        width: 100% !important;
+    }
+    
+    .slot-workers > button {
+        width: 100% !important;
+        margin: 0 !important;
+        margin-bottom: 0.5rem !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    
+    /* Unstake selected workers button - sticky */
+    .slot-workers button[onclick*="unstakeSelectedWorkers"],
+    button[id^="unstake-selected-"] {
+        position: sticky !important;
+        bottom: 0 !important;
+        z-index: 10 !important;
+        background: linear-gradient(45deg, #ff6b6b, #ff4757) !important;
+        box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.3) !important;
+        margin-top: 0 !important;
     }
     
     /* Gem Distribution Table Mobile */
+    .polished-gems-distribution {
+        overflow: visible;
+    }
+    
     .distribution-table {
-        padding: 0.5rem;
-        overflow-x: auto;
+        padding: 0.5rem 0;
+        overflow-x: auto !important;
+        overflow-y: visible;
         -webkit-overflow-scrolling: touch;
+        margin: 0;
+        width: 100%;
+        display: block;
     }
     
     .gem-distribution-table {
-        min-width: 320px;
-        font-size: 0.75rem;
-        border-radius: 12px;
-        overflow: hidden;
+        min-width: 550px;
+        width: 550px;
+        font-size: 0.65rem;
+        border-radius: 8px;
+        overflow: visible;
         table-layout: auto;
+        display: table;
     }
-    
     
     .gem-distribution-table th,
     .gem-distribution-table td {
-        padding: 0.75rem 0.5rem;
-        font-size: 0.75rem;
+        padding: 0.5rem 0.35rem;
+        font-size: 0.65rem;
         white-space: nowrap;
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    .gem-distribution-table th:last-child,
+    .gem-distribution-table td:last-child {
+        border-right: none;
+    }
+    
+    .gem-distribution-table th:nth-child(1) {
+        text-align: left;
+        padding-left: 0.5rem;
+        min-width: 140px;
+    }
+    
+    .gem-distribution-table td:nth-child(1) {
+        text-align: left;
+        padding-left: 0.5rem;
+    }
+    
+    .gem-distribution-table th:nth-child(2),
+    .gem-distribution-table td:nth-child(2),
+    .gem-distribution-table th:nth-child(3),
+    .gem-distribution-table td:nth-child(3),
+    .gem-distribution-table th:nth-child(4),
+    .gem-distribution-table td:nth-child(4) {
+        text-align: center;
+        min-width: 70px;
     }
     
     .gem-distribution-table th {
-        font-size: 0.7rem;
+        font-size: 0.6rem;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        background: rgba(0, 212, 255, 0.15);
-        color: #00d4ff;
+        letter-spacing: 0.2px;
+        background: rgba(255, 149, 0, 0.15);
+        color: #ff9500;
+        padding: 0.4rem 0.35rem;
+        position: sticky;
+        top: 0;
+        z-index: 10;
     }
     
     .gem-distribution-table td {
         font-weight: 500;
+        background: rgba(0, 0, 0, 0.2);
+    }
+    
+    .gem-distribution-table tbody tr:nth-child(even) td {
+        background: rgba(0, 0, 0, 0.3);
     }
     
     .gem-type-cell {
-        gap: 0.4rem;
-        font-size: 0.75rem;
+        gap: 0.25rem;
+        font-size: 0.65rem;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
     }
     
     .gem-type-cell i {
-        font-size: 0.8rem;
+        font-size: 0.7rem;
+        flex-shrink: 0;
     }
     
     .chance-cell {
@@ -6566,4 +6810,191 @@ body {
     font-size: 0.9rem;
     color: #a0d9ff;
     margin: 0.5rem 0 0 0;
+}
+
+/* Mining & Trading Sub-Page Navigation */
+.mining-subpage-toggle,
+.trading-subpage-toggle {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    flex-wrap: wrap;
+}
+
+.mining-subpage-toggle .toggle-btn,
+.trading-subpage-toggle .toggle-btn {
+    flex: 1;
+    min-width: 150px;
+    padding: 0.75rem 1.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #a0a0a0;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.mining-subpage-toggle .toggle-btn:hover,
+.trading-subpage-toggle .toggle-btn:hover {
+    background: rgba(0, 212, 255, 0.1);
+    border-color: rgba(0, 212, 255, 0.3);
+    color: #00d4ff;
+    transform: translateY(-2px);
+}
+
+.mining-subpage-toggle .toggle-btn.active,
+.trading-subpage-toggle .toggle-btn.active {
+    background: linear-gradient(45deg, #00d4ff, #0099cc);
+    border-color: #00d4ff;
+    color: white;
+    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+}
+
+.mining-subpage,
+.trading-subpage {
+    margin-top: 2rem;
+}
+
+.mining-subpage.active,
+.trading-subpage.active {
+    display: block;
+}
+
+/* Coming Soon Container */
+.coming-soon-container {
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+}
+
+.coming-soon-content {
+    text-align: center;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 3rem;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.05), rgba(0, 100, 255, 0.05));
+    border: 2px solid rgba(0, 212, 255, 0.2);
+    border-radius: 24px;
+    backdrop-filter: blur(10px);
+}
+
+.coming-soon-content h2 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(45deg, #00d4ff, #0099cc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.coming-soon-content > p {
+    color: #888;
+    font-size: 1.2rem;
+    line-height: 1.6;
+    margin: 0 auto 2rem;
+    max-width: 600px;
+}
+
+/* Boost Features Grid */
+.boost-features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+    margin: 3rem 0;
+}
+
+.boost-feature-card {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    transition: all 0.3s ease;
+}
+
+.boost-feature-card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(0, 212, 255, 0.3);
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
+}
+
+.boost-feature-card h3 {
+    color: #00d4ff;
+    font-size: 1.3rem;
+    margin: 1rem 0 0.5rem;
+}
+
+.boost-feature-card p {
+    color: #888;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+/* Notify Box */
+.notify-box {
+    background: rgba(0, 212, 255, 0.05);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-top: 3rem;
+}
+
+.notify-box p {
+    margin: 0;
+}
+
+/* Mobile Optimization for Sub-Pages */
+@media (max-width: 768px) {
+    .mining-subpage-toggle,
+    .trading-subpage-toggle {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .mining-subpage-toggle .toggle-btn,
+    .trading-subpage-toggle .toggle-btn {
+        width: 100%;
+        min-width: auto;
+    }
+    
+    .coming-soon-content {
+        padding: 2rem 1rem;
+    }
+    
+    .coming-soon-content h2 {
+        font-size: 2rem;
+    }
+    
+    .coming-soon-content > p {
+        font-size: 1rem;
+    }
+    
+    .coming-soon-content i.fa-rocket {
+        font-size: 3.5rem !important;
+    }
+    
+    .boost-features-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+    
+    .boost-feature-card {
+        padding: 1.5rem;
+    }
+    
+    .boost-feature-card h3 {
+        font-size: 1.1rem;
+    }
+    
+    .boost-feature-card i {
+        font-size: 1.5rem !important;
+    }
 }

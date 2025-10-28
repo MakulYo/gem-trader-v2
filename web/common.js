@@ -288,24 +288,43 @@ class TSDGEMSGame {
 }
 
 // Modal functions (global)
+function openModal(modalElement) {
+    if (modalElement) {
+        modalElement.classList.add('active');
+        // Scroll to center the modal in viewport
+        setTimeout(() => {
+            const modalContent = modalElement.querySelector('.modal, .worker-gallery-modal');
+            if (modalContent) {
+                modalContent.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            }
+        }, 50);
+    }
+}
+
+function closeModalElement(modalElement) {
+    if (modalElement) {
+        modalElement.classList.remove('active');
+    }
+}
+
 function closeModal() {
     const modal = document.getElementById('modal-overlay');
-    if (modal) modal.classList.remove('active');
+    closeModalElement(modal);
 }
 
 function closeRepairModal() {
     const modal = document.getElementById('repair-modal');
-    if (modal) modal.classList.remove('active');
+    closeModalElement(modal);
 }
 
 function closeMotivationModal() {
     const modal = document.getElementById('motivation-modal');
-    if (modal) modal.classList.remove('active');
+    closeModalElement(modal);
 }
 
 function closeWorkerGalleryModal() {
     const modal = document.getElementById('worker-gallery-modal');
-    if (modal) modal.classList.remove('active');
+    closeModalElement(modal);
 }
 
 // Set active navigation link based on current page
