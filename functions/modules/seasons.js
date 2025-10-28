@@ -77,7 +77,14 @@ const getSeasonState = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
     try {
-      const s = await readState();
+      let s = await readState();
+      
+      // Auto-detect if lock has expired and update phase to 'active'
+      if (s.phase === 'lock' && s.lockEndsAt && Date.now() >= s.lockEndsAt) {
+        console.log('[SeasonState] Lock expired, auto-transitioning to active phase');
+        s = await setState({ phase: 'active', lockEndsAt: null });
+      }
+      
       res.json({ ok: true, ...s });
     } catch (e) {
       res.status(500).json({ error: e.message || String(e) });
@@ -156,7 +163,7 @@ const autoLockCron = onSchedule('5 0 * * *', async () => {
 
   // If we're within 10 minutes after the intended lockStartAt -> enter lock once
   if (now >= lockStartAt && now < lockStartAt + 10 * 60 * 1000) {
-    await setState({ phase: 'lock', lockEndsAt, season: monthKey() });
+    await setState({ phase: 'lock', lockEndsAt: lockEndAt, season: monthKey() });
     console.log('autoLockCron: entered lock window until', new Date(lockEndAt).toISOString());
   }
 });
