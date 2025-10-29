@@ -23,6 +23,8 @@
       { "source": "/getActiveMining",  "function": "getActiveMining" },
       { "source": "/completeMining",   "function": "completeMining" },
       { "source": "/unlockMiningSlot", "function": "unlockMiningSlot" },
+      { "source": "/getSpeedboost", "function": "getSpeedboost" },
+
 
       { "source": "/startPolishing",      "function": "startPolishing" },
       { "source": "/getActivePolishing",  "function": "getActivePolishing" },
