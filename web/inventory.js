@@ -282,14 +282,12 @@ class InventoryPage extends TSDGEMSGame {
         const polishedGems = document.getElementById('polished-gems');
         const roughGems = document.getElementById('rough-gems');
         const equipmentCount = document.getElementById('equipment-count');
-        const miningPower = document.getElementById('mining-power');
         const uniqueTemplates = document.getElementById('unique-templates');
 
         if (totalNFTs) totalNFTs.textContent = this.inventoryData?.total || this.allNFTs.length;
         if (polishedGems) polishedGems.textContent = this.inventoryData?.polished || 0;
         if (roughGems) roughGems.textContent = this.inventoryData?.rough || 0;
         if (equipmentCount) equipmentCount.textContent = this.inventoryData?.equipment || 0;
-        if (miningPower) miningPower.textContent = this.inventoryData?.totalMiningPower || 0;
         if (uniqueTemplates) uniqueTemplates.textContent = this.inventoryData?.uniqueTemplates || Object.keys(this.inventoryData?.templateCounts || {}).length;
     }
 

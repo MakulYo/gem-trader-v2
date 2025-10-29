@@ -501,6 +501,7 @@ class TradingGame extends TSDGEMSGame {
                 // Trigger summary update
                 const event = new Event('change');
                 if (citySelect) citySelect.dispatchEvent(event);
+                if (gemSelect) gemSelect.dispatchEvent(event);
                 
                 // Visual feedback - highlight selected cell
                 document.querySelectorAll('.boost-cell').forEach(c => c.classList.remove('selected'));
@@ -520,22 +521,87 @@ class TradingGame extends TSDGEMSGame {
     }
 
     setupSellControls() {
+        // Prevent multiple initializations
+        if (this._sellControlsInitialized) {
+            console.log('[Trading] Sell controls already initialized, skipping');
+            return;
+        }
+        this._sellControlsInitialized = true;
+
+        // Remove existing event listeners to prevent duplicates
         const citySelect = document.getElementById('matrix-city-select');
         const gemSelect = document.getElementById('matrix-gem-select');
         const amountInput = document.getElementById('matrix-sell-amount');
         const sellBtn = document.getElementById('matrix-sell-btn');
 
+        // Clone and replace elements to remove all existing event listeners
+        if (citySelect) {
+            const newCitySelect = citySelect.cloneNode(true);
+            citySelect.parentNode.replaceChild(newCitySelect, citySelect);
+            const finalCitySelect = document.getElementById('matrix-city-select');
+            if (finalCitySelect) finalCitySelect.value = newCitySelect.value;
+        }
+
+        if (gemSelect) {
+            const newGemSelect = gemSelect.cloneNode(true);
+            gemSelect.parentNode.replaceChild(newGemSelect, gemSelect);
+            const finalGemSelect = document.getElementById('matrix-gem-select');
+            if (finalGemSelect) finalGemSelect.value = newGemSelect.value;
+        }
+
+        if (amountInput) {
+            const newAmountInput = amountInput.cloneNode(true);
+            amountInput.parentNode.replaceChild(newAmountInput, amountInput);
+            const finalAmountInput = document.getElementById('matrix-sell-amount');
+            if (finalAmountInput) finalAmountInput.value = newAmountInput.value;
+        }
+
+        // Store button state before cloning
+        let oldButtonState = null;
+        if (sellBtn) {
+            oldButtonState = {
+                disabled: sellBtn.disabled,
+                innerHTML: sellBtn.innerHTML,
+                opacity: sellBtn.style.opacity
+            };
+            const newSellBtn = sellBtn.cloneNode(true);
+            sellBtn.parentNode.replaceChild(newSellBtn, sellBtn);
+        }
+
+        // Re-get references after cloning
+        const finalCitySelect = document.getElementById('matrix-city-select');
+        const finalGemSelect = document.getElementById('matrix-gem-select');
+        const finalAmountInput = document.getElementById('matrix-sell-amount');
+        const finalSellBtn = document.getElementById('matrix-sell-btn');
+
+        // Restore button state
+        if (finalSellBtn && oldButtonState) {
+            finalSellBtn.disabled = oldButtonState.disabled;
+            finalSellBtn.innerHTML = oldButtonState.innerHTML;
+            finalSellBtn.style.opacity = oldButtonState.opacity;
+        }
+
         const updateSummary = () => {
-            const city = citySelect?.value;
-            const gem = gemSelect?.value;
-            const amount = parseInt(amountInput?.value || 1);
+            const city = finalCitySelect?.value;
+            const gem = finalGemSelect?.value;
+            const amount = parseInt(finalAmountInput?.value || 1);
+
+            // Update max fill button state
+            const maxFillBtn = document.getElementById('matrix-max-fill-btn');
+            if (maxFillBtn) {
+                const hasGemSelected = !!gem;
+                const hasGemsAvailable = hasGemSelected && (this.polishedGemsCount[gem] || 0) > 0;
+                maxFillBtn.disabled = !hasGemsAvailable;
+                maxFillBtn.style.opacity = hasGemsAvailable ? '1' : '0.5';
+                maxFillBtn.style.cursor = hasGemsAvailable ? 'pointer' : 'not-allowed';
+            }
 
             if (!city || !gem || !this.boostsData || !this.basePriceData) {
                 // Reset summary
                 const boostEl = document.getElementById('matrix-summary-boost');
                 const stakingEl = document.getElementById('matrix-summary-staking');
                 const priceEl = document.getElementById('matrix-summary-price');
-                
+
                 if (boostEl) boostEl.textContent = 'Boost: Select city & gem';
                 if (stakingEl) stakingEl.textContent = 'Staking Bonus: +0%';
                 if (priceEl) priceEl.textContent = 'Est. Payout: 0 Game $';
@@ -563,36 +629,69 @@ class TradingGame extends TSDGEMSGame {
             if (priceEl) priceEl.textContent = `Est. Payout: ${estimatedPayout.toFixed(2)} Game $`;
         };
 
-        if (citySelect) citySelect.addEventListener('change', updateSummary);
-        if (gemSelect) gemSelect.addEventListener('change', updateSummary);
-        if (amountInput) amountInput.addEventListener('input', updateSummary);
+        if (finalCitySelect) finalCitySelect.addEventListener('change', updateSummary);
+        if (finalGemSelect) {
+            finalGemSelect.addEventListener('change', () => {
+                console.log('[Trading] Gem type changed, resetting amount to 1');
+                // Reset amount to 1 when gem type changes
+                if (finalAmountInput) {
+                    finalAmountInput.value = 1;
+                }
+                updateSummary();
+            });
+        }
+        if (finalAmountInput) finalAmountInput.addEventListener('input', updateSummary);
 
-        if (sellBtn) {
-            sellBtn.addEventListener('click', async () => {
-                const city = citySelect?.value;
-                const gem = gemSelect?.value;
-                const amount = parseInt(amountInput?.value);
-                
+        // Max fill button
+        const maxFillBtn = document.getElementById('matrix-max-fill-btn');
+        if (maxFillBtn) {
+            maxFillBtn.addEventListener('click', () => {
+                const gem = finalGemSelect?.value;
+                if (!gem) {
+                    this.showNotification('Please select a gem type first!', 'warning');
+                    return;
+                }
+
+                const maxAmount = this.polishedGemsCount[gem] || 0;
+                if (maxAmount === 0) {
+                    this.showNotification('No gems of this type available!', 'warning');
+                    return;
+                }
+
+                if (finalAmountInput) {
+                    finalAmountInput.value = maxAmount;
+                    // Trigger the summary update
+                    updateSummary();
+                }
+            });
+        }
+
+        if (finalSellBtn) {
+            finalSellBtn.addEventListener('click', async () => {
+                const city = finalCitySelect?.value;
+                const gem = finalGemSelect?.value;
+                const amount = parseInt(finalAmountInput?.value);
+
                 if (!city || !gem || !amount) {
                     this.showNotification('Please select a city, gem type, and amount!', 'warning');
                     return;
                 }
-                
+
                 if (!this.currentActor) {
                     this.showNotification('Please connect your wallet first', 'error');
                     return;
                 }
-                
+
                 // Show loading state
-                this.setSellButtonLoading(true);
-                
+                this.setSellButtonLoading(true, finalSellBtn);
+
                 try {
                     await this.handleGemSale(city, gem, amount);
                 } catch (error) {
                     console.error('[Trading] Error selling gems:', error);
                     this.showNotification('Failed to sell gems: ' + error.message, 'error');
                 } finally {
-                    this.setSellButtonLoading(false);
+                    this.setSellButtonLoading(false, finalSellBtn);
                 }
             });
         }
@@ -601,8 +700,81 @@ class TradingGame extends TSDGEMSGame {
         updateSummary();
     }
 
-    setSellButtonLoading(isLoading) {
-        const sellBtn = document.getElementById('matrix-sell-btn');
+    updateSellControls() {
+        // Only update the UI state without re-attaching event listeners
+        const gemSelect = document.getElementById('matrix-gem-select');
+        const amountInput = document.getElementById('matrix-sell-amount');
+
+        // Update the max fill button state
+        const maxFillBtn = document.getElementById('matrix-max-fill-btn');
+        if (maxFillBtn && gemSelect) {
+            const gem = gemSelect.value;
+            const hasGemSelected = !!gem;
+            const hasGemsAvailable = hasGemSelected && (this.polishedGemsCount[gem] || 0) > 0;
+            maxFillBtn.disabled = !hasGemsAvailable;
+            maxFillBtn.style.opacity = hasGemsAvailable ? '1' : '0.5';
+            maxFillBtn.style.cursor = hasGemsAvailable ? 'pointer' : 'not-allowed';
+        }
+
+        // Update the summary display
+        const updateSummary = () => {
+            const citySelect = document.getElementById('matrix-city-select');
+            const finalGemSelect = document.getElementById('matrix-gem-select');
+            const finalAmountInput = document.getElementById('matrix-sell-amount');
+            const city = citySelect?.value;
+            const gem = finalGemSelect?.value;
+            const amount = parseInt(finalAmountInput?.value || 1);
+
+            // Update max fill button state
+            const maxFillBtn = document.getElementById('matrix-max-fill-btn');
+            if (maxFillBtn) {
+                const hasGemSelected = !!gem;
+                const hasGemsAvailable = hasGemSelected && (this.polishedGemsCount[gem] || 0) > 0;
+                maxFillBtn.disabled = !hasGemsAvailable;
+                maxFillBtn.style.opacity = hasGemsAvailable ? '1' : '0.5';
+                maxFillBtn.style.cursor = hasGemsAvailable ? 'pointer' : 'not-allowed';
+            }
+
+            if (!city || !gem || !this.boostsData || !this.basePriceData) {
+                // Reset summary
+                const boostEl = document.getElementById('matrix-summary-boost');
+                const stakingEl = document.getElementById('matrix-summary-staking');
+                const priceEl = document.getElementById('matrix-summary-price');
+
+                if (boostEl) boostEl.textContent = 'Boost: Select city & gem';
+                if (stakingEl) stakingEl.textContent = 'Staking Bonus: +0%';
+                if (priceEl) priceEl.textContent = 'Est. Payout: 0 Game $';
+                return;
+            }
+
+            const boost = this.boostsData[city]?.[gem] || 0;
+            const basePrice = this.basePriceData.basePrice || 0;
+
+            // Get gem boost from staked gems
+            const gemBoost = this.getGemBoostForType(gem);
+
+            // boost is already a decimal (0.019 = 1.9%), gemBoost is also decimal (0.05 = 5%)
+            const cityMultiplier = 1 + boost;
+            const gemMultiplier = 1 + gemBoost;
+            const estimatedPayout = basePrice * cityMultiplier * gemMultiplier * amount;
+
+            // Update summary
+            const boostEl = document.getElementById('matrix-summary-boost');
+            const stakingEl = document.getElementById('matrix-summary-staking');
+            const priceEl = document.getElementById('matrix-summary-price');
+
+            if (boostEl) boostEl.textContent = `City Boost: +${(boost * 100).toFixed(1)}%`;
+            if (stakingEl) stakingEl.textContent = `Gem Staking Bonus: +${(gemBoost * 100).toFixed(0)}%`;
+            if (priceEl) priceEl.textContent = `Est. Payout: ${estimatedPayout.toFixed(2)} Game $`;
+        };
+
+        updateSummary();
+    }
+
+    setSellButtonLoading(isLoading, sellBtn = null) {
+        if (!sellBtn) {
+            sellBtn = document.getElementById('matrix-sell-btn');
+        }
         if (!sellBtn) return;
         
         if (isLoading) {
@@ -1401,7 +1573,7 @@ class TradingGame extends TSDGEMSGame {
                 console.log('[Trading] Updated Game $:', result.totalPayout);
                 
                 // Update summary to reflect new boost calculations
-                this.setupSellControls();
+                this.updateSellControls();
             }
         } catch (error) {
             console.error('[Trading] Failed to sell gems:', error);

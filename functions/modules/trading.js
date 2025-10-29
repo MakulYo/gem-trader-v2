@@ -16,6 +16,61 @@ const cors = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, credentials:
 // Import staking module for gem boost calculations
 const { getGemsBoostForType } = require('./staking')
 
+// Rate limiting configuration
+const RATE_LIMITS = {
+  sellGems: { requests: 5, windowMs: 30000 }, // 5 requests per 30 seconds (trading is less critical than claiming)
+  // Add other rate limits as needed
+}
+
+// Rate limiting function
+async function checkRateLimit(actor, action, req) {
+  const now = Date.now()
+  const windowStart = now - RATE_LIMITS[action].windowMs
+
+  // Use actor + IP for rate limiting key
+  const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown'
+  const rateKey = `${actor}_${clientIP}_${action}`
+
+  const rateDocRef = db.doc(`rate_limits/${rateKey}`)
+
+  try {
+    const rateDoc = await rateDocRef.get()
+    let requests = []
+
+    if (rateDoc.exists) {
+      requests = rateDoc.data().requests || []
+      // Filter out old requests outside the window
+      requests = requests.filter(timestamp => timestamp > windowStart)
+    }
+
+    // Check if under limit
+    if (requests.length >= RATE_LIMITS[action].requests) {
+      console.log(`[RateLimit] BLOCKED: ${rateKey} exceeded ${RATE_LIMITS[action].requests} requests in ${RATE_LIMITS[action].windowMs}ms`)
+      return false
+    }
+
+    // Add current request timestamp
+    requests.push(now)
+
+    // Save updated rate limit data
+    await rateDocRef.set({
+      requests: requests,
+      lastRequest: now,
+      action: action,
+      actor: actor,
+      ip: clientIP
+    })
+
+    console.log(`[RateLimit] ALLOWED: ${rateKey} (${requests.length}/${RATE_LIMITS[action].requests})`)
+    return true
+
+  } catch (error) {
+    console.error('[RateLimit] Error checking rate limit:', error)
+    // Allow request on error to avoid blocking legitimate users
+    return true
+  }
+}
+
 // --- season lock guard (same as mining/polishing) ---
 async function ensureSeasonActiveOrThrow() {
   const s = await db.doc('runtime/season_state').get()
@@ -67,6 +122,15 @@ const sellGems = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
     const actor = requireActor(req, res); if (!actor) return
+
+    // Rate limiting check
+    const rateLimitAllowed = await checkRateLimit(actor, 'sellGems', req)
+    if (!rateLimitAllowed) {
+      return res.status(429).json({
+        error: 'Too many trading requests. Please wait a moment before selling gems again.',
+        retryAfter: Math.ceil(RATE_LIMITS.sellGems.windowMs / 1000)
+      })
+    }
     
     let { gemType, amount, cityId } = req.body
     

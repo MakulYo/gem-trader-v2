@@ -145,6 +145,45 @@ class PolishingGame extends TSDGEMSGame {
                 await this.disconnectWallet();
             });
         }
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-polishing-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                const icon = refreshBtn.querySelector('i');
+                if (icon) icon.classList.add('fa-spin');
+                
+                await this.refreshInventory();
+                
+                if (icon) icon.classList.remove('fa-spin');
+            });
+        }
+    }
+    
+    async refreshInventory() {
+        if (!this.currentActor) {
+            this.showNotification('Connect your wallet first!', 'warning');
+            return;
+        }
+
+        try {
+            console.log('[Polishing] Refreshing inventory from blockchain...');
+            this.showNotification('Fetching fresh data from blockchain...', 'info');
+            
+            // Force refresh inventory data
+            this.inventoryData = await this.backendService.refreshInventory(this.currentActor);
+            
+            console.log('[Polishing] Inventory refreshed:', this.inventoryData);
+            
+            // Reload polishing data with fresh inventory
+            this.isInitialized = false;
+            await this.loadPolishingData(this.currentActor);
+            
+            this.showNotification('Inventory refreshed from blockchain!', 'success');
+        } catch (error) {
+            console.error('[Polishing] Failed to refresh inventory:', error);
+            this.showNotification('Failed to refresh inventory: ' + error.message, 'error');
+        }
     }
 
     async connectWallet() {
@@ -514,24 +553,13 @@ class PolishingGame extends TSDGEMSGame {
 
         slotsGrid.innerHTML = slots.map(slot => {
             if (!slot.isUnlocked) {
-                const unlockCost = POLISHING_SLOT_UNLOCK_COSTS[slot.slotNum - 1] || 0;
                 return `
                     <div class="polishing-slot locked">
                         <div class="slot-header">
                             <span class="slot-locked">🔒 LOCKED</span>
                         </div>
                         <div class="slot-content-layout">
-                            <p class="slot-description">Unlock this polishing slot</p>
-                        </div>
-                        <div class="slot-unlock-requirements">
-                            <h4>Unlock Requirements:</h4>
-                            <div class="unlock-req">
-                                <span>Requires: Polishing Table (NFT)</span>
-                                <small style="display: block; color: #888; margin-top: 5px;">No TSDM cost - Backend verifies NFT ownership</small>
-                            </div>
-                            <button onclick="game.unlockPolishingSlot(${slot.slotNum})" class="action-btn primary">
-                                <i class="fas fa-unlock"></i> Unlock Slot
-                            </button>
+                            <p class="slot-description">Purchase Polishing Table NFTs to unlock this slot</p>
                         </div>
                     </div>
                 `;
@@ -940,27 +968,44 @@ class PolishingGame extends TSDGEMSGame {
 
     async startPolishingDirect(slotNum) {
         console.log('[Polishing] startPolishingDirect called, slotNum:', slotNum);
-        const amountInput = document.getElementById(`polish-amount-slot-${slotNum}`);
-        console.log('[Polishing] Amount input element:', amountInput);
-        const amount = parseInt(amountInput?.value || 0);
-        console.log('[Polishing] Amount to polish:', amount);
-        
-        if (!amount || amount <= 0) {
-            this.showNotification('❌ Please enter a valid amount!', 'error');
-            return;
+
+        // Show loading state on button
+        const button = document.querySelector(`button[onclick*="startPolishingDirect(${slotNum})"]`);
+        const originalText = button ? button.innerHTML : '';
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
         }
-        
-        if (amount > this.roughGemsCount) {
-            this.showNotification('❌ Not enough rough gems!', 'error');
-            return;
+
+        try {
+            const amountInput = document.getElementById(`polish-amount-slot-${slotNum}`);
+            console.log('[Polishing] Amount input element:', amountInput);
+            const amount = parseInt(amountInput?.value || 0);
+            console.log('[Polishing] Amount to polish:', amount);
+
+            if (!amount || amount <= 0) {
+                this.showNotification('❌ Please enter a valid amount!', 'error');
+                return;
+            }
+
+            if (amount > this.roughGemsCount) {
+                this.showNotification('❌ Not enough rough gems!', 'error');
+                return;
+            }
+
+            if (amount > MAX_AMOUNT_PER_SLOT) {
+                this.showNotification(`❌ Maximum ${MAX_AMOUNT_PER_SLOT} gems per slot!`, 'error');
+                return;
+            }
+
+            await this.startPolishing(amount, slotNum);
+        } finally {
+            // Restore button state
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
         }
-        
-        if (amount > MAX_AMOUNT_PER_SLOT) {
-            this.showNotification(`❌ Maximum ${MAX_AMOUNT_PER_SLOT} gems per slot!`, 'error');
-            return;
-        }
-        
-        await this.startPolishing(amount, slotNum);
     }
 
     async confirmStartPolishing(slotNum) {
@@ -1006,9 +1051,10 @@ class PolishingGame extends TSDGEMSGame {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     actor: this.currentActor,
-                    amount: amount
+                    amount: amount,
+                    slotNum: slotNum
                 })
             });
             
@@ -1049,7 +1095,15 @@ class PolishingGame extends TSDGEMSGame {
             this.showNotification('Please connect your wallet first', 'error');
             return;
         }
-        
+
+        // Prevent multiple clicks by disabling the button
+        const claimButton = document.querySelector(`button[onclick*="completePolishing('${jobId}')"]`);
+        if (claimButton) {
+            claimButton.disabled = true;
+            claimButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Claiming...';
+            claimButton.style.opacity = '0.7';
+        }
+
         try {
             console.log('[Polishing] Completing polishing job:', jobId);
             
@@ -1094,52 +1148,19 @@ class PolishingGame extends TSDGEMSGame {
             }
             
             this.renderPolishingSlots();
-            this.updatePolishingStats();} catch (error) {
+            this.updatePolishingStats();        } catch (error) {
             console.error('[Polishing] Failed to complete polishing:', error);
             this.showNotification('❌ Failed to claim rewards: ' + error.message, 'error');
+        } finally {
+            // Re-enable the button
+            if (claimButton) {
+                claimButton.disabled = false;
+                claimButton.innerHTML = '<i class="fas fa-gift"></i> CLAIM REWARDS';
+                claimButton.style.opacity = '1';
+            }
         }
     }
 
-    async unlockPolishingSlot(slotNum) {
-        if (!this.currentActor) {
-            this.showNotification('Please connect your wallet first', 'error');
-            return;
-        }
-        
-        const unlockCost = POLISHING_SLOT_UNLOCK_COSTS[slotNum - 1] || 0;
-        
-        try {
-            console.log('[Polishing] Unlocking slot:', slotNum, '(No TSDM cost - Backend verifies NFT ownership)');
-            this.showNotification(`Unlocking slot ${slotNum} (Backend will verify Polishing Table NFT)...`, 'info');
-            
-            // Create payment request
-            const response = await fetch(`${this.backendService.apiBase}/unlockPolishingSlot`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    actor: this.currentActor,
-                    targetSlot: slotNum
-                })
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to create payment request');
-            }
-            
-            const data = await response.json();
-            console.log('[Polishing] Payment request created:', data);
-            
-            // Show payment modal
-            this.showPaymentModal(data.paymentId, unlockCost, slotNum, 'polishing_slot_unlock');
-            
-        } catch (error) {
-            console.error('[Polishing] Failed to create payment request:', error);
-            this.showNotification('❌ Failed to create payment request: ' + error.message, 'error');
-        }
-    }
 
     showPaymentModal(paymentId, amount, slotNum, paymentType) {
         const modalContent = `
@@ -1318,8 +1339,78 @@ class PolishingGame extends TSDGEMSGame {
         this.selectedSlotForStaking = null;
     }
 
+    showStakingLoadingState(isLoading, message = '') {
+        let loader = document.getElementById('staking-loading-overlay');
+        
+        // Add fadeOut animation styles if not already present
+        if (!document.querySelector('#staking-loading-styles')) {
+            const style = document.createElement('style');
+            style.id = 'staking-loading-styles';
+            style.textContent = `
+                @keyframes fadeOut {
+                    from { opacity: 1; }
+                    to { opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        if (isLoading) {
+            if (!loader) {
+                loader = document.createElement('div');
+                loader.id = 'staking-loading-overlay';
+                loader.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100vw;
+                    height: 100vh;
+                    background: rgba(0, 0, 0, 0.9);
+                    backdrop-filter: blur(10px);
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 10001;
+                    animation: fadeIn 0.3s ease;
+                    overflow: hidden;
+                `;
+                
+                document.body.appendChild(loader);
+            }
+            
+            loader.innerHTML = `
+                <div style="text-align: center; padding: 20px; max-width: 90%;">
+                    <div style="font-size: 5rem; color: #ff9500; margin-bottom: 30px; animation: pulse 2s ease-in-out infinite;">
+                        <i class="fas fa-table"></i>
+                    </div>
+                    <h2 style="color: #ff9500; margin-bottom: 20px; font-size: 2em; font-weight: bold;">Staking Polishing Table</h2>
+                    <div style="color: #888; font-size: 1.2em; margin-bottom: 40px;">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span style="margin-left: 10px;">${message || 'Validating ownership and staking table...'}</span>
+                    </div>
+                    <div style="color: #555; font-size: 1em;">
+                        Please wait while we verify your NFT ownership
+                    </div>
+                </div>
+            `;
+            
+            loader.style.display = 'flex';
+        } else {
+            if (loader) {
+                loader.style.animation = 'fadeOut 0.3s ease';
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                }, 300);
+            }
+        }
+    }
+
     async stakeTable(templateId, slotNum, name, imagePath, assetId) {
         console.log('[Polishing] Staking table:', name, 'to slot:', slotNum, 'asset_id:', assetId);
+        
+        // Show loading screen
+        this.showStakingLoadingState(true, 'Validating NFT ownership...');
         
         try {
             const result = await this.backendService.stakeAsset(
@@ -1335,6 +1426,9 @@ class PolishingGame extends TSDGEMSGame {
                 }
             );
             
+            // Hide loading screen
+            this.showStakingLoadingState(false);
+            
             if (result.success) {
                 // Update local state with backend data
                 await this.loadStakedAssets(this.currentActor);
@@ -1346,6 +1440,9 @@ class PolishingGame extends TSDGEMSGame {
                 throw new Error(result.error || 'Failed to stake table');
             }
         } catch (error) {
+            // Hide loading screen on error
+            this.showStakingLoadingState(false);
+            
             console.error('[Polishing] Failed to stake table:', error);
             this.showNotification(`❌ Failed to stake table: ${error.message}`, 'error');
         }
@@ -1353,7 +1450,70 @@ class PolishingGame extends TSDGEMSGame {
 
     async unstakeTable(slotNum) {
         console.log('[Polishing] Unstaking table from slot:', slotNum);
-        
+
+        const stakedTable = this.stakedTables[slotNum];
+        if (!stakedTable) {
+            this.showNotification('❌ No table staked in this slot!', 'error');
+            return;
+        }
+
+        // Show confirmation modal
+        this.showUnstakeConfirmationModal(slotNum, stakedTable.name);
+    }
+
+    showUnstakeConfirmationModal(slotNum, tableName) {
+        const modalContent = `
+            <div style="text-align: center; padding: 30px 20px;">
+                <div style="font-size: 4rem; color: #ff9500; margin-bottom: 20px;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <h3 style="color: #ff9500; margin-bottom: 20px; font-size: 1.5em; font-weight: bold;">
+                    Confirm Unstaking
+                </h3>
+                <p style="color: #888; margin-bottom: 25px; font-size: 1.1em; line-height: 1.6;">
+                    Are you sure you want to unstake <strong>${tableName}</strong> from Slot ${slotNum}?
+                </p>
+                <p style="color: #aaa; margin-bottom: 30px; font-size: 0.95em; line-height: 1.6;">
+                    This will remove the polishing table from this slot and make it available in your inventory again.
+                </p>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button onclick="game.confirmUnstakeTable(${slotNum})" class="action-btn warning" style="padding: 12px 30px; font-size: 1em;">
+                        <i class="fas fa-times"></i> Unstake Table
+                    </button>
+                    <button onclick="game.closeStakeModal()" class="action-btn secondary" style="padding: 12px 30px; font-size: 1em;">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const modalOverlay = document.getElementById('modal-overlay');
+        const modalBody = document.getElementById('modal-body');
+
+        if (modalBody) {
+            modalBody.innerHTML = modalContent;
+
+            const modalContainer = modalBody.parentElement;
+            const modalHeader = modalContainer.querySelector('.modal-header');
+
+            if (modalHeader) {
+                modalHeader.innerHTML = `
+                    <h3><i class="fas fa-times"></i> Unstake Polishing Table</h3>
+                    <button class="modal-close" onclick="game.closeStakeModal()" style="background: none; border: none; color: #a0a0a0; font-size: 1.5rem; cursor: pointer;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+            }
+        }
+
+        if (modalOverlay) {
+            openModal(modalOverlay);
+        }
+    }
+
+    async confirmUnstakeTable(slotNum) {
+        console.log('[Polishing] Confirming unstake of table from slot:', slotNum);
+
         const stakedTable = this.stakedTables[slotNum];
         if (!stakedTable) {
             this.showNotification('❌ No table staked in this slot!', 'error');
@@ -1368,12 +1528,13 @@ class PolishingGame extends TSDGEMSGame {
                 'table',
                 stakedTable.asset_id
             );
-            
+
             if (result.success) {
                 // Update local state with backend data
                 await this.loadStakedAssets(this.currentActor);
-                
+
                 this.showNotification(`✅ Unstaked ${stakedTable.name} from Slot ${slotNum}!`, 'success');
+                this.closeStakeModal(); // Close the confirmation modal
                 this.renderPolishingSlots();
             } else {
                 throw new Error(result.error || 'Failed to unstake table');

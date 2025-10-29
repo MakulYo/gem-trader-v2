@@ -506,84 +506,97 @@ async function stakeWorkersBatch(actor, page, slotNum, workers) {
  */
 async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
   console.log(`[Staking] Unstaking ${assetType} ${assetId} from ${page} slot ${slotNum} for ${actor}`)
-  
-  // Get current staking data
-  const stakingData = await getStakingData(actor)
-  console.log(`[Staking] Current staking data before unstake:`, JSON.stringify(stakingData, null, 2))
-  
-  // Check if page exists
-  if (!stakingData[page]) {
-    throw new Error(`No ${page} staking data found`)
-  }
-  
-  // Check if slot exists
-  const slotKey = `slot${slotNum}`
-  if (!stakingData[page][slotKey]) {
-    throw new Error(`No assets staked in ${page} slot ${slotNum}`)
-  }
-  
-  const slot = stakingData[page][slotKey]
-  console.log(`[Staking] Current slot data:`, JSON.stringify(slot, null, 2))
-  
-  // Handle different asset types
-  if (assetType === 'mine' || assetType === 'table') {
-    // Single asset per slot
-    if (!slot[assetType] || slot[assetType].asset_id !== assetId) {
-      throw new Error(`${assetType} ${assetId} not found in slot ${slotNum}`)
+
+  const { staking } = refs(actor)
+
+  // Use transaction to ensure atomicity when multiple unstakes happen simultaneously
+  return await db.runTransaction(async (transaction) => {
+    const stakingDoc = await transaction.get(staking)
+
+    if (!stakingDoc.exists) {
+      throw new Error(`No staking data found for ${actor}`)
     }
-    delete slot[assetType]
-  } else if (assetType === 'worker') {
-    // Multiple workers per slot
-    if (!slot.workers || slot.workers.length === 0) {
-      console.log(`[Staking] ERROR: No workers found in slot ${slotNum}. Slot data:`, slot)
-      throw new Error(`No workers staked in slot ${slotNum}`)
+
+    const stakingData = stakingDoc.data()
+    console.log(`[Staking] Current staking data before unstake:`, JSON.stringify(stakingData, null, 2))
+
+    // Check if page exists
+    if (!stakingData[page]) {
+      throw new Error(`No ${page} staking data found`)
     }
-    
-    console.log(`[Staking] Workers before unstake:`, slot.workers.map(w => w.asset_id))
-    const initialLength = slot.workers.length
-    slot.workers = slot.workers.filter(w => w.asset_id !== assetId)
-    console.log(`[Staking] Workers after unstake:`, slot.workers.map(w => w.asset_id))
-    
-    if (slot.workers.length === initialLength) {
-      console.log(`[Staking] ERROR: Worker ${assetId} not found in slot. Available workers:`, slot.workers.map(w => w.asset_id))
-      throw new Error(`Worker ${assetId} not found in slot ${slotNum}`)
+
+    // Check if slot exists
+    const slotKey = `slot${slotNum}`
+    if (!stakingData[page][slotKey]) {
+      throw new Error(`No assets staked in ${page} slot ${slotNum}`)
     }
-    
-    // Clean up empty workers array
-    if (slot.workers.length === 0) {
-      console.log(`[Staking] No workers left, deleting workers array`)
-      delete slot.workers
+
+    const slot = stakingData[page][slotKey]
+    console.log(`[Staking] Current slot data:`, JSON.stringify(slot, null, 2))
+
+    // Handle different asset types
+    if (assetType === 'mine' || assetType === 'table') {
+      // Single asset per slot
+      if (!slot[assetType] || slot[assetType].asset_id !== assetId) {
+        throw new Error(`${assetType} ${assetId} not found in slot ${slotNum}`)
+      }
+      delete slot[assetType]
+    } else if (assetType === 'worker') {
+      // Multiple workers per slot
+      if (!slot.workers || slot.workers.length === 0) {
+        console.log(`[Staking] ERROR: No workers found in slot ${slotNum}. Slot data:`, slot)
+        throw new Error(`No workers staked in slot ${slotNum}`)
+      }
+
+      console.log(`[Staking] Workers before unstake:`, slot.workers.map(w => w.asset_id))
+      const initialLength = slot.workers.length
+      slot.workers = slot.workers.filter(w => w.asset_id !== assetId)
+      console.log(`[Staking] Workers after unstake:`, slot.workers.map(w => w.asset_id))
+
+      if (slot.workers.length === initialLength) {
+        console.log(`[Staking] ERROR: Worker ${assetId} not found in slot. Available workers:`, slot.workers.map(w => w.asset_id))
+        throw new Error(`Worker ${assetId} not found in slot ${slotNum}`)
+      }
+
+      // Clean up empty workers array
+      if (slot.workers.length === 0) {
+        console.log(`[Staking] No workers left, deleting workers array`)
+        delete slot.workers
+      }
+    } else if (assetType === 'gem') {
+      // Remove gem from slot
+      if (!slot.gem || slot.gem.asset_id !== assetId) {
+        throw new Error(`Gem ${assetId} not found in slot ${slotNum}`)
+      }
+
+      console.log(`[Staking] Unstaking ${slot.gem.gemType} gem from slot ${slotNum}`)
+      delete slot.gem
+    } else {
+      throw new Error(`Invalid asset type: ${assetType}`)
     }
-  } else if (assetType === 'gem') {
-    // Remove gem from slot
-    if (!slot.gem || slot.gem.asset_id !== assetId) {
-      throw new Error(`Gem ${assetId} not found in slot ${slotNum}`)
+
+    // Clean up empty slot
+    if (Object.keys(slot).length === 0) {
+      console.log(`[Staking] Slot is now empty, deleting slot ${slotKey}`)
+      delete stakingData[page][slotKey]
     }
-    
-    console.log(`[Staking] Unstaking ${slot.gem.gemType} gem from slot ${slotNum}`)
-    delete slot.gem
-  } else {
-    throw new Error(`Invalid asset type: ${assetType}`)
-  }
-  
-  // Clean up empty slot
-  if (Object.keys(slot).length === 0) {
-    console.log(`[Staking] Slot is now empty, deleting slot ${slotKey}`)
-    delete stakingData[page][slotKey]
-  }
-  
-  // Clean up empty page
-  if (Object.keys(stakingData[page]).length === 0) {
-    console.log(`[Staking] Page is now empty, deleting ${page} page`)
-    delete stakingData[page]
-  }
-  
-  console.log(`[Staking] Updated staking data after unstake:`, JSON.stringify(stakingData, null, 2))
-  
-  // Save updated staking data
-  await updateStakingData(actor, stakingData)
-  
-  return stakingData
+
+    // Clean up empty page
+    if (Object.keys(stakingData[page]).length === 0) {
+      console.log(`[Staking] Page is now empty, deleting ${page} page`)
+      delete stakingData[page]
+    }
+
+    console.log(`[Staking] Updated staking data after unstake:`, JSON.stringify(stakingData, null, 2))
+
+    // Update timestamp
+    stakingData.updatedAt = FieldValue.serverTimestamp()
+
+    // Save updated staking data within transaction
+    transaction.set(staking, stakingData)
+
+    return stakingData
+  })
 }
 
 // ========================================

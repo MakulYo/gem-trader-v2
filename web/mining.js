@@ -165,6 +165,45 @@ class MiningGame extends TSDGEMSGame {
                 await this.disconnectWallet();
             });
         }
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-mining-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                const icon = refreshBtn.querySelector('i');
+                if (icon) icon.classList.add('fa-spin');
+                
+                await this.refreshInventory();
+                
+                if (icon) icon.classList.remove('fa-spin');
+            });
+        }
+    }
+    
+    async refreshInventory() {
+        if (!this.currentActor) {
+            this.showNotification('Connect your wallet first!', 'warning');
+            return;
+        }
+
+        try {
+            console.log('[Mining] Refreshing inventory from blockchain...');
+            this.showNotification('Fetching fresh data from blockchain...', 'info');
+            
+            // Force refresh inventory data
+            this.inventoryData = await this.backendService.refreshInventory(this.currentActor);
+            
+            console.log('[Mining] Inventory refreshed:', this.inventoryData);
+            
+            // Reload mining data with fresh inventory
+            this.isInitialized = false;
+            await this.loadMiningData(this.currentActor);
+            
+            this.showNotification('Inventory refreshed from blockchain!', 'success');
+        } catch (error) {
+            console.error('[Mining] Failed to refresh inventory:', error);
+            this.showNotification('Failed to refresh inventory: ' + error.message, 'error');
+        }
     }
 
     async connectWallet() {
@@ -495,15 +534,43 @@ class MiningGame extends TSDGEMSGame {
     }
 
     renderMiningSlots() {
+        // Use a more aggressive debouncing to prevent rapid re-renders
+        const now = Date.now();
+        if (this._lastRenderTime && (now - this._lastRenderTime) < 200) {
+            // Skip render if last render was less than 200ms ago
+            console.log('[Mining] Skipping rapid render');
+            return;
+        }
+        this._lastRenderTime = now;
+
+        this._doRenderMiningSlots();
+    }
+
+    _doRenderMiningSlots() {
         const slotsGrid = document.getElementById('slots-grid');
         if (!slotsGrid) {
             console.warn('[Mining] No slots grid element found');
             return;
         }
 
+        // Preserve currently open dropdown states and scroll positions before re-rendering
+        const openDropdowns = [];
+        const scrollPositions = {};
+        for (let slotNum = 1; slotNum <= 10; slotNum++) {
+            const workersList = document.getElementById(`workers-list-${slotNum}`);
+            if (workersList) {
+                if (workersList.style.display !== 'none') {
+                    openDropdowns.push(slotNum);
+                }
+                // Always preserve scroll position for all lists
+                scrollPositions[slotNum] = workersList.scrollTop;
+            }
+        }
+
         console.log('[Mining] Rendering mining slots...');
         console.log('[Mining] - Effective slots:', this.effectiveSlots);
         console.log('[Mining] - Active jobs:', this.activeJobs.length);
+        console.log('[Mining] - Preserving open dropdowns:', openDropdowns);
         
         const slots = [];
         
@@ -639,14 +706,19 @@ class MiningGame extends TSDGEMSGame {
                         <p class="slot-description">${stakedMine ? 'Staked mining operation ready to start' : 'Stake a mine NFT to begin operations'}</p>
                         <div class="slot-mine-image-container">
                             ${stakedMine ? `
-                                <img src="assets/images/${mineImagePath}" 
-                                     class="slot-mine-image" 
-                                     onclick="game.confirmUnstakeMine(${slot.slotNum})"
-                                     alt="${stakedMine.name}" 
-                                     style="width: 120px; height: 120px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.2s; opacity: 0.9;"
-                                     onmouseover="this.style.transform='scale(1.05)'; this.style.opacity='1';"
-                                     onmouseout="this.style.transform='scale(1)'; this.style.opacity='0.9';"
-                                     title="Click to unstake mine">
+                                <div style="position: relative; display: inline-block;">
+                                    <img src="assets/images/${mineImagePath}"
+                                         class="slot-mine-image"
+                                         onclick="game.confirmUnstakeMine(${slot.slotNum})"
+                                         alt="${stakedMine.name}"
+                                         style="width: 120px; height: 120px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.2s; opacity: 0.9;"
+                                         onmouseover="this.style.transform='scale(1.05)'; this.style.opacity='1';"
+                                         onmouseout="this.style.transform='scale(1)'; this.style.opacity='0.9';"
+                                         title="Click to unstake mine">
+                                    <div style="position: absolute; top: 4px; right: 4px; background: #ff4444; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.3); cursor: pointer;" onclick="game.confirmUnstakeMine(${slot.slotNum})" title="Unstake mine">
+                                        <i class="fas fa-times" style="color: white; font-size: 12px; font-weight: bold;"></i>
+                                    </div>
+                                </div>
                             ` : `
                                 <img src="assets/images/${mineImagePath}" 
                                      class="slot-mine-image ${isGreyedImage ? 'greyed' : ''}" 
@@ -662,11 +734,7 @@ class MiningGame extends TSDGEMSGame {
                                 <span class="mining-power">MP: ${totalMP.toLocaleString()}</span>
                             </div>
                             ${stakedWorkers.length > 0 ? `
-                                <button onclick="game.toggleWorkersList(${slot.slotNum})" class="action-btn secondary">
-                                    <i class="fas fa-users"></i> Manage ${stakedWorkers.length} Worker${stakedWorkers.length > 1 ? 's' : ''}
-                                    <i class="fas fa-chevron-down" id="workers-chevron-${slot.slotNum}" style="margin-left: 0.5rem;"></i>
-                                </button>
-                                <div id="workers-list-${slot.slotNum}" style="display: none; margin-top: 0.5rem; padding: 0.75rem; background: rgba(0, 0, 0, 0.3); border-radius: 8px; max-height: 400px; overflow-y: auto;">
+                                <div id="workers-list-${slot.slotNum}" style="display: none; margin-top: 0.5rem; padding: 0.75rem; padding-bottom: 4rem; background: rgba(0, 0, 0, 0.3); border-radius: 8px; max-height: 400px; overflow-y: auto; position: relative;">
                                     <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: rgba(0, 212, 255, 0.1); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
                                         <span style="color: #00d4ff; font-size: 0.85em;">
                                             <i class="fas fa-info-circle"></i> Select workers to unstake
@@ -675,31 +743,44 @@ class MiningGame extends TSDGEMSGame {
                                             0 selected
                                         </span>
                                     </div>
-                                    ${stakedWorkers.map((w, idx) => {
-                                        const isLast = idx === stakedWorkers.length - 1;
-                                        return `
-                                        <div class="worker-unstake-card" id="worker-unstake-${slot.slotNum}-${idx}" 
-                                             style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem; background: rgba(0, 212, 255, 0.1); border-radius: 6px; margin-bottom: ${isLast ? '0.75rem' : '0.5rem'}; border: 2px solid rgba(0, 212, 255, 0.2); cursor: pointer; transition: all 0.3s;"
-                                             onclick="game.toggleWorkerForUnstake(${slot.slotNum}, ${idx})">
-                                            <div style="flex: 1; pointer-events: none;">
-                                                <div style="color: #ffffff; font-weight: 600; font-size: 0.9em;">${w.name}</div>
-                                                <div style="color: #ffd700; font-size: 0.85em;"><i class="fas fa-hammer"></i> ${w.mp.toLocaleString()} MP</div>
+                                    ${(() => {
+                                        // Calculate selected count for this slot
+                                        let selectedCount = 0;
+                                        return stakedWorkers.map((w, idx) => {
+                                            const isLast = idx === stakedWorkers.length - 1;
+                                            const workerKey = `${slot.slotNum}-${idx}`;
+                                            const isSelected = this.selectedWorkersForUnstake.has(workerKey);
+                                            if (isSelected) selectedCount++;
+                                            return `
+                                            <div class="worker-unstake-card" id="worker-unstake-${slot.slotNum}-${idx}"
+                                                 style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem; background: ${isSelected ? 'rgba(255, 107, 107, 0.1)' : 'rgba(0, 212, 255, 0.1)'}; border-radius: 6px; margin-bottom: ${isLast ? '0.75rem' : '0.5rem'}; border: 2px solid ${isSelected ? '#ff6b6b' : 'rgba(0, 212, 255, 0.2)'}; cursor: pointer; transition: all 0.3s;"
+                                                 onclick="game.toggleWorkerForUnstake(${slot.slotNum}, ${idx})">
+                                                <div style="flex: 1; pointer-events: none;">
+                                                    <div style="color: #ffffff; font-weight: 600; font-size: 0.9em;">${w.name}</div>
+                                                    <div style="color: #ffd700; font-size: 0.85em;"><i class="fas fa-hammer"></i> ${w.mp.toLocaleString()} MP</div>
+                                                </div>
+                                                <div class="unstake-checkbox" style="width: 20px; height: 20px; border: 2px solid #00d4ff; border-radius: 4px; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; pointer-events: none;">
+                                                    <i class="fas fa-check" style="color: #ff6b6b; font-size: 12px; display: ${isSelected ? 'block' : 'none'};"></i>
+                                                </div>
                                             </div>
-                                            <div class="unstake-checkbox" style="width: 20px; height: 20px; border: 2px solid #00d4ff; border-radius: 4px; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; pointer-events: none;">
-                                                <i class="fas fa-check" style="color: #ff6b6b; font-size: 12px; display: none;"></i>
-                                            </div>
-                                        </div>
-                                    `;
-                                    }).join('')}
-                                    <button id="unstake-selected-${slot.slotNum}" onclick="game.unstakeSelectedWorkers(${slot.slotNum})" 
-                                            class="action-btn warning" 
-                                            style="width: 100%; margin-top: 0.75rem; opacity: 0.5;" disabled>
-                                        <i class="fas fa-times"></i> Unstake Selected Workers
-                                    </button>
+                                        `;
+                                        }).join('') + `
+                                        <button id="unstake-selected-${slot.slotNum}" onclick="game.unstakeSelectedWorkers(${slot.slotNum})"
+                                                class="action-btn warning"
+                                                style="width: calc(100% - 1.5rem); position: sticky; bottom: 0.75rem; left: 0.75rem; right: 0.75rem; margin-top: 0.75rem; ${selectedCount > 0 ? 'opacity: 1;' : 'opacity: 0.5;'} z-index: 10;" ${selectedCount > 0 ? '' : 'disabled'}>
+                                            <i class="fas fa-times"></i> Unstake Selected Workers
+                                        </button>`;
+                                    })()}
                                 </div>
                             ` : ''}
                             <div class="slot-actions">
-                                <button onclick="game.startMining(${slot.slotNum})" class="action-btn primary">
+                                ${stakedWorkers.length > 0 ? `
+                                    <button onclick="game.toggleWorkersList(${slot.slotNum})" class="action-btn secondary">
+                                        <i class="fas fa-users"></i> Manage ${stakedWorkers.length} Worker${stakedWorkers.length > 1 ? 's' : ''}
+                                        <i class="fas fa-chevron-down" id="workers-chevron-${slot.slotNum}" style="margin-left: 0.5rem;"></i>
+                                    </button>
+                                ` : ''}
+                                <button onclick="game.startMining(${slot.slotNum})" class="action-btn primary start-mining-btn" data-slot="${slot.slotNum}">
                                     <i class="fas fa-play"></i> Start Mining
                                 </button>
                                 ${!stakedMine ? `
@@ -715,7 +796,7 @@ class MiningGame extends TSDGEMSGame {
                     ` : `
                         <div class="slot-actions">
                             ${stakedMine && stakedWorkers.length > 0 ? `
-                                <button onclick="game.startMining(${slot.slotNum})" class="action-btn primary">
+                                <button onclick="game.startMining(${slot.slotNum})" class="action-btn primary start-mining-btn" data-slot="${slot.slotNum}">
                                     <i class="fas fa-play"></i> Start Mining
                                 </button>
                             ` : ''}
@@ -734,6 +815,54 @@ class MiningGame extends TSDGEMSGame {
                 </div>
             `;
         }).join('');
+
+        // Restore open dropdowns, worker selections, and scroll positions immediately after rendering (no delay to prevent flicker)
+        if (openDropdowns.length > 0) {
+            console.log(`[Mining] Will restore ${openDropdowns.length} dropdowns:`, openDropdowns);
+            openDropdowns.forEach(slotNum => {
+                const workersList = document.getElementById(`workers-list-${slotNum}`);
+                const chevron = document.getElementById(`workers-chevron-${slotNum}`);
+                if (workersList && chevron && workersList.style.display === 'none') {
+                    // Temporarily disable transitions to prevent flicker
+                    const originalTransition = workersList.style.transition;
+                    workersList.style.transition = 'none';
+                    chevron.style.transition = 'none';
+
+                    workersList.style.display = 'block';
+                    chevron.style.transform = 'rotate(180deg)';
+
+                    // Restore scroll position
+                    const savedScrollTop = scrollPositions[slotNum] || 0;
+                    workersList.scrollTop = savedScrollTop;
+
+                    // Re-enable transitions after a brief moment
+                    setTimeout(() => {
+                        workersList.style.transition = originalTransition;
+                        chevron.style.transition = 'transform 0.3s ease';
+                    }, 10);
+
+                    console.log(`[Mining] ✅ Restored dropdown for slot ${slotNum} with scroll position ${savedScrollTop}`);
+                } else if (workersList && workersList.style.display !== 'none') {
+                    // Still restore scroll position even if already open
+                    const savedScrollTop = scrollPositions[slotNum] || 0;
+                    workersList.scrollTop = savedScrollTop;
+                    console.log(`[Mining] Dropdown for slot ${slotNum} was already open, restored scroll position ${savedScrollTop}`);
+                } else {
+                    console.log(`[Mining] Could not find dropdown elements for slot ${slotNum}`);
+                }
+            });
+        }
+
+        // Update worker selection count displays
+        openDropdowns.forEach(slotNum => {
+            const countSpan = document.getElementById(`unstake-count-${slotNum}`);
+            if (countSpan) {
+                // Count selected workers for this slot
+                const slotSelections = Array.from(this.selectedWorkersForUnstake)
+                    .filter(key => key.startsWith(`${slotNum}-`)).length;
+                countSpan.textContent = `${slotSelections} selected`;
+            }
+        });
     }
 
     updateMiningStats() {
@@ -799,22 +928,30 @@ class MiningGame extends TSDGEMSGame {
             this.showNotification('Please connect your wallet first', 'error');
             return;
         }
-        
-        // Check if mine and worker are staked
-        const stakedMine = this.stakedMines[slotNum];
-        const stakedWorkers = this.stakedWorkers[slotNum] || [];
-        
-        if (!stakedMine) {
-            this.showNotification('❌ Please stake a mine first!', 'error');
-            return;
+
+        // Show loading state on button
+        const button = document.querySelector(`button.start-mining-btn[data-slot="${slotNum}"]`);
+        const originalText = button ? button.innerHTML : '';
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
         }
-        
-        if (stakedWorkers.length === 0) {
-            this.showNotification('❌ Please stake at least one worker!', 'error');
-            return;
-        }
-        
+
         try {
+            // Check if mine and worker are staked
+            const stakedMine = this.stakedMines[slotNum];
+            const stakedWorkers = this.stakedWorkers[slotNum] || [];
+
+            if (!stakedMine) {
+                this.showNotification('❌ Please stake a mine first!', 'error');
+                return;
+            }
+
+            if (stakedWorkers.length === 0) {
+                this.showNotification('❌ Please stake at least one worker!', 'error');
+                return;
+            }
+
             console.log('[Mining] Starting mining for slot:', slotNum);
             this.showNotification('⛏️ Starting mining job...', 'info');
             
@@ -859,6 +996,12 @@ class MiningGame extends TSDGEMSGame {
         } catch (error) {
             console.error('[Mining] Failed to start mining:', error);
             this.showNotification('❌ Failed to start mining: ' + error.message, 'error');
+        } finally {
+            // Restore button state
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
         }
     }
 
@@ -867,15 +1010,25 @@ class MiningGame extends TSDGEMSGame {
             this.showNotification('Please connect your wallet first', 'error');
             return;
         }
-        
+
+        // Prevent multiple clicks by disabling the button
+        const claimButton = document.querySelector(`button[onclick*="completeMining('${jobId}')"]`);
+        if (claimButton) {
+            claimButton.disabled = true;
+            claimButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Claiming...';
+            claimButton.style.opacity = '0.7';
+        }
+
+        // Dropdown preservation is now handled globally in renderMiningSlots()
+
         try {
             console.log('[Mining] Completing mining job:', jobId);
-            
+
             // Find the job to get estimated values
             const job = this.activeJobs.find(j => j.jobId === jobId);
             let estimatedAmount = 0;
             let estimatedMP = 0;
-            
+
             if (job) {
                 // Calculate estimated yield based on mining power and duration
                 estimatedMP = job.slotMiningPower || 0;
@@ -883,7 +1036,7 @@ class MiningGame extends TSDGEMSGame {
                 const expectedGems = Math.floor(estimatedMP / 20);
                 estimatedAmount = expectedGems;
             }
-            
+
             // Show reward popup immediately with estimated values
             this.showRewardPopup(estimatedAmount, 'Rough Gems', estimatedMP);
             
@@ -932,6 +1085,13 @@ class MiningGame extends TSDGEMSGame {
         } catch (error) {
             console.error('[Mining] Failed to complete mining:', error);
             this.showNotification('❌ Failed to claim rewards: ' + error.message, 'error');
+        } finally {
+            // Re-enable the button
+            if (claimButton) {
+                claimButton.disabled = false;
+                claimButton.innerHTML = '<i class="fas fa-gift"></i> CLAIM REWARDS';
+                claimButton.style.opacity = '1';
+            }
         }
     }
 
@@ -2175,6 +2335,7 @@ class MiningGame extends TSDGEMSGame {
             justify-content: center;
             align-items: center;
             z-index: 10000;
+            pointer-events: none;
             animation: fadeIn 0.3s ease-out;
         `;
         
@@ -2210,6 +2371,7 @@ class MiningGame extends TSDGEMSGame {
             border: 2px solid #00ff64;
             border-radius: 20px;
             padding: 40px;
+            pointer-events: auto;
             text-align: center;
             box-shadow: 0 0 50px rgba(0, 255, 100, 0.5);
             animation: popIn 0.5s ease-out;

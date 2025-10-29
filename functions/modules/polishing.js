@@ -11,6 +11,62 @@ const RAW_ALLOW  = process.env.CORS_ALLOW || ''
 const ALLOWLIST  = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean)
 const cors       = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, credentials: false })
 
+// Rate limiting configuration
+const RATE_LIMITS = {
+  completeMining: { requests: 10, windowMs: 10000 }, // 10 requests per 10 seconds (one per slot)
+  completePolishing: { requests: 10, windowMs: 10000 }, // 10 requests per 10 seconds (one per slot)
+  // Add other rate limits as needed
+}
+
+// Rate limiting function
+async function checkRateLimit(actor, action, req) {
+  const now = Date.now()
+  const windowStart = now - RATE_LIMITS[action].windowMs
+
+  // Use actor + IP for rate limiting key
+  const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown'
+  const rateKey = `${actor}_${clientIP}_${action}`
+
+  const rateDocRef = db.doc(`rate_limits/${rateKey}`)
+
+  try {
+    const rateDoc = await rateDocRef.get()
+    let requests = []
+
+    if (rateDoc.exists) {
+      requests = rateDoc.data().requests || []
+      // Filter out old requests outside the window
+      requests = requests.filter(timestamp => timestamp > windowStart)
+    }
+
+    // Check if under limit
+    if (requests.length >= RATE_LIMITS[action].requests) {
+      console.log(`[RateLimit] BLOCKED: ${rateKey} exceeded ${RATE_LIMITS[action].requests} requests in ${RATE_LIMITS[action].windowMs}ms`)
+      return false
+    }
+
+    // Add current request timestamp
+    requests.push(now)
+
+    // Save updated rate limit data
+    await rateDocRef.set({
+      requests: requests,
+      lastRequest: now,
+      action: action,
+      actor: actor,
+      ip: clientIP
+    })
+
+    console.log(`[RateLimit] ALLOWED: ${rateKey} (${requests.length}/${RATE_LIMITS[action].requests})`)
+    return true
+
+  } catch (error) {
+    console.error('[RateLimit] Error checking rate limit:', error)
+    // Allow request on error to avoid blocking legitimate users
+    return true
+  }
+}
+
 function requireActor(req, res) {
   const actor = (req.method === 'GET' ? req.query.actor : req.body?.actor) || ''
   if (!actor || typeof actor !== 'string') {
@@ -119,7 +175,7 @@ function getNextAvailableSlot(existingJobs, maxSlots) {
   return null
 }
 
-// POST /startPolishing { actor, amount }
+// POST /startPolishing { actor, amount, slotNum? }
 const startPolishing = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
@@ -133,6 +189,7 @@ const startPolishing = onRequest((req, res) =>
       await ensureSeasonActiveOrThrow()
 
       const { gems, active } = refs(actor)
+      const requestedSlotNum = req.body?.slotNum
 
       const snap = await active.get()
       const existingJobs = snap.docs.map(d => d.data())
@@ -141,8 +198,16 @@ const startPolishing = onRequest((req, res) =>
       const activeCount = existingJobs.length
       if (activeCount >= slots) return res.status(400).json({ error: 'no available polishing slots' })
 
-      const slotNum = getNextAvailableSlot(existingJobs, slots)
-      if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
+      let slotNum
+      if (requestedSlotNum !== undefined && requestedSlotNum !== null) {
+        slotNum = Number(requestedSlotNum)
+        const isSlotInUse = existingJobs.some(job => job.slotNum === slotNum)
+        if (isSlotInUse) return res.status(400).json({ error: `slot ${slotNum} is already in use` })
+        if (slotNum < 1 || slotNum > slots) return res.status(400).json({ error: `slot ${slotNum} is out of range (1-${slots})` })
+      } else {
+        slotNum = getNextAvailableSlot(existingJobs, slots)
+        if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
+      }
 
       const now = Date.now()
       const jobId = `job_${now}_${Math.floor(Math.random()*1e6)}`
@@ -191,6 +256,16 @@ const completePolishing = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
     const actor = requireActor(req, res); if (!actor) return
+
+    // Rate limiting check
+    const rateLimitAllowed = await checkRateLimit(actor, 'completePolishing', req)
+    if (!rateLimitAllowed) {
+      return res.status(429).json({
+        error: 'Too many requests. Please wait a moment before claiming rewards again.',
+        retryAfter: Math.ceil(RATE_LIMITS.completePolishing.windowMs / 1000)
+      })
+    }
+
     const jobId = String(req.body?.jobId || '')
     if (!jobId) return res.status(400).json({ error: 'jobId required' })
 
@@ -199,21 +274,37 @@ const completePolishing = onRequest((req, res) =>
 
       const { active, history, gems } = refs(actor)
       const jobRef = active.doc(jobId)
-      const snap = await jobRef.get()
-      if (!snap.exists) return res.status(404).json({ error: 'job not found' })
-      const job = snap.data()
       const now = Date.now()
-      if (now < job.finishAt) return res.status(400).json({ error: 'job still in progress' })
 
-      const amountIn = job.amountIn
-      const results = {}
-
-      for (let i = 0; i < amountIn; i++) {
-        const t = pickPolishedType()
-        results[t] = (results[t] || 0) + 1
-      }
+      // variables to be set in transaction
+      let jobData, results, amountIn
 
       await db.runTransaction(async (tx) => {
+        // Check job existence and status within transaction to prevent race conditions
+        const jobSnap = await tx.get(jobRef)
+        if (!jobSnap.exists) {
+          throw new Error('job not found or already completed')
+        }
+
+        jobData = jobSnap.data()
+        if (now < jobData.finishAt) {
+          throw new Error('job still in progress')
+        }
+
+        if (jobData.status !== 'active') {
+          throw new Error('job already completed')
+        }
+
+        amountIn = jobData.amountIn
+        results = {}
+
+        // Generate polishing results
+        for (let i = 0; i < amountIn; i++) {
+          const t = pickPolishedType()
+          results[t] = (results[t] || 0) + 1
+        }
+
+        // Update inventory
         const gSnap = await tx.get(gems)
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
         const updated = { ...cur }
@@ -223,12 +314,12 @@ const completePolishing = onRequest((req, res) =>
         })
 
         tx.set(gems, updated, { merge: true })
-        tx.set(history.doc(jobId), { 
-          ...job, 
-          status: 'done', 
+        tx.set(history.doc(jobId), {
+          ...jobData,
+          status: 'done',
           results,            // per-type counts
           totalOut: amountIn, // sum of polished
-          completedAt: now 
+          completedAt: now
         })
         tx.delete(jobRef)
       })

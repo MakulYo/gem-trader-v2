@@ -214,7 +214,12 @@
               </div>
               <div class="matrix-control">
                 <label for="matrix-sell-amount">Amount</label>
-                <input type="number" id="matrix-sell-amount" min="1" value="1">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input type="number" id="matrix-sell-amount" min="1" value="1" style="flex: 1; min-width: 80px; height: 38px; padding: 8px 12px; font-size: 16px; border: 1px solid #00d4ff; border-radius: 6px; background: rgba(0, 0, 0, 0.5); color: #fff;">
+                  <button id="matrix-max-fill-btn" class="action-btn secondary" style="padding: 8px 12px; font-size: 0.85rem; height: 38px; white-space: nowrap;">
+                    <i class="fas fa-fill"></i> Max
+                  </button>
+                </div>
               </div>
               <div class="matrix-control action">
                 <label>&nbsp;</label>
