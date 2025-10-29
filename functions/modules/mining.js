@@ -48,8 +48,46 @@ const SLOT_UNLOCK_COSTS = [
   25000   // Slot 10
 ]
 
-// Mining produces one unified rough_gems type
+// ---------- Speedboost integration ----------
+// Inventory doc path: players/{actor}/inventory/speedboost
+// Expected shape per slot:
+//   slot1: { rarity: 'Rare', boost: 0.25, template_id: <TBD> }
+// One cart per slot; highest rarity logic should be handled by the UI/assignment flow.
 
+// Rarity table kept for reference / validation (template_ids are placeholders)
+const SPEEDBOOST_RARITIES = {
+  Common:    { boost: 0.0625, template_ids: ['TBD_COMMON'] },
+  Uncommon:  { boost: 0.125,  template_ids: ['TBD_UNCOMMON'] },
+  Rare:      { boost: 0.25,   template_ids: ['TBD_RARE'] },
+  Epic:      { boost: 0.50,   template_ids: ['TBD_EPIC'] },
+  Legendary: { boost: 1.00,   template_ids: ['TBD_LEGENDARY'] }, // blend-only
+}
+
+// Read the assigned speedboost for a specific slot; return {boost, rarity, template_id}
+async function getSpeedboostForSlot(actor, slotNum) {
+  try {
+    const doc = await db.collection('players').doc(actor)
+      .collection('inventory').doc('speedboost').get()
+    if (!doc.exists) return { boost: 0, rarity: null, template_id: null }
+
+    const data = doc.data() || {}
+    const slotKey = `slot${slotNum}`
+    const sb = data[slotKey]
+
+    if (!sb || typeof sb.boost !== 'number') return { boost: 0, rarity: null, template_id: null }
+
+    // optional sanity clamp (e.g., avoid crazy numbers)
+    const safeBoost = Math.max(0, Math.min(2, Number(sb.boost) || 0)) // cap 200% just in case
+    const rarity = typeof sb.rarity === 'string' ? sb.rarity : null
+    const template_id = sb.template_id ?? null
+    return { boost: safeBoost, rarity, template_id }
+  } catch (e) {
+    console.error('[Speedboost] read error', actor, slotNum, e)
+    return { boost: 0, rarity: null, template_id: null }
+  }
+}
+
+// Mining produces one unified rough_gems type
 function refs(actor) {
   const root = db.collection('players').doc(actor)
   return {
@@ -137,6 +175,9 @@ const startMining = onRequest((req, res) =>
         }
       }
 
+      // (Optional) peek assigned speedboost for UI
+      const sb = await getSpeedboostForSlot(actor, slotNum)
+
       const now = Date.now()
       const jobId = `job_${now}_${Math.floor(Math.random()*1e6)}`
       const slotId = `slot_${slotNum}`
@@ -145,9 +186,11 @@ const startMining = onRequest((req, res) =>
       await active.doc(jobId).set({
         jobId, slotId, slotNum, actor, startedAt: now, finishAt, status: 'active',
         costTsdm: MINING_COST_TSDM,
-        slotMiningPower
+        slotMiningPower,
+        // snapshot current boost assignment for transparency (not used for calc; we re-read at completion)
+        speedboostPreview: { boost: sb.boost, rarity: sb.rarity, template_id: sb.template_id }
       })
-      res.json({ ok: true, jobId, slotId, slotNum, finishAt, slotMiningPower })
+      res.json({ ok: true, jobId, slotId, slotNum, finishAt, slotMiningPower, speedboostPreview: sb })
     } catch (e) {
       if (e.status === 403) return res.status(403).json({ error: 'season-locked' })
       console.error('[startMining]', e)
@@ -190,9 +233,15 @@ const completeMining = onRequest((req, res) =>
       const now = Date.now()
       if (now < job.finishAt) return res.status(400).json({ error: 'job still in progress' })
 
-      // reward: MP / 20 minimum 1
+      // base reward: MP / 20, minimum 1
       const slotMP = Number(job.slotMiningPower) || 0
-      const amt = Math.max(1, Math.floor(slotMP / 20))
+      const baseYield = Math.max(1, Math.floor(slotMP / 20))
+
+      // read current assigned speedboost for this slot
+      const { boost: sbBoost, rarity: sbRarity, template_id: sbTemplate } = await getSpeedboostForSlot(actor, job.slotNum)
+      const boostMultiplier = 1 + (sbBoost || 0)
+      const amt = Math.max(1, Math.floor(baseYield * boostMultiplier))
+
       const key = 'rough_gems'
 
       await db.runTransaction(async (tx) => {
@@ -205,13 +254,31 @@ const completeMining = onRequest((req, res) =>
           status: 'done', 
           completedAt: now, 
           roughKey: key, 
+          baseYield,
           yieldAmt: amt,
-          slotMiningPower: slotMP
+          slotMiningPower: slotMP,
+          speedboostApplied: {
+            boost: sbBoost || 0,
+            multiplier: boostMultiplier,
+            rarity: sbRarity || null,
+            template_id: sbTemplate || null
+          }
         })
         tx.delete(jobRef)
       })
 
-      res.json({ ok: true, result: { roughKey: key, yieldAmt: amt, completedAt: now, slotMiningPower: slotMP } })
+      res.json({ 
+        ok: true, 
+        result: { 
+          roughKey: key, 
+          baseYield, 
+          yieldAmt: amt, 
+          multiplier: boostMultiplier, 
+          completedAt: now, 
+          slotMiningPower: slotMP,
+          speedboost: { boost: sbBoost || 0, rarity: sbRarity || null, template_id: sbTemplate || null }
+        } 
+      })
     } catch (e) {
       if (e.status === 403) return res.status(403).json({ error: 'season-locked' })
       console.error('[completeMining]', e)
@@ -266,4 +333,28 @@ const unlockMiningSlot = onRequest((req, res) =>
   })
 )
 
-module.exports = { startMining, getActiveMining, completeMining, unlockMiningSlot }
+// (Optional) Helper for UI: GET /getSpeedboost?actor=...
+const getSpeedboost = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' })
+    const actor = requireActor(req, res); if (!actor) return
+    try {
+      const doc = await db.collection('players').doc(actor)
+        .collection('inventory').doc('speedboost').get()
+      res.json({ ok: true, data: doc.exists ? (doc.data() || {}) : {} })
+    } catch (e) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+)
+
+module.exports = { 
+  startMining, 
+  getActiveMining, 
+  completeMining, 
+  unlockMiningSlot,
+  getSpeedboost,          // optional UI helper
+  // exported for possible external reference
+  SPEEDBOOST_RARITIES, 
+  getSpeedboostForSlot 
+}
