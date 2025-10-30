@@ -83,6 +83,8 @@ class TSDGEMSGame {
             boosts: {}
         };
         this.setupMobileNavigation();
+        // Track last notification to avoid rapid duplicates
+        this._lastNotification = { text: null, type: null, time: 0 };
         console.log('[Game] TSDGEMSGame instance created');
     }
 
@@ -147,12 +149,12 @@ class TSDGEMSGame {
     applyBackendData(detail = {}) {
         const { player = {}, cities = [] } = detail;
 
-        // Button label with actor
+        // Do not override wallet button label; wallet.js manages UI (shows actor)
+        // Expose actor as data attribute if available
         const actor = player.account || player.id || '';
-        const btn = document.querySelector('.connect-wallet-btn');
+        const btn = document.querySelector('#connectWalletBtn');
         if (btn && actor) {
-            btn.textContent = `Connected: ${actor}`;
-            btn.classList.add('connected');
+            btn.setAttribute('data-actor', actor);
         }
 
         // ---- Update header + dashboard cards ----
@@ -259,23 +261,59 @@ class TSDGEMSGame {
         if (toggleIcon) toggleIcon.className = 'fas fa-bars';
     }
 
-    showNotification(message, type = 'info') {
-        const notifications = document.getElementById('notifications');
-        if (!notifications) {
-            console.log('[Notification]', type, ':', message);
+    showNotification(message, type = 'info', options = {}) {
+        const { timeout = 3000 } = options;
+
+        // De-dupe rapid identical notifications (within 2s)
+        const now = Date.now();
+        if (
+            this._lastNotification &&
+            this._lastNotification.text === message &&
+            this._lastNotification.type === type &&
+            now - this._lastNotification.time < 2000
+        ) {
             return;
         }
-        
+        this._lastNotification = { text: message, type, time: now };
+
+        // Ensure a global notifications container directly under <body>
+        let container = document.getElementById('notifications');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'notifications';
+            container.className = 'notifications';
+            document.body.appendChild(container);
+        } else if (container.closest('.scale-wrapper')) {
+            // Move out of scaled wrapper to avoid transform issues and header overlap
+            document.body.appendChild(container);
+        }
+
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
-        notification.textContent = message;
-        
-        notifications.appendChild(notification);
-        
-        // Auto-remove after 5 seconds
+        notification.innerHTML = `${message} <button class="notification-close" aria-label="Close">&times;</button>`;
+
+        // Enforce a maximum of 3 notifications at a time
+        while (container.children.length >= 3) {
+            const oldest = container.firstElementChild;
+            if (oldest) oldest.remove();
+            else break;
+        }
+
+        container.appendChild(notification);
+
+        const closeBtn = notification.querySelector('.notification-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                notification.classList.add('hide');
+                setTimeout(() => notification.remove(), 300);
+            });
+        }
+
+        // Auto-remove after timeout (default 3s) with fade-out
         setTimeout(() => {
-            notification.remove();
-        }, 5000);
+            notification.classList.add('hide');
+            setTimeout(() => notification.remove(), 300);
+        }, timeout);
     }
 
     updateHeaderStats() {

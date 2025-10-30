@@ -8,6 +8,8 @@ class LeaderboardGame extends TSDGEMSGame {
         this.leaderboardData = null;
         this.pageSize = 15;
         this.currentPage = 1;
+        this._loading = false;
+        this._lastLoad = 0;
         this.init();
     }
 
@@ -52,6 +54,12 @@ class LeaderboardGame extends TSDGEMSGame {
     }
 
     async loadLeaderboard() {
+        // Prevent duplicate loads and rapid re-requests
+        if (this._loading) return;
+        const now = Date.now();
+        if (this._lastLoad && now - this._lastLoad < 3000) return;
+        this._loading = true;
+        this._lastLoad = now;
         try {
             this.showNotification('Loading leaderboard...', 'info');
             
@@ -71,6 +79,8 @@ class LeaderboardGame extends TSDGEMSGame {
         } catch (error) {
             console.error('[Leaderboard] Failed to load:', error);
             this.showNotification('Failed to load leaderboard: ' + error.message, 'error');
+        } finally {
+            this._loading = false;
         }
     }
 

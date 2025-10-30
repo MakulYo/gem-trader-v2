@@ -302,7 +302,7 @@ class TradingGame extends TSDGEMSGame {
             updateEl.innerHTML = `
                 <i class="fas fa-clock"></i> Last updated: ${lastUpdate}
                 <br>
-                <i class="fas fa-bitcoin"></i> BTC: $${btcPrice.toLocaleString()} (${source})
+                <i class="fab fa-btc"></i> BTC: $${btcPrice.toLocaleString()} (${source})
             `;
         }
 
@@ -362,7 +362,27 @@ class TradingGame extends TSDGEMSGame {
                     });
                 }
             });
-            gemTypes = Array.from(allGemTypes).sort();
+            // Sort gem types by rarity order
+            const rarityOrder = [
+                'polished_diamond',
+                'polished_ruby',
+                'polished_sapphire',
+                'polished_emerald',
+                'polished_jade',
+                'polished_tanzanite',
+                'polished_opal',
+                'polished_aquamarine',
+                'polished_topaz',
+                'polished_amethyst'
+            ];
+            const orderIndex = (gem) => {
+                const key = gem.startsWith('polished_') || gem.startsWith('rough_')
+                    ? gem.replace('rough_', 'polished_')
+                    : `polished_${gem}`;
+                const idx = rarityOrder.indexOf(key);
+                return idx === -1 ? 999 : idx;
+            };
+            gemTypes = Array.from(allGemTypes).sort((a, b) => orderIndex(a) - orderIndex(b));
         }
         
         console.log('[Trading] Extracted cityIds:', cityIds);
@@ -472,6 +492,58 @@ class TradingGame extends TSDGEMSGame {
         
         return this.polishedGemsCount[gemKey] || 0;
     }
+
+  getCurrentQuote(city, gem, amount) {
+        const boost = this.boostsData?.[city]?.[gem] || 0;
+        const basePrice = this.basePriceData?.basePrice || 0;
+        const gemBoost = this.getGemBoostForType(gem);
+        const cityMultiplier = 1 + boost;
+        const gemMultiplier = 1 + gemBoost;
+        const estimatedPayout = basePrice * cityMultiplier * gemMultiplier * (parseInt(amount) || 1);
+        return { basePrice, boost, gemBoost, estimatedPayout };
+  }
+
+  async confirmPriceChangeIfNeeded(oldQuote, newQuote) {
+        const changed = oldQuote && newQuote && (
+            Math.abs(oldQuote.basePrice - newQuote.basePrice) > 1e-9 ||
+            Math.abs(oldQuote.boost - newQuote.boost) > 1e-9 ||
+            Math.abs(oldQuote.gemBoost - newQuote.gemBoost) > 1e-9
+        );
+        if (!changed) return true;
+
+        return await new Promise((resolve) => {
+            // Build lightweight confirmation modal
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal" style="max-width: 520px;">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-exclamation-triangle"></i> Price Changed</h3>
+                        <button class="modal-close" id="price-change-close"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="color:#ccc; margin-bottom:12px;">The market changed right before your sale. Do you want to proceed with the new conditions?</p>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                          <div style="color:#888">Old payout</div>
+                          <div style="text-align:right; color:#888">${oldQuote.estimatedPayout.toFixed(2)} Game $</div>
+                          <div style="color:#fff">New payout</div>
+                          <div style="text-align:right; color:#fff">${newQuote.estimatedPayout.toFixed(2)} Game $</div>
+                        </div>
+                        <div class="payment-actions" style="justify-content:flex-end;">
+                          <button class="action-btn secondary" id="price-change-cancel"><i class="fas fa-times"></i> Cancel</button>
+                          <button class="action-btn primary" id="price-change-confirm"><i class="fas fa-check"></i> Proceed</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+
+            const cleanup = (val) => { modal.remove(); resolve(val); };
+            modal.querySelector('#price-change-close')?.addEventListener('click', () => cleanup(false));
+            modal.querySelector('#price-change-cancel')?.addEventListener('click', () => cleanup(false));
+            modal.querySelector('#price-change-confirm')?.addEventListener('click', () => cleanup(true));
+        });
+  }
 
     attachMatrixCellClickHandlers() {
         const cells = document.querySelectorAll('.boost-cell');
@@ -682,14 +754,38 @@ class TradingGame extends TSDGEMSGame {
                     return;
                 }
 
-                // Show loading state
-                this.setSellButtonLoading(true, finalSellBtn);
+                // Capture current quote before refreshing
+                const oldQuote = this.getCurrentQuote(city, gem, amount);
 
+                // Fetch latest price/boost to detect changes
                 try {
+                    const [freshBasePrice, freshMatrix] = await Promise.all([
+                        this.backendService.getBasePrice(),
+                        this.backendService.getCityMatrix()
+                    ]);
+
+                    // Update local caches
+                    this.basePriceData = freshBasePrice;
+                    if (freshMatrix && freshMatrix.boosts) {
+                        let boosts = freshMatrix.boosts;
+                        if (Array.isArray(boosts)) {
+                            const obj = {}; boosts.forEach(c => c?.id && (obj[c.id] = c.bonuses)); boosts = obj;
+                        }
+                        this.boostsData = boosts;
+                    }
+
+                    const newQuote = this.getCurrentQuote(city, gem, amount);
+
+                    const changed = Math.abs(newQuote.estimatedPayout - oldQuote.estimatedPayout) > 0.0001;
+
+                    const proceed = await this.confirmPriceChangeIfNeeded(oldQuote, newQuote);
+                    if (!proceed) return;
+
+                    this.setSellButtonLoading(true, finalSellBtn);
                     await this.handleGemSale(city, gem, amount);
                 } catch (error) {
-                    console.error('[Trading] Error selling gems:', error);
-                    this.showNotification('Failed to sell gems: ' + error.message, 'error');
+                    console.error('[Trading] Error before selling:', error);
+                    this.showNotification('Failed to prepare sale: ' + error.message, 'error');
                 } finally {
                     this.setSellButtonLoading(false, finalSellBtn);
                 }
@@ -1549,14 +1645,46 @@ class TradingGame extends TSDGEMSGame {
         return 0;
     }
 
-    async handleGemSale(cityId, gemType, amount) {
+    async handleGemSale(cityId, gemType, amount, expectedQuote = null) {
         try {
             console.log(`[Trading] Selling ${amount}x ${gemType} in ${cityId} for ${this.currentActor}`);
             
             // Backend now accepts both formats (polished_emerald or Emerald)
-            const result = await this.backendService.sellGems(this.currentActor, gemType, amount, cityId);
+            const payloadExpected = expectedQuote ? {
+                basePrice: this.basePriceData?.basePrice || 0,
+                cityBoost: this.boostsData?.[cityId]?.[gemType] || 0,
+                gemBoost: this.getGemBoostForType(gemType),
+                totalPayout: Math.floor((expectedQuote.estimatedPayout || 0))
+            } : undefined;
+
+            let result;
+            try {
+                result = await this.backendService.sellGems(this.currentActor, gemType, amount, cityId, payloadExpected);
+            } catch (e) {
+                // Handle 409 price_changed from backend
+                if (e && e.status === 409 && e.data?.error === 'price_changed') {
+                    const server = e.data.server || {};
+                    const client = e.data.client || {};
+                    const proceed = await this.confirmPriceChangeIfNeeded(
+                        { estimatedPayout: client.totalPayout || 0, basePrice: client.basePrice, boost: client.cityBoostDecimal, gemBoost: client.gemBoost },
+                        { estimatedPayout: server.totalPayout || 0, basePrice: server.basePrice, boost: server.cityBoostDecimal, gemBoost: server.gemBoost }
+                    );
+                    if (!proceed) return;
+                    // Retry without expectation (accept server state)
+                    result = await this.backendService.sellGems(this.currentActor, gemType, amount, cityId);
+                } else {
+                    throw e;
+                }
+            }
             
             if (result.success) {
+                // Post-verify payout matches expected (if provided)
+                if (expectedQuote) {
+                    const expectedRounded = Math.floor(expectedQuote.estimatedPayout);
+                    if (Math.abs((result.totalPayout || 0) - expectedRounded) !== 0) {
+                        console.warn('[Trading] Payout mismatch. expected=', expectedRounded, 'actual=', result.totalPayout);
+                    }
+                }
                 // Format gem name nicely
                 const gemName = this.formatGemName(gemType);
                 

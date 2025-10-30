@@ -48,6 +48,7 @@ class PolishingGame extends TSDGEMSGame {
         this.isLoggedIn = false;
         this.currentActor = null;
         this.activeJobs = [];
+        this.pendingCompletionJobs = new Set();
         this.effectiveSlots = 0;
         this.refreshInterval = null;
         this.timerInterval = null;
@@ -94,7 +95,7 @@ class PolishingGame extends TSDGEMSGame {
             
             const connectBtn = document.getElementById('connectWalletBtn');
             if (connectBtn) {
-                connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
+                // Let wallet.js control the button label; only disable here
                 connectBtn.disabled = true;
             }
             
@@ -113,7 +114,6 @@ class PolishingGame extends TSDGEMSGame {
                 
                 const connectBtn = document.getElementById('connectWalletBtn');
                 if (connectBtn) {
-                    connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
                     connectBtn.disabled = true;
                 }
                 
@@ -210,9 +210,7 @@ class PolishingGame extends TSDGEMSGame {
             this.currentActor = actor;
             this.isLoggedIn = true;
 
-            if (connectBtn) {
-                connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
-            }
+            // Button label handled by wallet.js
             
             this.showNotification(`✅ Connected as ${actor}`, 'success');
             
@@ -376,7 +374,8 @@ class PolishingGame extends TSDGEMSGame {
             console.log('[Polishing] Active polishing jobs response:', data);
             
             const jobs = data.jobs || [];
-            this.activeJobs = jobs;
+            // Filter out jobs that we have already claimed optimistically
+            this.activeJobs = jobs.filter(j => !this.pendingCompletionJobs.has(j.jobId));
             
             console.log('[Polishing] Active jobs:', this.activeJobs.length);
             console.log('[Polishing] Effective slots:', this.effectiveSlots);
@@ -585,19 +584,19 @@ class PolishingGame extends TSDGEMSGame {
                                 <i class="fas fa-gem"></i> Polishing ${job.amountIn.toLocaleString()} Rough Gems
                             </p>
                             <p style="font-size: 2.5em; font-weight: bold; color: ${isComplete ? '#00ff64' : '#ff9500'}; margin-bottom: 20px;">
-                                <span class="timer" data-finish="${job.finishAt}">
+                                <span class="timer" data-finish="${job.finishAt}" data-job-id="${job.jobId}">
                                     ${this.formatTime(remaining)}
                                 </span>
                             </p>
                             <div class="progress-bar" style="margin: 20px 0; background: rgba(255,255,255,0.1); border-radius: 8px; height: 20px; overflow: hidden;">
-                                <div class="progress-fill" style="width: ${progress}%; background: ${isComplete ? 'linear-gradient(90deg, #00ff64, #00aa44)' : 'linear-gradient(90deg, #ff9500, #ff6b00)'}; height: 100%; transition: width 1s linear; ${isComplete ? 'animation: pulse 1s infinite;' : ''}"></div>
+                                <div class="progress-fill" style="width: ${progress}%; background: ${isComplete ? 'linear-gradient(90deg, #00ff64, #00aa44)' : 'linear-gradient(90deg, #ff9500, #ff6b00)'}; height: 100%; transition: width 1s linear;"></div>
                             </div>
                             <p style="color: ${isComplete ? '#00ff64' : '#888'}; font-size: 1.2em; margin-top: 15px;">
                                 ${isComplete ? '✅ Polishing Complete!' : `${Math.floor(progress)}% Complete`}
                             </p>
                         </div>
                         ${isComplete ? `
-                            <button class="action-btn primary" onclick="game.completePolishing('${job.jobId}')" style="background: linear-gradient(135deg, #00ff64, #00cc50); border: 2px solid #00ff64; animation: pulse 2s infinite; font-size: 1.2em; padding: 18px; font-weight: bold; box-shadow: 0 4px 20px rgba(0, 255, 100, 0.4);">
+                            <button class="action-btn claim-btn" onclick="game.completePolishing('${job.jobId}')">
                                 <i class="fas fa-gift"></i> CLAIM REWARDS
                             </button>
                         ` : ''}
@@ -1107,6 +1106,11 @@ class PolishingGame extends TSDGEMSGame {
         try {
             console.log('[Polishing] Completing polishing job:', jobId);
             
+            // Optimistic UI: remove job locally so the slot returns to normal instantly
+            this.activeJobs = this.activeJobs.filter(j => j.jobId !== jobId);
+            this.pendingCompletionJobs.add(jobId);
+            this.renderPolishingSlots();
+
             const response = await fetch(`${this.backendService.apiBase}/completePolishing`, {
                 method: 'POST',
                 headers: {
@@ -1133,8 +1137,14 @@ class PolishingGame extends TSDGEMSGame {
             // Show reward popup with actual results
             this.showRewardPopup(totalOut, 'Polished Gems', results);
             
-            // Refresh polishing data
-            await this.fetchActivePolishingJobs(this.currentActor);
+            // Delay server sync slightly to avoid state bouncing
+            await new Promise(r => setTimeout(r, 1500));
+            // Retry until the job disappears server-side
+            for (let attempt = 0; attempt < 3; attempt++) {
+                await this.fetchActivePolishingJobs(this.currentActor);
+                if (!this.activeJobs.find(j => j.jobId === jobId)) break;
+                await new Promise(r => setTimeout(r, 1500));
+            }
             await this.fetchGemInventory(this.currentActor);
             
             // Reload dashboard to update balances
@@ -1158,6 +1168,7 @@ class PolishingGame extends TSDGEMSGame {
                 claimButton.innerHTML = '<i class="fas fa-gift"></i> CLAIM REWARDS';
                 claimButton.style.opacity = '1';
             }
+            this.pendingCompletionJobs.delete(jobId);
         }
     }
 
@@ -1560,23 +1571,27 @@ class PolishingGame extends TSDGEMSGame {
             clearInterval(this.timerInterval);
         }
         
+        // Track completed jobs to avoid repeated full re-renders while finished
+        if (!this.completedJobsRendered) this.completedJobsRendered = new Set();
         this.timerInterval = setInterval(() => {
             const timers = document.querySelectorAll('.timer');
-            let hasCompleted = false;
+            let shouldRerender = false;
             
             timers.forEach(timer => {
                 const finishAt = parseInt(timer.dataset.finish);
+                const jobId = timer.dataset.jobId;
                 const now = Date.now();
                 const remaining = Math.max(0, finishAt - now);
                 
                 timer.textContent = this.formatTime(remaining);
                 
-                if (remaining === 0) {
-                    hasCompleted = true;
+                if (remaining === 0 && jobId && !this.completedJobsRendered.has(jobId)) {
+                    this.completedJobsRendered.add(jobId);
+                    shouldRerender = true;
                 }
             });
             
-            if (hasCompleted) {
+            if (shouldRerender) {
                 this.renderPolishingSlots();
             }
         }, 1000);

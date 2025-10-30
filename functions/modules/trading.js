@@ -198,6 +198,27 @@ const sellGems = onRequest((req, res) =>
       console.log(`[Trading] Calculation: ${basePrice} * ${amount} * ${cityMultiplier} * ${gemMultiplier} = ${totalPayout}`)
       console.log(`[Trading] City boost: ${(cityBoostDecimal * 100).toFixed(1)}%, Gem boost: ${(gemBoost * 100).toFixed(0)}%`)
       
+      // Optional client expectation check to prevent race-condition sells
+      const expected = req.body?.expected
+      if (expected) {
+        const expBase = Number(expected.basePrice ?? expected.base ?? 0)
+        const expCity = Number(expected.cityBoost ?? expected.cityBoostDecimal ?? 0)
+        const expGem  = Number(expected.gemBoost ?? 0)
+        const expTotal = typeof expected.totalPayout === 'number'
+          ? Math.floor(expected.totalPayout)
+          : Math.floor(expBase * amount * (1 + expCity) * (1 + expGem))
+
+        const mismatch = expTotal !== totalPayout
+        if (mismatch) {
+          return res.status(409).json({
+            error: 'price_changed',
+            message: 'Quote changed before execution',
+            server: { basePrice, cityBoostDecimal, gemBoost, totalPayout },
+            client: { basePrice: expBase, cityBoostDecimal: expCity, gemBoost: expGem, totalPayout: expTotal }
+          })
+        }
+      }
+
       // Execute transaction
       await db.runTransaction(async (tx) => {
         const playerSnap = await tx.get(root)

@@ -91,7 +91,7 @@ class DashboardGame extends TSDGEMSGame {
             // Update button state
             const connectBtn = document.getElementById('connectWalletBtn');
             if (connectBtn) {
-                connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
+                // Let wallet.js control the button label; only disable here
                 connectBtn.disabled = true;
             }
             
@@ -173,7 +173,6 @@ class DashboardGame extends TSDGEMSGame {
                 // Update button state
                 const connectBtn = document.getElementById('connectWalletBtn');
                 if (connectBtn) {
-                    connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
                     connectBtn.disabled = true;
                 }
                 
@@ -244,10 +243,7 @@ class DashboardGame extends TSDGEMSGame {
             this.currentActor = actor;
             this.isLoggedIn = true;
 
-            // Update button to success state
-            if (connectBtn) {
-                connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
-            }
+            // Button label is handled by wallet.js; nothing to change here
             
             this.showNotification(`Connected as ${actor}`, 'success');
             

@@ -570,14 +570,25 @@ class BackendService {
      * @param {string} cityId - City ID for boost calculation
      * @returns {Promise<any>}
      */
-    async sellGems(actor, gemType, amount, cityId) {
+    async sellGems(actor, gemType, amount, cityId, expected) {
         console.log(`[Backend] Selling ${amount}x ${gemType} in ${cityId} for ${actor}`);
-        return await this.post('/sellGems', { 
-            actor, 
-            gemType, 
-            amount, 
-            cityId 
+        const url = `${this.apiBase}/sellGems`;
+        const payload = { actor, gemType, amount, cityId };
+        if (expected) payload.expected = expected;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
+        if (!response.ok) {
+            let data = null;
+            try { data = await response.json(); } catch (e) { /* ignore */ }
+            const err = new Error(`POST /sellGems failed: ${response.status}`);
+            err.status = response.status;
+            err.data = data;
+            throw err;
+        }
+        return await response.json();
     }
 
     /**

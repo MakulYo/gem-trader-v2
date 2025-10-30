@@ -49,6 +49,8 @@ class MiningGame extends TSDGEMSGame {
         this.stakedWorkers = {}; // { slotNum: [worker objects] }
         this.selectedWorkers = []; // For multi-selection when staking
         this.selectedWorkersForUnstake = new Set(); // For multi-selection when unstaking
+        this.completedJobsRendered = new Set(); // Track jobs that already triggered a completion re-render
+        this.pendingCompletionJobs = new Set(); // Jobs we optimistically removed
         
         this.init();
     }
@@ -112,7 +114,7 @@ class MiningGame extends TSDGEMSGame {
             
             const connectBtn = document.getElementById('connectWalletBtn');
             if (connectBtn) {
-                connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
+                // Let wallet.js control the button label; only disable here
                 connectBtn.disabled = true;
             }
             
@@ -132,7 +134,6 @@ class MiningGame extends TSDGEMSGame {
                 
                 const connectBtn = document.getElementById('connectWalletBtn');
                 if (connectBtn) {
-                    connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
                     connectBtn.disabled = true;
                 }
                 
@@ -230,9 +231,7 @@ class MiningGame extends TSDGEMSGame {
             this.currentActor = actor;
             this.isLoggedIn = true;
 
-            if (connectBtn) {
-                connectBtn.innerHTML = '<i class="fas fa-check"></i> Connected';
-            }
+            // Button label handled by wallet.js
             
             this.showNotification(`✅ Connected as ${actor}`, 'success');
             
@@ -415,7 +414,8 @@ class MiningGame extends TSDGEMSGame {
             console.log('[Mining] Active mining jobs response:', data);
             
             const jobs = data.jobs || [];
-            this.activeJobs = jobs;
+            // Filter out jobs that were just claimed optimistically
+            this.activeJobs = jobs.filter(j => !this.pendingCompletionJobs.has(j.jobId));
             
             console.log('[Mining] Active jobs:', this.activeJobs.length);
             console.log('[Mining] Effective slots:', this.effectiveSlots);
@@ -646,19 +646,19 @@ class MiningGame extends TSDGEMSGame {
                                 </div>
                             </div>
                             <p style="font-size: 2.5em; font-weight: bold; color: ${isComplete ? '#00ff64' : '#00d4ff'}; margin-bottom: 20px;">
-                                <span class="timer" data-finish="${job.finishAt}">
+                                <span class="timer" data-finish="${job.finishAt}" data-job-id="${job.jobId}">
                                     ${this.formatTime(remaining)}
                                 </span>
                             </p>
                             <div class="progress-bar" style="margin: 20px 0; background: rgba(255,255,255,0.1); border-radius: 8px; height: 20px; overflow: hidden;">
-                                <div class="progress-fill" style="width: ${progress}%; background: ${isComplete ? 'linear-gradient(90deg, #00ff64, #00aa44)' : 'linear-gradient(90deg, #00d4ff, #0088ff)'}; height: 100%; transition: width 1s linear; ${isComplete ? 'animation: pulse 1s infinite;' : ''}"></div>
+                                <div class="progress-fill" style="width: ${progress}%; background: ${isComplete ? 'linear-gradient(90deg, #00ff64, #00aa44)' : 'linear-gradient(90deg, #00d4ff, #0088ff)'}; height: 100%; transition: width 1s linear;"></div>
                             </div>
                             <p style="color: ${isComplete ? '#00ff64' : '#888'}; font-size: 1.2em; margin-top: 15px;">
                                 ${isComplete ? '✅ Mining Complete!' : `${Math.floor(progress)}% Complete`}
                             </p>
                         </div>
                         ${isComplete ? `
-                            <button class="action-btn primary" onclick="game.completeMining('${job.jobId}')" style="background: linear-gradient(135deg, #00ff64, #00cc50); border: 2px solid #00ff64; animation: pulse 2s infinite; font-size: 1.2em; padding: 18px; font-weight: bold; box-shadow: 0 4px 20px rgba(0, 255, 100, 0.4);">
+                            <button class="action-btn claim-btn" onclick="game.completeMining('${job.jobId}')">
                                 <i class="fas fa-gift"></i> CLAIM REWARDS
                             </button>
                         ` : ''}
@@ -1039,6 +1039,12 @@ class MiningGame extends TSDGEMSGame {
 
             // Show reward popup immediately with estimated values
             this.showRewardPopup(estimatedAmount, 'Rough Gems', estimatedMP);
+
+            // Optimistic UI: remove the completed job locally and update UI immediately
+            this.activeJobs = this.activeJobs.filter(j => j.jobId !== jobId);
+            this.pendingCompletionJobs.add(jobId);
+            this.renderMiningSlots();
+            this.updateMiningStats();
             
             const response = await fetch(`${this.backendService.apiBase}/completeMining`, {
                 method: 'POST',
@@ -1064,8 +1070,14 @@ class MiningGame extends TSDGEMSGame {
             const amount = result.yieldAmt;
             const slotMP = result.slotMiningPower || 0;
             
-            // Refresh mining data to clear the completed job
-            await this.fetchActiveMiningJobs(this.currentActor);
+            // Delay server sync slightly to avoid state bouncing
+            await new Promise(r => setTimeout(r, 1500));
+            // Retry a few times until the job disappears server-side
+            for (let attempt = 0; attempt < 3; attempt++) {
+                await this.fetchActiveMiningJobs(this.currentActor);
+                if (!this.activeJobs.find(j => j.jobId === jobId)) break;
+                await new Promise(r => setTimeout(r, 1500));
+            }
             
             // Reload dashboard to update balances
             const dashboard = await this.backendService.getDashboard(this.currentActor);
@@ -1092,6 +1104,8 @@ class MiningGame extends TSDGEMSGame {
                 claimButton.innerHTML = '<i class="fas fa-gift"></i> CLAIM REWARDS';
                 claimButton.style.opacity = '1';
             }
+            // Remove from pending set after sync attempts
+            this.pendingCompletionJobs.delete(jobId);
         }
     }
 
@@ -2141,22 +2155,23 @@ class MiningGame extends TSDGEMSGame {
         
         this.timerInterval = setInterval(() => {
             const timers = document.querySelectorAll('.timer');
-            let hasCompleted = false;
+            let shouldRerender = false;
             
             timers.forEach(timer => {
                 const finishAt = parseInt(timer.dataset.finish);
+                const jobId = timer.dataset.jobId;
                 const now = Date.now();
                 const remaining = Math.max(0, finishAt - now);
                 
                 timer.textContent = this.formatTime(remaining);
                 
-                if (remaining === 0) {
-                    hasCompleted = true;
+                if (remaining === 0 && jobId && !this.completedJobsRendered.has(jobId)) {
+                    this.completedJobsRendered.add(jobId);
+                    shouldRerender = true; // Trigger a single re-render on first completion
                 }
             });
             
-            // Re-render if any job completed
-            if (hasCompleted) {
+            if (shouldRerender) {
                 this.renderMiningSlots();
             }
         }, 1000);
