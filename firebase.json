@@ -1,7 +1,7 @@
 {
   "hosting": [
     {
-      "site": "tsdgems-trading",
+      "target": "prod",
       "public": "web",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [
@@ -49,7 +49,7 @@
       ]
     },
     {
-      "site": "tsdgems-dev",     
+      "target": "dev",
       "public": "web",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [

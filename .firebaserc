@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "tsdgems-trading"
-  }
+  },
+  "targets": {
+    "tsdgems-trading": {
+      "hosting": {
+        "prod": [
+          "tsdgems-trading"
+        ],
+        "dev": [
+          "tsdgems-dev"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
