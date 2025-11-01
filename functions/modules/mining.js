@@ -30,7 +30,7 @@ async function ensureSeasonActiveOrThrow() {
   }
 }
 
-const MINING_DURATION_MS = 30 * 1000   // 30 seconds (for testing)
+const MINING_DURATION_MS = 3 * 60 * 60 * 1000   // 3 hours
 const MINING_COST_TSDM   = 50          // recorded only (no debit yet)
 const MAX_SLOTS          = 10
 

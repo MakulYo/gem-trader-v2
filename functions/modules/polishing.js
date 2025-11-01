@@ -86,7 +86,7 @@ async function ensureSeasonActiveOrThrow() {
   }
 }
 
-const POLISHING_DURATION_MS = 30 * 1000  // 30 seconds (for testing)
+const POLISHING_DURATION_MS = 1 * 60 * 60 * 1000  // 1 hour
 const MAX_SLOTS = 10
 const MAX_AMOUNT_PER_SLOT = 500
 
