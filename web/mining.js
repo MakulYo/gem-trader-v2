@@ -623,26 +623,30 @@ class MiningGame extends TSDGEMSGame {
                 const expectedRewards = Math.max(1, Math.floor(slotMP / 20));
                 
                 return `
-                    <div class="mining-slot active ${isComplete ? 'complete' : 'in-progress'}" data-job-id="${job.jobId}" style="border: 2px solid ${isComplete ? '#00ff64' : '#00d4ff'}; box-shadow: 0 0 20px ${isComplete ? 'rgba(0, 255, 100, 0.3)' : 'rgba(0, 212, 255, 0.3)'};">
+                    <div class="mining-slot active ${isComplete ? 'complete' : 'in-progress'}" data-job-id="${job.jobId}" style="border: 2px solid ${isComplete ? '#00ff64' : '#00d4ff'}; box-shadow: 0 0 20px ${isComplete ? 'rgba(0, 255, 100, 0.3)' : 'rgba(0, 212, 255, 0.3)'}; display: flex; flex-direction: column;">
                         <div class="slot-header">
                             <h4>Slot ${slot.slotNum} ${isComplete ? '💎' : '⛏️'}</h4>
                             <span class="slot-status ${isComplete ? 'complete' : 'active'}" style="background: ${isComplete ? '#00ff64' : '#00d4ff'}; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: bold;">
                                 ${isComplete ? '✅ Ready to Collect' : '⛏️ Mining in Progress'}
                             </span>
                         </div>
-                        <div class="slot-info" style="padding: 30px 20px; text-align: center;">
-                            <div style="display: flex; justify-content: space-around; margin-bottom: 20px; padding: 15px; background: rgba(0, 0, 0, 0.3); border-radius: 8px;">
-                                <div style="text-align: center;">
-                                    <p style="color: #888; font-size: 0.85em; margin-bottom: 5px;">Mining Power</p>
-                                    <p style="color: #00d4ff; font-size: 1.3em; font-weight: bold;">
-                                        <i class="fas fa-hammer"></i> ${slotMP.toLocaleString()} MP
-                                    </p>
+                        <div class="slot-info" style="padding: 30px 20px; text-align: center; display: flex; flex-direction: column; flex-grow: 1;">
+                            <div class="mining-stats-block">
+                                <div class="mining-stat mining-stat-power">
+                                    <span class="mining-stat-label">Mining Power</span>
+                                    <span class="mining-stat-value">
+                                        <i class="fas fa-hammer"></i>
+                                        <span>${slotMP.toLocaleString()} MP</span>
+                                    </span>
                                 </div>
-                                <div style="text-align: center;">
-                                    <p style="color: #888; font-size: 0.85em; margin-bottom: 5px;">${isComplete ? 'Rewards' : 'Expected'}</p>
-                                    <p style="color: #ffd700; font-size: 1.3em; font-weight: bold;">
-                                        <i class="fas fa-gem"></i> ${expectedRewards.toLocaleString()} Gems
-                                    </p>
+                                <div class="mining-stat mining-stat-reward">
+                                    <span class="mining-stat-label">
+                                        <i class="fas fa-gem"></i>
+                                        <span>${isComplete ? 'Rewards' : 'Expected'}</span>
+                                    </span>
+                                    <span class="mining-stat-value">
+                                        ${expectedRewards.toLocaleString()} Rough Gems
+                                    </span>
                                 </div>
                             </div>
                             <p style="font-size: 2.5em; font-weight: bold; color: ${isComplete ? '#00ff64' : '#00d4ff'}; margin-bottom: 20px;">
@@ -658,7 +662,7 @@ class MiningGame extends TSDGEMSGame {
                             </p>
                         </div>
                         ${isComplete ? `
-                            <button class="action-btn claim-btn" onclick="game.completeMining('${job.jobId}')">
+                            <button class="action-btn claim-btn" style="margin: 0 20px 20px; margin-top: auto; align-self: stretch;" onclick="game.completeMining('${job.jobId}')">
                                 <i class="fas fa-gift"></i> CLAIM REWARDS
                             </button>
                         ` : ''}
@@ -1584,7 +1588,7 @@ class MiningGame extends TSDGEMSGame {
                         <button id="confirm-stake-workers" class="action-btn primary" style="flex: 1;" onclick="game.confirmStakeWorkers(${slotNum})" disabled>
                             <i class="fas fa-check"></i> Stake Selected Workers
                         </button>
-                        <button class="action-btn secondary" onclick="game.closeStakeModal()">
+                        <button class="action-btn secondary" style="flex: 1;" onclick="game.closeStakeModal()">
                             <i class="fas fa-times"></i> Cancel
                         </button>
                     </div>
