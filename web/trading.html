@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TSDGEMS - Gem Trading</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="guide.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="icon" type="image/png" href="assets/images/tsdm_logo.png">
@@ -13,7 +14,7 @@
       #nav-wallet[data-auth="signed-out"] #wallet-balance { display: none !important; }
     </style>
 </head>
-<body>
+<body data-guide-key="trading">
 <script>
   // Load cached Game $ value immediately to prevent flash
   const cachedValue = localStorage.getItem('tsdgems_game_dollars');
@@ -133,9 +134,8 @@
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
       }
-    </style>
-</head>
-<body>
+</style>
+<div class="page-shell">
   <nav class="navbar">
     <div class="nav-container">
       <div class="nav-left-group">
@@ -307,6 +307,8 @@
     <script src="backend-service.js"></script>
     <script src="season-lock.js"></script>
     <script src="trading.js"></script>
+    <script src="guide.js"></script>
   </div>
+</div>
 </body>
 </html>

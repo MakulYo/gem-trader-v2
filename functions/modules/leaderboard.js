@@ -18,6 +18,7 @@ const ALLOWLIST  = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean);
 const cors       = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, credentials: false });
 
 const SEED_TOKEN = process.env.SEED_TOKEN || 'changeme-temp-token';
+
 const TOP_LIMIT_DEFAULT = 100;
 
 // --- Payout config (env overrides) ---
