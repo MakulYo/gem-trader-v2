@@ -662,7 +662,7 @@ class MiningGame extends TSDGEMSGame {
                             </p>
                         </div>
                         ${isComplete ? `
-                            <button class="action-btn claim-btn" style="margin: 0 20px 20px; margin-top: auto; align-self: stretch;" onclick="game.completeMining('${job.jobId}')">
+                            <button class="action-btn claim-btn mining-claim-btn" onclick="game.completeMining('${job.jobId}')">
                                 <i class="fas fa-gift"></i> CLAIM REWARDS
                             </button>
                         ` : ''}
