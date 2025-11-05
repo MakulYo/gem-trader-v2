@@ -6,10 +6,14 @@ service cloud.firestore {
     match /leaderboard_monthly/{month}/entries/{account} { allow read: if true; }
     match /game_config/{doc}                             { allow read: if true; }
 
-    // Players namespace: reads allowed for now (MVP), writes only by server (Admin)
+    // 🔄 Realtime needs these
+    match /city_boosts/{doc} { allow read: if true; }
+    match /runtime/{doc}     { allow read: if true; } // covers pricing, leaderboard_current, etc.
+
+    // Players: read-only for now, writes only via Cloud Functions
     match /players/{account} {
-      allow read: if true;      // TODO: tighten once auth bridge is in place
-      allow write: if false;    // all writes via Cloud Functions
+      allow read: if true;         // TODO: tighten later when auth lands
+      allow write: if false;
       match /{sub=**}/{doc} {
         allow read: if true;
         allow write: if false;
