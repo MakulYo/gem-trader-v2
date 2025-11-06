@@ -10,7 +10,7 @@ const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 const corsLib = require('cors');
 
-const db = getFirestore(undefined, 'tsdgems');
+const db = getFirestore();
 
 // CORS same style as your other modules
 const RAW_ALLOW  = process.env.CORS_ALLOW || '';

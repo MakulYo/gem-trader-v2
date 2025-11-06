@@ -8,7 +8,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const corsLib        = require('cors');
 
 // --- Config ---
-const db = getFirestore(undefined, 'tsdgems');
+const db = getFirestore();
 const SEED_TOKEN = process.env.SEED_TOKEN || 'changeme-temp-token';
 
 // CORS allowlist (env or functions config). Comma-separated list.

@@ -7,7 +7,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore')
 const corsLib = require('cors')
 
 try { admin.app(); } catch { admin.initializeApp(); }
-const db = getFirestore(undefined, 'tsdgems')
+const db = getFirestore();
 
 const RAW_ALLOW = process.env.CORS_ALLOW || ''
 const ALLOWLIST = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean)

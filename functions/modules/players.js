@@ -6,7 +6,7 @@ const admin = require('firebase-admin');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 
 try { admin.app(); } catch { admin.initializeApp(); }
-const db = getFirestore(undefined, 'tsdgems'); // named DB
+const db = getFirestore();
 
 const { getWaxBalance, getTsdmBalance, getOwnedNfts } = require('./chain');
 

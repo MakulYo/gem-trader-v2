@@ -2,17 +2,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Public reads for config + leaderboard (ok for MVP; tighten later)
-    match /leaderboard_monthly/{month}/entries/{account} { allow read: if true; }
-    match /game_config/{doc}                             { allow read: if true; }
-
-    // 🔄 Realtime needs these
+    // Public reads for config + leaderboard + runtime bits
+    match /game_config/{doc} { allow read: if true; }
+    match /runtime/{doc}     { allow read: if true; }
     match /city_boosts/{doc} { allow read: if true; }
-    match /runtime/{doc}     { allow read: if true; } // covers pricing, leaderboard_current, etc.
 
-    // Players: read-only for now, writes only via Cloud Functions
+    // Example past-season storage (if you use it publicly)
+    match /leaderboard_seasons/{season} { allow read: if true; }
+
+    // Players (reads ok for MVP, writes via Functions only)
     match /players/{account} {
-      allow read: if true;         // TODO: tighten later when auth lands
+      allow read: if true;
       allow write: if false;
       match /{sub=**}/{doc} {
         allow read: if true;

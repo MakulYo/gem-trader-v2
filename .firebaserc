@@ -1,17 +1,21 @@
 {
   "projects": {
     "prod": "tsdgems-trading",
-    "dev":  "tsdm-6896d"
+    "dev": "tsdm-6896d"
   },
   "targets": {
     "tsdgems-trading": {
       "hosting": {
-        "prod": ["tsdgems-trading"]
+        "prod": [
+          "tsdgems-trading"
+        ]
       }
     },
     "tsdm-6896d": {
       "hosting": {
-        "dev": ["tsdgems-dev"]
+        "dev": [
+          "tsdgems-dev"
+        ]
       }
     }
   },

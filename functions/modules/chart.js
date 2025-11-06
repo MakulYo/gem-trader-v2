@@ -8,7 +8,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const corsLib        = require('cors');
 const fetch          = (...a) => import('node-fetch').then(({default: f}) => f(...a));
 
-const db = getFirestore(undefined, 'tsdgems');
+const db = getFirestore();
 
 // --- CORS allowlist ---
 const RAW_ALLOW  = process.env.CORS_ALLOW || '';

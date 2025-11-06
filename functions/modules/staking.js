@@ -9,7 +9,7 @@ const corsLib = require('cors')
 // Node 20+ has native fetch
 const fetch = globalThis.fetch || require('node-fetch')
 
-const db = getFirestore(undefined, 'tsdgems')
+const db = getFirestore();
 
 const RAW_ALLOW = process.env.CORS_ALLOW || ''
 const ALLOWLIST = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean)

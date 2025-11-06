@@ -1,12 +1,10 @@
-// --- Firebase environment auto-switch (dev/prod) ---
-// Detect domain and pick the right Firebase project.
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+// web/firebase-config.js
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics.js";
 
 const CONFIGS = {
-  // 🧪 DEV (tsdm-6896d)
+  // DEV (tsdm-6896d)
   "tsdgems-dev.web.app": {
     apiKey: "AIzaSyDAOym-rAkyMfIbACOg3J4xwcctnNEWMrk",
     authDomain: "tsdm-6896d.firebaseapp.com",
@@ -17,7 +15,7 @@ const CONFIGS = {
     measurementId: "G-LJWGJBLBZG"
   },
 
-  // 🚀 PROD (tsdgems-trading)
+  // PROD (tsdgems-trading)
   "tsdgems.xyz": {
     apiKey: "AIzaSyB-jdj0AZqynKKcbCgmSbFeybtqE9Qky6Y",
     authDomain: "tsdgems-trading.firebaseapp.com",
@@ -29,19 +27,20 @@ const CONFIGS = {
   }
 };
 
-// --- pick which config to use ---
+// Map host → config. Default to dev for localhost/unknown.
 const host = location.hostname;
 const cfg =
   CONFIGS[host] ||
-  CONFIGS["tsdgems-dev.web.app"]; // default to dev locally or previews
+  CONFIGS["tsdgems-dev.web.app"];
 
-// --- initialize Firebase ---
-const app = initializeApp(cfg);
-const db = getFirestore(app, "tsdgems"); // note: named DB "tsdgems"
-const analytics = getAnalytics(app);
+const app = getApps().length ? getApps()[0] : initializeApp(cfg);
 
-// expose globally for other scripts
+// IMPORTANT: use **default** Firestore (no databaseId override)
+const db = getFirestore(app);
+
+try { getAnalytics(app); } catch {}
+
 window.firebaseApp = app;
 window.firestoreDb = db;
 
-console.log(`[Firebase] Initialized for ${host}: ${cfg.projectId}`);
+console.log(`[Firebase] Using project: ${cfg.projectId} (host: ${host})`);
