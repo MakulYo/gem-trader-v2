@@ -1,7 +1,8 @@
 // functions/modules/seasons.js
 // Monthly seasons with a fixed 5-day off-season (lock) before month end.
-// Active: from the 1st 00:00 UTC until lockStart (00:00 UTC, 5 days before month end)
-// Lock:   from lockStart until 1st 00:05 UTC next month
+// Active:  1st 00:00 UTC  → lockStart (00:00 UTC, 5 days before month end)
+// Lock:    lockStart       → 1st 00:05 UTC next month (then open)
+// Admin endpoints included: resetSeason (fresh season now), openNewSeasonNow
 
 const { onRequest }  = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
@@ -9,43 +10,42 @@ const admin          = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 const corsLib        = require('cors');
 
-const db = getFirestore();
+const db = getFirestore(); // 🔒 default DB for this Firebase project (dev and prod are isolated)
 
 const RAW_ALLOW  = process.env.CORS_ALLOW || '';
 const ALLOWLIST  = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean);
 const cors       = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, credentials: false });
 
 const SEED_TOKEN = process.env.SEED_TOKEN || 'changeme-temp-token';
-const OFF_DAYS = 5; // <-- fixed 5-day break
+const OFF_DAYS   = 5; // ⏳ 5-day break before month end
 
+// ----- helpers -----
 function monthKey(d = new Date()) {
   const y = d.getUTCFullYear();
   const m = (d.getUTCMonth() + 1).toString().padStart(2, '0');
   return `${y}${m}`;
 }
-
 function endOfMonthUTC(d = new Date()) {
-  // First day of next month 00:00 UTC minus 1 ms
   const firstNext = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1, 0, 0, 0));
   return new Date(firstNext.getTime() - 1);
 }
-
-/** Compute schedule for the *current* month. */
+/** Compute schedule for the current month (UTC). */
 function computeScheduleNow() {
   const now = new Date();
+
   const startAt = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0);
 
-  const eom = endOfMonthUTC(now);                // e.g., 2025-10-31T23:59:59.999Z
-  // 5-day lock starts at 00:00 of (lastDay - 5 + 1) == lastDay - 4
-  const lockStartDay = eom.getUTCDate() - OFF_DAYS + 1; // inclusive day count
-  const lockStartAt = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), lockStartDay, 0, 0, 0);
+  const eom = endOfMonthUTC(now);                    // e.g., 2025-10-31T23:59:59.999Z
+  const lockStartDay = eom.getUTCDate() - OFF_DAYS + 1; // inclusive 5 full days
+  const lockStartAt  = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), lockStartDay, 0, 0, 0);
 
-  // Open new season at 00:05 UTC on the 1st of next month
-  const lockEndAt = Date.UTC(eom.getUTCFullYear(), eom.getUTCMonth() + 1, 1, 0, 5, 0);
+  // Season opens at 00:05 on the 1st of the next month
+  const lockEndAt    = Date.UTC(eom.getUTCFullYear(), eom.getUTCMonth() + 1, 1, 0, 5, 0);
 
   return { startAt, lockStartAt, lockEndAt, offDays: OFF_DAYS };
 }
 
+// ----- state -----
 const STATE_DOC = db.doc('runtime/season_state');
 
 async function readState() {
@@ -60,7 +60,6 @@ async function readState() {
   await STATE_DOC.set(init, { merge: true });
   return init;
 }
-
 async function setState(patch) {
   await STATE_DOC.set(
     { ...patch, lastChangeAt: admin.firestore.FieldValue.serverTimestamp() },
@@ -70,7 +69,7 @@ async function setState(patch) {
   return s.data() || patch;
 }
 
-// --- Public endpoints ---
+// ----- public endpoints -----
 
 // GET /getSeasonState
 const getSeasonState = onRequest((req, res) =>
@@ -78,13 +77,10 @@ const getSeasonState = onRequest((req, res) =>
     if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
     try {
       let s = await readState();
-      
-      // Auto-detect if lock has expired and update phase to 'active'
+      // auto-unlock if lock window elapsed
       if (s.phase === 'lock' && s.lockEndsAt && Date.now() >= s.lockEndsAt) {
-        console.log('[SeasonState] Lock expired, auto-transitioning to active phase');
         s = await setState({ phase: 'active', lockEndsAt: null });
       }
-      
       res.json({ ok: true, ...s });
     } catch (e) {
       res.status(500).json({ error: e.message || String(e) });
@@ -92,8 +88,7 @@ const getSeasonState = onRequest((req, res) =>
   })
 );
 
-// (optional helper for UI timers)
-// GET /getSeasonSchedule
+// GET /getSeasonSchedule  (handy for UI timers)
 const getSeasonSchedule = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
@@ -107,8 +102,7 @@ const getSeasonSchedule = onRequest((req, res) =>
   })
 );
 
-// Manual lock (mostly for testing)
-// POST /enterLockWindow?token=... { minutes?: number }
+// POST /enterLockWindow?token=...   Body: { minutes?: number }
 const enterLockWindow = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -127,19 +121,20 @@ const enterLockWindow = onRequest((req, res) =>
 );
 
 // POST /openNewSeason?token=...
-// Snapshots the *previous* season and flips to the new month.
+// Snapshot previous month, then open current month ("active").
 const openNewSeason = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
     if ((req.query.token || '') !== SEED_TOKEN) return res.status(403).json({ error: 'Forbidden' });
 
     try {
-      // lazy import to avoid circular init during cold start
+      // Lazy require to avoid circular imports on cold start
       const { snapshotSeason } = require('./leaderboard');
 
       const now = new Date();
+      // the month we just finished is "now at 1st 00:00 UTC minus 1 minute"
       const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-      prev.setUTCMinutes(prev.getUTCMinutes() - 1);         // last minute of previous month
+      prev.setUTCMinutes(prev.getUTCMinutes() - 1);
       const seasonToClose = monthKey(prev);
 
       await snapshotSeason(seasonToClose, null);
@@ -153,15 +148,57 @@ const openNewSeason = onRequest((req, res) =>
   })
 );
 
-// --- Schedulers ---
+// ----- extra admin helpers you asked for -----
 
-// Enter LOCK automatically at 00:05 UTC on the day lock should start
-// (computed as 5 days before month end)
+// POST /openNewSeasonNow?token=...
+// Just runs the same logic as the cron would (useful for tests).
+const openNewSeasonNow = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+    if ((req.query.token || '') !== SEED_TOKEN) return res.status(403).json({ error: 'Forbidden' });
+
+    try {
+      await openNewSeason.run({});
+      res.json({ ok: true, message: 'openNewSeason executed' });
+    } catch (e) {
+      res.status(500).json({ error: e.message || String(e) });
+    }
+  })
+);
+
+// POST /resetSeason?token=...   Body (optional): { season?: "YYYYMM", phase?: "active"|"lock" }
+// Your “we’re in a test season, start a fresh one that runs until end of this month”.
+const resetSeason = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+    if ((req.query.token || '') !== SEED_TOKEN) return res.status(403).json({ error: 'Forbidden' });
+
+    try {
+      const desiredSeason = (req.body?.season || monthKey()).toString();
+      const desiredPhase  = (req.body?.phase || 'active').toString();
+
+      // If you force 'active', we clear any lock. Cron will flip to lock on the right day.
+      const patch = {
+        season: desiredSeason,
+        phase: desiredPhase === 'lock' ? 'lock' : 'active',
+        lockEndsAt: desiredPhase === 'lock' ? computeScheduleNow().lockEndAt : null,
+      };
+
+      const out = await setState(patch);
+      res.json({ ok: true, state: out, hint: 'Season state overwritten for this project only.' });
+    } catch (e) {
+      res.status(500).json({ error: e.message || String(e) });
+    }
+  })
+);
+
+// ----- schedulers -----
+// Enter LOCK automatically at 00:05 UTC on the correct day (5 days before month end).
 const autoLockCron = onSchedule('5 0 * * *', async () => {
   const { lockStartAt, lockEndAt } = computeScheduleNow();
   const now = Date.now();
 
-  // If we're within 10 minutes after the intended lockStartAt -> enter lock once
+  // Within 10 minutes after intended lock start? Enter lock once.
   if (now >= lockStartAt && now < lockStartAt + 10 * 60 * 1000) {
     await setState({ phase: 'lock', lockEndsAt: lockEndAt, season: monthKey() });
     console.log('autoLockCron: entered lock window until', new Date(lockEndAt).toISOString());
@@ -178,11 +215,14 @@ const autoOpenCron = onSchedule('5 0 1 * *', async () => {
   }
 });
 
+// ----- exports -----
 module.exports = {
   getSeasonState,
-  getSeasonSchedule, // (optional, handy for UI)
+  getSeasonSchedule,
   enterLockWindow,
   openNewSeason,
+  openNewSeasonNow, // 👈 new
+  resetSeason,      // 👈 new
   autoLockCron,
   autoOpenCron,
 };

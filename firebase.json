@@ -45,7 +45,9 @@
         { "source": "/getSeasonState",  "function": "getSeasonState" },
         { "source": "/enterLockWindow", "function": "enterLockWindow" },
         { "source": "/openNewSeason",   "function": "openNewSeason" },
-        { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" }
+        { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" },
+        { "source": "/openNewSeasonNow", "function": "openNewSeasonNow" },
+        { "source": "/resetSeason",      "function": "resetSeason" }
       ]
     },
     {
@@ -93,7 +95,10 @@
         { "source": "/getSeasonState",  "function": "getSeasonState" },
         { "source": "/enterLockWindow", "function": "enterLockWindow" },
         { "source": "/openNewSeason",   "function": "openNewSeason" },
-        { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" }
+        { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" },
+        { "source": "/openNewSeasonNow", "function": "openNewSeasonNow" },
+        { "source": "/resetSeason",      "function": "resetSeason" }
+
       ]
     }
   ],
