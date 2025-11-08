@@ -5,49 +5,46 @@
       "public": "web",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [
-        { "source": "/initPlayer",       "function": "initPlayer" },
-        { "source": "/getDashboard",     "function": "getDashboard" },
-        { "source": "/getCityMatrix",    "function": "getCityMatrix" },
+        { "source": "/initPlayer", "function": "initPlayer" },
+        { "source": "/getDashboard", "function": "getDashboard" },
+        { "source": "/getCityMatrix", "function": "getCityMatrix" },
 
-        { "source": "/getBasePrice",     "function": "getBasePrice" },
-        { "source": "/getChart",         "function": "getChart" },
+        { "source": "/getBasePrice", "function": "getBasePrice" },
+        { "source": "/getChart", "function": "getChart" },
         { "source": "/refreshBasePrice", "function": "refreshBasePrice" },
 
-        { "source": "/getInventory",     "function": "getInventory" },
+        { "source": "/getInventory", "function": "getInventory" },
         { "source": "/refreshInventory", "function": "refreshInventory" },
 
-        { "source": "/seedCities",       "function": "seedCities" },
-        { "source": "/seedBoostsInit",   "function": "seedBoostsInit" },
+        { "source": "/seedCities", "function": "seedCities" },
+        { "source": "/seedBoostsInit", "function": "seedBoostsInit" },
         { "source": "/updateBonusesNow", "function": "updateBonusesNow" },
 
-        { "source": "/startMining",      "function": "startMining" },
-        { "source": "/getActiveMining",  "function": "getActiveMining" },
-        { "source": "/completeMining",   "function": "completeMining" },
+        { "source": "/startMining", "function": "startMining" },
+        { "source": "/getActiveMining", "function": "getActiveMining" },
+        { "source": "/completeMining", "function": "completeMining" },
         { "source": "/unlockMiningSlot", "function": "unlockMiningSlot" },
-        { "source": "/getSpeedboost",    "function": "getSpeedboost" },
+        { "source": "/getSpeedboost", "function": "getSpeedboost" },
 
-        { "source": "/startPolishing",      "function": "startPolishing" },
-        { "source": "/getActivePolishing",  "function": "getActivePolishing" },
-        { "source": "/completePolishing",   "function": "completePolishing" },
+        { "source": "/startPolishing", "function": "startPolishing" },
+        { "source": "/getActivePolishing", "function": "getActivePolishing" },
+        { "source": "/completePolishing", "function": "completePolishing" },
         { "source": "/unlockPolishingSlot", "function": "unlockPolishingSlot" },
 
         { "source": "/createPaymentRequest", "function": "createPaymentRequest" },
-        { "source": "/getPendingPayments",   "function": "getPendingPayments" },
-        { "source": "/verifyPayment",        "function": "verifyPayment" },
-        { "source": "/cancelPayment",        "function": "cancelPayment" },
+        { "source": "/getPendingPayments", "function": "getPendingPayments" },
+        { "source": "/verifyPayment", "function": "verifyPayment" },
+        { "source": "/cancelPayment", "function": "cancelPayment" },
 
-        { "source": "/stakeAsset",      "function": "stakeAsset" },
-        { "source": "/unstakeAsset",    "function": "unstakeAsset" },
+        { "source": "/stakeAsset", "function": "stakeAsset" },
+        { "source": "/unstakeAsset", "function": "unstakeAsset" },
         { "source": "/getStakedAssets", "function": "getStakedAssets" },
 
         { "source": "/prepareLeaderboardPayout", "function": "prepareLeaderboardPayout" },
-        { "source": "/markSeasonPaid",          "function": "markSeasonPaid" },
-        { "source": "/getSeasonState",  "function": "getSeasonState" },
-        { "source": "/enterLockWindow", "function": "enterLockWindow" },
-        { "source": "/openNewSeason",   "function": "openNewSeason" },
-        { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" },
-        { "source": "/openNewSeasonNow", "function": "openNewSeasonNow" },
-        { "source": "/resetSeason",      "function": "resetSeason" }
+        { "source": "/markSeasonPaid", "function": "markSeasonPaid" },
+
+        { "source": "/getSeasonState", "function": "getSeasonState" },
+        { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" }
       ]
     },
     {
@@ -55,50 +52,46 @@
       "public": "web",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [
-        { "source": "/initPlayer",       "function": "initPlayer" },
-        { "source": "/getDashboard",     "function": "getDashboard" },
-        { "source": "/getCityMatrix",    "function": "getCityMatrix" },
+        { "source": "/initPlayer", "function": "initPlayer" },
+        { "source": "/getDashboard", "function": "getDashboard" },
+        { "source": "/getCityMatrix", "function": "getCityMatrix" },
 
-        { "source": "/getBasePrice",     "function": "getBasePrice" },
-        { "source": "/getChart",         "function": "getChart" },
+        { "source": "/getBasePrice", "function": "getBasePrice" },
+        { "source": "/getChart", "function": "getChart" },
         { "source": "/refreshBasePrice", "function": "refreshBasePrice" },
 
-        { "source": "/getInventory",     "function": "getInventory" },
+        { "source": "/getInventory", "function": "getInventory" },
         { "source": "/refreshInventory", "function": "refreshInventory" },
 
-        { "source": "/seedCities",       "function": "seedCities" },
-        { "source": "/seedBoostsInit",   "function": "seedBoostsInit" },
+        { "source": "/seedCities", "function": "seedCities" },
+        { "source": "/seedBoostsInit", "function": "seedBoostsInit" },
         { "source": "/updateBonusesNow", "function": "updateBonusesNow" },
 
-        { "source": "/startMining",      "function": "startMining" },
-        { "source": "/getActiveMining",  "function": "getActiveMining" },
-        { "source": "/completeMining",   "function": "completeMining" },
+        { "source": "/startMining", "function": "startMining" },
+        { "source": "/getActiveMining", "function": "getActiveMining" },
+        { "source": "/completeMining", "function": "completeMining" },
         { "source": "/unlockMiningSlot", "function": "unlockMiningSlot" },
-        { "source": "/getSpeedboost",    "function": "getSpeedboost" },
+        { "source": "/getSpeedboost", "function": "getSpeedboost" },
 
-        { "source": "/startPolishing",      "function": "startPolishing" },
-        { "source": "/getActivePolishing",  "function": "getActivePolishing" },
-        { "source": "/completePolishing",   "function": "completePolishing" },
+        { "source": "/startPolishing", "function": "startPolishing" },
+        { "source": "/getActivePolishing", "function": "getActivePolishing" },
+        { "source": "/completePolishing", "function": "completePolishing" },
         { "source": "/unlockPolishingSlot", "function": "unlockPolishingSlot" },
 
         { "source": "/createPaymentRequest", "function": "createPaymentRequest" },
-        { "source": "/getPendingPayments",   "function": "getPendingPayments" },
-        { "source": "/verifyPayment",        "function": "verifyPayment" },
-        { "source": "/cancelPayment",        "function": "cancelPayment" },
+        { "source": "/getPendingPayments", "function": "getPendingPayments" },
+        { "source": "/verifyPayment", "function": "verifyPayment" },
+        { "source": "/cancelPayment", "function": "cancelPayment" },
 
-        { "source": "/stakeAsset",      "function": "stakeAsset" },
-        { "source": "/unstakeAsset",    "function": "unstakeAsset" },
+        { "source": "/stakeAsset", "function": "stakeAsset" },
+        { "source": "/unstakeAsset", "function": "unstakeAsset" },
         { "source": "/getStakedAssets", "function": "getStakedAssets" },
 
         { "source": "/prepareLeaderboardPayout", "function": "prepareLeaderboardPayout" },
-        { "source": "/markSeasonPaid",          "function": "markSeasonPaid" },
-        { "source": "/getSeasonState",  "function": "getSeasonState" },
-        { "source": "/enterLockWindow", "function": "enterLockWindow" },
-        { "source": "/openNewSeason",   "function": "openNewSeason" },
-        { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" },
-        { "source": "/openNewSeasonNow", "function": "openNewSeasonNow" },
-        { "source": "/resetSeason",      "function": "resetSeason" }
+        { "source": "/markSeasonPaid", "function": "markSeasonPaid" },
 
+        { "source": "/getSeasonState", "function": "getSeasonState" },
+        { "source": "/getSeasonSchedule", "function": "getSeasonSchedule" }
       ]
     }
   ],
@@ -110,5 +103,9 @@
   },
   "functions": [
     { "source": "functions", "codebase": "default", "runtime": "nodejs20" }
+  ],
+  "headers": [
+    { "source": "/firebase-config.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/index.html",         "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
   ]
 }

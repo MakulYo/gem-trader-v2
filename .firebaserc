@@ -15,6 +15,9 @@
       "hosting": {
         "dev": [
           "tsdgems-dev"
+        ],
+        "prod": [
+          "tsdgems-trading"
         ]
       }
     }

@@ -17,5 +17,18 @@
     "public": "web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  },
+  "scripts": {
+    "set:dev":  "node tools/swap-config.mjs dev",
+    "set:prod": "node tools/swap-config.mjs prod",
+
+    "deploy:dev:hosting":   "npm run set:dev && firebase use dev && firebase deploy --only hosting:dev",
+    "deploy:dev:functions": "firebase use dev && firebase deploy --only functions",
+    "deploy:dev:all":       "npm run set:dev && firebase use dev && firebase deploy",
+
+    "deploy:prod:hosting":   "npm run set:prod && firebase use prod && firebase deploy --only hosting:prod",
+    "deploy:prod:functions": "firebase use prod && firebase deploy --only functions",
+    "deploy:prod:all":       "npm run set:prod && firebase use prod && firebase deploy"
   }
 }
+
