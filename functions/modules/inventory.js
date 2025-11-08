@@ -193,6 +193,7 @@ function classifyAssets(assets) {
     // NEW: Extract asset_id and store individual asset data
     const assetId = a.asset_id || a.id || null
     const assetName = a.name || a.data?.name || ''
+    const templateMint = a.template_mint || 'unknown'
     
     byTemplate[tid] = (byTemplate[tid] || 0) + 1
 
@@ -210,6 +211,7 @@ function classifyAssets(assets) {
       assetsList.push({
         asset_id: assetId,
         template_id: tid,
+        template_mint: templateMint,
         name: info?.name || assetName,
         schema: 'gems',
         image: info?.image || null,
@@ -230,6 +232,7 @@ function classifyAssets(assets) {
       assetsList.push({
         asset_id: assetId,
         template_id: tid,
+        template_mint: templateMint,
         name: info?.name || assetName,
         schema: 'gems',
         image: info?.image || null,
@@ -253,6 +256,7 @@ function classifyAssets(assets) {
       assetsList.push({
         asset_id: assetId,
         template_id: tid,
+        template_mint: templateMint,
         name: info?.name || assetName,
         schema: schema,
         image: info?.image || null,
@@ -376,12 +380,26 @@ const getInventory = onRequest((req, res) =>
     const gemsRef = db.collection('players').doc(actor).collection('inventory').doc('gems');
     const gemsSnap = await gemsRef.get();
     const gemsData = gemsSnap.exists ? gemsSnap.data() : {};
-    
+
+    // Check TTL (2 minutes = 120 seconds) - automatically refresh if cache is stale
+    const CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
+    const now = Date.now()
+
     if (!force && snap.exists) {
-      console.log(`[getInventory] Returning cached data for ${actor}`)
       const cachedData = snap.data();
-      // Merge gems data
-      return res.json({ ok: true, cached: true, actor, ...cachedData, ...gemsData })
+      const updatedAt = cachedData.updatedAt
+      if (updatedAt && typeof updatedAt.toMillis === 'function') {
+        const ageMs = now - updatedAt.toMillis()
+        if (ageMs < CACHE_TTL_MS) {
+          console.log(`[getInventory] Returning fresh cached data for ${actor} (age: ${Math.floor(ageMs / 1000)}s)`)
+          // Merge gems data
+          return res.json({ ok: true, cached: true, actor, ...cachedData, ...gemsData })
+        } else {
+          console.log(`[getInventory] Cache stale for ${actor} (age: ${Math.floor(ageMs / 1000)}s > ${CACHE_TTL_MS / 1000}s), refreshing...`)
+        }
+      } else {
+        console.log(`[getInventory] Cache exists but no valid updatedAt for ${actor}, refreshing...`)
+      }
     }
 
     // If force or cache miss → refresh then return

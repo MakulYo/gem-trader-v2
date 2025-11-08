@@ -5,11 +5,159 @@ const admin          = require('firebase-admin')
 const { getFirestore } = require('firebase-admin/firestore')
 const corsLib        = require('cors')
 
+// Node 20+ has native fetch
+const fetch = globalThis.fetch || require('node-fetch')
+
 const db = getFirestore();
+
+// --- AtomicAssets (public API) with fallbacks ---
+const ATOMIC_APIS = [
+  'https://wax.api.atomicassets.io/atomicassets/v1',
+  'https://aa-api-wax.eosauthority.com/atomicassets/v1',
+  'https://atomic-wax-mainnet.wecan.dev/atomicassets/v1',
+  'https://atomic.eosn.io/atomicassets/v1',
+  'https://atomic.waxsweden.org/atomicassets/v1',
+]
+const COLLECTION_NAME = 'tsdmediagems'
 
 const RAW_ALLOW  = process.env.CORS_ALLOW || ''
 const ALLOWLIST  = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean)
 const cors       = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, credentials: false })
+
+// --- Helper functions for asset ownership validation ---
+
+/**
+ * Fetch asset details by asset IDs from AtomicAssets API with fallbacks
+ * @param {string[]} assetIds - Array of asset IDs to fetch
+ * @returns {Promise<any[]>} Array of asset objects with template_mint, etc.
+ */
+async function fetchAssetsByIds(assetIds) {
+  if (!assetIds || assetIds.length === 0) return []
+
+  const idsParam = assetIds.join(',')
+  console.log(`[Mining] Fetching ${assetIds.length} assets by IDs:`, assetIds)
+
+  const errors = []
+  for (let i = 0; i < ATOMIC_APIS.length; i++) {
+    const apiBase = ATOMIC_APIS[i]
+    const url = `${apiBase}/assets?collection_name=${COLLECTION_NAME}&ids=${idsParam}`
+
+    try {
+      console.log(`[Mining] Trying API ${i + 1}/${ATOMIC_APIS.length}: ${apiBase}`)
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000) // 10s timeout
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal
+      })
+      clearTimeout(timeout)
+
+      if (response.ok) {
+        const data = await response.json()
+        const assets = data.data || []
+        console.log(`[Mining] ✅ Success with API: ${apiBase} (${assets.length} assets found)`)
+        return assets
+      }
+      const statusText = await response.text().catch(() => response.statusText)
+      console.warn(`[Mining] API ${i + 1} returned ${response.status}: ${statusText}`)
+      errors.push(`${apiBase}: ${response.status}`)
+    } catch (error) {
+      console.warn(`[Mining] API ${i + 1} failed:`, error.message)
+      errors.push(`${apiBase}: ${error.message}`)
+    }
+  }
+
+  console.error(`[Mining] ❌ All ${ATOMIC_APIS.length} APIs failed:`, errors)
+  throw new Error(`All AtomicAssets APIs failed: ${errors.join('; ')}`)
+}
+
+/**
+ * Validate asset ownership for an actor
+ * @param {string} actor - WAX account name
+ * @param {string[]} assetIds - Array of asset IDs to validate
+ * @returns {Promise<{valid: boolean, ownedAssets: any[], missingAssets: any[]}>}
+ */
+async function validateOwnership(actor, assetIds) {
+  if (!assetIds || assetIds.length === 0) {
+    return { valid: true, ownedAssets: [], missingAssets: [] }
+  }
+
+  try {
+    const assets = await fetchAssetsByIds(assetIds)
+    const ownedAssetIds = new Set(assets.map(a => a.asset_id))
+    const missingIds = assetIds.filter(id => !ownedAssetIds.has(id))
+
+    // Get full asset details for missing ones (for error reporting)
+    const missingAssets = missingIds.map(id => {
+      // We need to find the asset details - they might be from staking data
+      // For now, return basic info - will be enhanced when we have full asset data
+      return { asset_id: id }
+    })
+
+    const valid = missingIds.length === 0
+    console.log(`[Mining] Ownership validation: ${valid ? 'VALID' : 'INVALID'} (${assetIds.length - missingIds.length}/${assetIds.length} owned)`)
+
+    return { valid, ownedAssets: assets, missingAssets }
+  } catch (error) {
+    console.warn(`[Mining] Ownership validation failed (API error):`, error.message)
+    // In case of API failure, assume ownership is valid (graceful degradation)
+    return { valid: true, ownedAssets: [], missingAssets: [], apiError: true }
+  }
+}
+
+/**
+ * Get staked assets for a mining slot with full details
+ * @param {string} actor - WAX account name
+ * @param {number} slotNum - Slot number
+ * @returns {Promise<{assets: any[], totalMP: number}>}
+ */
+async function getStakedAssetsForSlot(actor, slotNum) {
+  const stakingRef = db.collection('staking').doc(actor)
+  const stakingSnap = await stakingRef.get()
+
+  const assets = []
+  let totalMP = 0
+
+  if (stakingSnap.exists) {
+    const stakingData = stakingSnap.data()
+    const slotKey = `slot${slotNum}`
+
+    if (stakingData.mining && stakingData.mining[slotKey]) {
+      const slotData = stakingData.mining[slotKey]
+
+      // Add mine if staked
+      if (slotData.mine) {
+        const mine = slotData.mine
+        assets.push({
+          asset_id: mine.asset_id,
+          template_id: mine.template_id,
+          name: mine.name,
+          mp: mine.mp || 0,
+          type: 'mine'
+        })
+        totalMP += Number(mine.mp) || 0
+      }
+
+      // Add workers if staked
+      if (slotData.workers && Array.isArray(slotData.workers)) {
+        slotData.workers.forEach(worker => {
+          assets.push({
+            asset_id: worker.asset_id,
+            template_id: worker.template_id,
+            name: worker.name,
+            mp: worker.mp || 0,
+            type: 'worker'
+          })
+          totalMP += Number(worker.mp) || 0
+        })
+      }
+    }
+  }
+
+  console.log(`[Mining] Slot ${slotNum} staked assets: ${assets.length} assets, total MP: ${totalMP}`)
+  return { assets, totalMP }
+}
 
 function requireActor(req, res) {
   const actor = (req.method === 'GET' ? req.query.actor : req.body?.actor) || ''
@@ -158,21 +306,65 @@ const startMining = onRequest((req, res) =>
         if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
       }
 
-      // Calculate slot-specific MP from staking
-      const stakingRef = db.collection('staking').doc(actor)
-      const stakingSnap = await stakingRef.get()
-      let slotMiningPower = 0
+      // Get staked assets and validate ownership
+      const { assets: stakedAssets, totalMP: slotMiningPower } = await getStakedAssetsForSlot(actor, slotNum)
 
-      if (stakingSnap.exists) {
-        const stakingData = stakingSnap.data()
-        const slotKey = `slot${slotNum}`
-        if (stakingData.mining && stakingData.mining[slotKey]) {
-          const slotData = stakingData.mining[slotKey]
-          if (slotData.mine && slotData.mine.mp) slotMiningPower += Number(slotData.mine.mp) || 0
-          if (slotData.workers && Array.isArray(slotData.workers)) {
-            slotData.workers.forEach(w => { slotMiningPower += (Number(w.mp) || 0) })
+      // Check if mine is staked (required for mining)
+      const hasMine = stakedAssets.some(a => a.type === 'mine')
+      if (!hasMine) {
+        return res.status(400).json({ error: 'No mine staked in this slot. Please stake a mine first.' })
+      }
+
+      // Check if any workers are staked (required for mining)
+      const workerCount = stakedAssets.filter(a => a.type === 'worker').length
+      if (workerCount === 0) {
+        return res.status(400).json({ error: 'No workers staked in this slot. Please stake at least one worker.' })
+      }
+
+      // Validate ownership of all staked assets
+      // Error format: { error: "ownership_missing: AssetName (template 123, mint #456); ...", details: [{asset_id, template_id, template_mint, type, name}] }
+      const assetIds = stakedAssets.map(a => a.asset_id)
+      const ownershipValidation = await validateOwnership(actor, assetIds)
+
+      if (!ownershipValidation.valid && !ownershipValidation.apiError) {
+        // Get full asset details including template_mint for missing assets
+        const missingDetails = []
+        for (const missing of ownershipValidation.missingAssets) {
+          const stakedAsset = stakedAssets.find(a => a.asset_id === missing.asset_id)
+          if (stakedAsset) {
+            missingDetails.push({
+              asset_id: stakedAsset.asset_id,
+              template_id: stakedAsset.template_id,
+              template_mint: 'unknown', // Will be filled from AtomicAssets data if available
+              type: stakedAsset.type,
+              name: stakedAsset.name
+            })
           }
         }
+
+        // Try to get template_mint from owned assets that match template_id
+        for (const detail of missingDetails) {
+          const ownedAsset = ownershipValidation.ownedAssets.find(a =>
+            a.template?.template_id === detail.template_id ||
+            a.template_id === detail.template_id
+          )
+          if (ownedAsset && ownedAsset.template_mint) {
+            detail.template_mint = ownedAsset.template_mint
+          }
+        }
+
+        const missingList = missingDetails.map(d =>
+          `${d.name} (template ${d.template_id}, mint #${d.template_mint})`
+        ).join('; ')
+
+        return res.status(400).json({
+          error: `ownership_missing: ${missingList}`,
+          details: missingDetails
+        })
+      }
+
+      if (ownershipValidation.apiError) {
+        console.warn(`[startMining] ⚠️ Starting mining without ownership validation (API error) for slot ${slotNum}`)
       }
 
       // (Optional) peek assigned speedboost for UI
@@ -183,10 +375,32 @@ const startMining = onRequest((req, res) =>
       const slotId = `slot_${slotNum}`
       const finishAt = now + MINING_DURATION_MS
 
+      // Create assets snapshot for ownership validation at completion
+      // assetsSnapshot: [{asset_id, template_id, template_mint, name, mp, type}] - used in completeMining to verify continued ownership
+      const assetsSnapshot = stakedAssets.map(asset => ({
+        asset_id: asset.asset_id,
+        template_id: asset.template_id,
+        template_mint: 'unknown', // Will be filled from AtomicAssets data
+        name: asset.name,
+        mp: asset.mp,
+        type: asset.type
+      }))
+
+      // Try to fill template_mint from owned assets data
+      for (const snapshotAsset of assetsSnapshot) {
+        const ownedAsset = ownershipValidation.ownedAssets.find(a =>
+          a.asset_id === snapshotAsset.asset_id
+        )
+        if (ownedAsset && ownedAsset.template_mint) {
+          snapshotAsset.template_mint = ownedAsset.template_mint
+        }
+      }
+
       await active.doc(jobId).set({
         jobId, slotId, slotNum, actor, startedAt: now, finishAt, status: 'active',
         costTsdm: MINING_COST_TSDM,
         slotMiningPower,
+        assetsSnapshot, // New field: snapshot for ownership validation at completion
         // snapshot current boost assignment for transparency (not used for calc; we re-read at completion)
         speedboostPreview: { boost: sb.boost, rarity: sb.rarity, template_id: sb.template_id }
       })
@@ -233,9 +447,48 @@ const completeMining = onRequest((req, res) =>
       const now = Date.now()
       if (now < job.finishAt) return res.status(400).json({ error: 'job still in progress' })
 
-      // base reward: MP / 20, minimum 1
-      const slotMP = Number(job.slotMiningPower) || 0
-      const baseYield = Math.max(1, Math.floor(slotMP / 20))
+      // Validate ownership of assets that were staked at start time
+      // If assets are no longer owned, deduct their MP from rewards
+      let effectiveMP = Number(job.slotMiningPower) || 0
+      let deductedMP = 0
+      const missingAssets = []
+      const ownedAssets = []
+
+      if (job.assetsSnapshot && Array.isArray(job.assetsSnapshot)) {
+        const assetIds = job.assetsSnapshot.map(a => a.asset_id)
+        const ownershipValidation = await validateOwnership(actor, assetIds)
+
+        if (!ownershipValidation.valid && !ownershipValidation.apiError) {
+          // Calculate effective MP by subtracting MP from missing assets
+          const ownedAssetIds = new Set(ownershipValidation.ownedAssets.map(a => a.asset_id))
+
+          for (const snapshotAsset of job.assetsSnapshot) {
+            if (!ownedAssetIds.has(snapshotAsset.asset_id)) {
+              // Asset is no longer owned - deduct its MP
+              const mpToDeduct = Number(snapshotAsset.mp) || 0
+              deductedMP += mpToDeduct
+              missingAssets.push({
+                asset_id: snapshotAsset.asset_id,
+                template_id: snapshotAsset.template_id,
+                template_mint: snapshotAsset.template_mint,
+                type: snapshotAsset.type,
+                name: snapshotAsset.name,
+                mp: mpToDeduct
+              })
+            } else {
+              ownedAssets.push(snapshotAsset)
+            }
+          }
+
+          effectiveMP = Math.max(0, effectiveMP - deductedMP)
+          console.log(`[completeMining] Ownership validation: deducted ${deductedMP} MP from ${missingAssets.length} missing assets, effective MP: ${effectiveMP}`)
+        } else if (ownershipValidation.apiError) {
+          console.warn(`[completeMining] ⚠️ Completing mining without ownership validation (API error) for job ${jobId}`)
+        }
+      }
+
+      // base reward: effective MP / 20, minimum 1
+      const baseYield = Math.max(1, Math.floor(effectiveMP / 20))
 
       // read current assigned speedboost for this slot
       const { boost: sbBoost, rarity: sbRarity, template_id: sbTemplate } = await getSpeedboostForSlot(actor, job.slotNum)
@@ -249,14 +502,23 @@ const completeMining = onRequest((req, res) =>
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
         const have = Number(cur[key] || 0)
         tx.set(gems, { ...cur, [key]: have + amt }, { merge: true })
-        tx.set(history.doc(jobId), { 
-          ...job, 
-          status: 'done', 
-          completedAt: now, 
-          roughKey: key, 
+        // Save completion data to history
+        // New fields: effectiveMiningPower, ownershipAtCompletion: {missingAssets[], ownedAssets[], deductedMp, effectiveMp}
+        tx.set(history.doc(jobId), {
+          ...job,
+          status: 'done',
+          completedAt: now,
+          roughKey: key,
           baseYield,
           yieldAmt: amt,
           slotMiningPower: slotMP,
+          effectiveMiningPower: effectiveMP,
+          ownershipAtCompletion: {
+            missingAssets,  // Assets no longer owned at completion
+            ownedAssets,    // Assets still owned at completion
+            deductedMp: deductedMP,    // Total MP deducted from missing assets
+            effectiveMp: effectiveMP   // MP used for reward calculation
+          },
           speedboostApplied: {
             boost: sbBoost || 0,
             multiplier: boostMultiplier,
@@ -267,17 +529,25 @@ const completeMining = onRequest((req, res) =>
         tx.delete(jobRef)
       })
 
-      res.json({ 
-        ok: true, 
-        result: { 
-          roughKey: key, 
-          baseYield, 
-          yieldAmt: amt, 
-          multiplier: boostMultiplier, 
-          completedAt: now, 
-          slotMiningPower: slotMP,
+      // Response format includes new ownership validation fields
+      res.json({
+        ok: true,
+        result: {
+          roughKey: key,
+          baseYield,
+          yieldAmt: amt,
+          multiplier: boostMultiplier,
+          completedAt: now,
+          slotMiningPower: slotMP,          // Original MP from staking
+          effectiveMiningPower: effectiveMP, // MP after ownership validation
+          ownershipAtCompletion: {          // Ownership check results
+            missingAssets,  // [{asset_id, template_id, template_mint, type, name, mp}]
+            ownedAssets,    // [{asset_id, template_id, template_mint, type, name, mp}]
+            deductedMp: deductedMP,    // Total MP removed due to missing assets
+            effectiveMp: effectiveMP   // Final MP used for rewards
+          },
           speedboost: { boost: sbBoost || 0, rarity: sbRarity || null, template_id: sbTemplate || null }
-        } 
+        }
       })
     } catch (e) {
       if (e.status === 403) return res.status(403).json({ error: 'season-locked' })
@@ -358,3 +628,4 @@ module.exports = {
   SPEEDBOOST_RARITIES, 
   getSpeedboostForSlot 
 }
+

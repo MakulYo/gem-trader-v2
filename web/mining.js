@@ -1,7 +1,9 @@
 // TSDGEMS - Mining Page Script (Backend-Connected)
 
 // Mining Constants (match backend)
-const MINING_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours
+// Dev environment: 1 minute, Prod: 3 hours
+const isDev = window.location.hostname.includes('tsdgems-dev');
+const MINING_DURATION_MS = isDev ? 1 * 60 * 1000 : 3 * 60 * 60 * 1000;
 const MINING_COST_TSDM = 50;
 const MAX_SLOTS = 10;
 
@@ -51,8 +53,45 @@ class MiningGame extends TSDGEMSGame {
         this.selectedWorkersForUnstake = new Set(); // For multi-selection when unstaking
         this.completedJobsRendered = new Set(); // Track jobs that already triggered a completion re-render
         this.pendingCompletionJobs = new Set(); // Jobs we optimistically removed
-        
+
+        // Mobile optimization
+        this.isMobile = this.detectMobile();
+        if (this.isMobile) {
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    console.log('[Mining] 📱 Mobile page hidden, clearing mining cache');
+                    this.clearMiningCache();
+                }
+            });
+        }
+
         this.init();
+    }
+
+    detectMobile() {
+        // Check for mobile devices
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        const isMobileDevice = /android|avantgo|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i.test(userAgent);
+
+        // Also check screen size as backup
+        const isSmallScreen = window.innerWidth <= 768 || window.innerHeight <= 600;
+
+        return isMobileDevice || isSmallScreen;
+    }
+
+    clearMiningCache() {
+        // Clear mining data to free memory on mobile
+        this.inventoryData = null;
+        this.mineNFTs = [];
+        this.workerNFTs = [];
+
+        // Clear DataManager cache for mining-related data
+        if (window.dataManager) {
+            window.dataManager.invalidate('inventory');
+            window.dataManager.invalidate('stakedAssets');
+        }
+
+        console.log('[Mining] 📱 Mining cache cleared');
     }
 
     init() {
@@ -315,15 +354,22 @@ class MiningGame extends TSDGEMSGame {
                 this.inventoryData = inventoryData;
                 // Process mine and worker NFTs
                 if (inventoryData && inventoryData.equipmentDetails) {
-                    const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => ({
-                        template_id: templateId,
-                        name: details.name,
-                        count: details.count,
-                        mp: details.mp,
-                        image: details.image,
-                        imagePath: details.imagePath,
-                        assets: details.assets || []
-                    }));
+                    const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => {
+                        // Create individual NFT objects with template_mint
+                        const assets = details.assets || [];
+                        return assets.map(assetId => {
+                            const assetDetails = inventoryData.assets.find(asset => asset.asset_id === assetId);
+                            return {
+                                template_id: templateId,
+                                template_mint: assetDetails ? assetDetails.template_mint : 'unknown',
+                                name: details.name,
+                                mp: details.mp,
+                                image: details.image,
+                                imagePath: details.imagePath,
+                                asset_id: assetId
+                            };
+                        });
+                    }).flat();
                     
                     this.mineNFTs = equipmentArray.filter(nft => {
                         const name = (nft.name || '').toLowerCase();
@@ -701,6 +747,12 @@ class MiningGame extends TSDGEMSGame {
             const mineImagePath = getMineImage();
             const isGreyedImage = !stakedMine;
 
+            // Get template_mint for mine if available
+            const mineInventoryAsset = stakedMine && this.inventoryData && this.inventoryData.assets ?
+                this.inventoryData.assets.find(asset => asset.asset_id === stakedMine.asset_id) : null;
+            const mineTemplateMint = mineInventoryAsset && mineInventoryAsset.template_mint !== 'unknown' ?
+                mineInventoryAsset.template_mint : null;
+
             return `
                 <div class="mining-slot ${stakedMine ? 'rented' : 'available'}">
                     <div class="slot-header">
@@ -723,10 +775,11 @@ class MiningGame extends TSDGEMSGame {
                                         <i class="fas fa-times" style="color: white; font-size: 12px; font-weight: bold;"></i>
                                     </div>
                                 </div>
+                                ${mineTemplateMint ? `<div style="text-align: center; margin-top: 8px; color: #ffd700; font-size: 0.8em; font-weight: 600;">Mint #${mineTemplateMint}</div>` : ''}
                             ` : `
-                                <img src="assets/images/${mineImagePath}" 
-                                     class="slot-mine-image ${isGreyedImage ? 'greyed' : ''}" 
-                                     alt="Mine placeholder" 
+                                <img src="assets/images/${mineImagePath}"
+                                     class="slot-mine-image ${isGreyedImage ? 'greyed' : ''}"
+                                     alt="Mine placeholder"
                                      style="width: 120px; height: 120px; object-fit: cover; border-radius: 8px;">
                             `}
                         </div>
@@ -755,13 +808,19 @@ class MiningGame extends TSDGEMSGame {
                                             const workerKey = `${slot.slotNum}-${idx}`;
                                             const isSelected = this.selectedWorkersForUnstake.has(workerKey);
                                             if (isSelected) selectedCount++;
+                                            // Try to get template_mint from inventory data
+                                            const inventoryAsset = this.inventoryData && this.inventoryData.assets ?
+                                                this.inventoryData.assets.find(asset => asset.asset_id === w.asset_id) : null;
+                                            const templateMint = inventoryAsset && inventoryAsset.template_mint !== 'unknown' ?
+                                                inventoryAsset.template_mint : null;
+
                                             return `
                                             <div class="worker-unstake-card" id="worker-unstake-${slot.slotNum}-${idx}"
-                                                 style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem; background: ${isSelected ? 'rgba(255, 107, 107, 0.1)' : 'rgba(0, 212, 255, 0.1)'}; border-radius: 6px; margin-bottom: ${isLast ? '0.75rem' : '0.5rem'}; border: 2px solid ${isSelected ? '#ff6b6b' : 'rgba(0, 212, 255, 0.2)'}; cursor: pointer; transition: all 0.3s;"
+                                                 style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem; background: ${isSelected ? 'rgba(255, 107, 107, 0.1)' : 'rgba(0, 212, 255, 0.1)'}; border-radius: 6px; margin-bottom: ${isLast ? '0.75rem' : '0.5rem'}; border: 2px solid ${isSelected ? '#ff6b6b' : 'rgba(0, 212, 255, 0.2)'}; cursor: pointer; transition: all 0.3s; position: relative;"
                                                  onclick="game.toggleWorkerForUnstake(${slot.slotNum}, ${idx})">
                                                 <div style="flex: 1; pointer-events: none;">
                                                     <div style="color: #ffffff; font-weight: 600; font-size: 0.9em;">${w.name}</div>
-                                                    <div style="color: #ffd700; font-size: 0.85em;"><i class="fas fa-hammer"></i> ${w.mp.toLocaleString()} MP</div>
+                                                    <div style="color: #ffd700; font-size: 0.85em;"><i class="fas fa-hammer"></i> ${w.mp.toLocaleString()} MP${templateMint ? ` <span style="color: #ffd700; font-weight: bold;">#${templateMint}</span>` : ''}</div>
                                                 </div>
                                                 <div class="unstake-checkbox" style="width: 20px; height: 20px; border: 2px solid #00d4ff; border-radius: 4px; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; pointer-events: none;">
                                                     <i class="fas fa-check" style="color: #ff6b6b; font-size: 12px; display: ${isSelected ? 'block' : 'none'};"></i>
@@ -1356,24 +1415,9 @@ class MiningGame extends TSDGEMSGame {
             `;
         } else {
             // Show NFT gallery with smaller images - each NFT displayed individually
-            const individualMineNFTs = [];
-            this.mineNFTs.forEach(nft => {
-                // Use actual asset IDs if available, otherwise create placeholder IDs
-                const assets = nft.assets || [];
-                const count = Math.max(assets.length, nft.count || 1);
-                
-                for (let i = 0; i < count; i++) {
-                    individualMineNFTs.push({
-                        ...nft,
-                        asset_id: assets[i] || `${nft.template_id}-${i}`, // Use real asset ID or placeholder
-                        uniqueId: `${nft.template_id}-${i}`
-                    });
-                }
-            });
-            
             // Filter out already staked mines
-            const availableMines = individualMineNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
-            console.log('[Mining] Available mines after filtering:', availableMines.length, 'of', individualMineNFTs.length);
+            const availableMines = this.mineNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
+            console.log('[Mining] Available mines after filtering:', availableMines.length, 'of', this.mineNFTs.length);
             
             if (availableMines.length === 0) {
                 // All mines are already staked
@@ -1395,19 +1439,22 @@ class MiningGame extends TSDGEMSGame {
                 <p style="margin-bottom: 15px; color: #888;">
                     Select a Mine NFT to stake in this slot. Staked mines provide passive mining power.
                 </p>
-                ${availableMines.length < individualMineNFTs.length ? `
+                ${availableMines.length < this.mineNFTs.length ? `
                     <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 6px; padding: 10px; margin-bottom: 15px;">
                         <p style="color: #ff9800; margin: 0; font-size: 0.85em;">
-                            <i class="fas fa-info-circle"></i> ${individualMineNFTs.length - availableMines.length} mine(s) already staked
+                            <i class="fas fa-info-circle"></i> ${this.mineNFTs.length - availableMines.length} mine(s) already staked
                         </p>
                     </div>
                 ` : ''}
                 <div class="nft-gallery-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 500px; overflow-y: auto; padding: 10px;">
                     ${availableMines.map(nft => `
                         <div class="nft-card" style="border: 2px solid #00d4ff; border-radius: 8px; padding: 10px; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s;" onclick="game.stakeMine('${nft.template_id}', ${slotNum}, ${nft.mp}, '${nft.name}', '${nft.asset_id}')">
-                            ${nft.imagePath ? `
-                                <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
-                            ` : ''}
+                            <div style="position: relative;">
+                                ${nft.imagePath ? `
+                                    <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
+                                ` : ''}
+                                ${nft.template_mint && nft.template_mint !== 'unknown' ? `<div class="mint-badge">#${nft.template_mint}</div>` : ''}
+                            </div>
                             <h4 style="color: #00d4ff; margin-bottom: 5px; font-size: 0.9em;">${nft.name}</h4>
                             <p style="color: #00ff64; font-size: 0.85em; font-weight: bold; margin: 5px 0;">
                                 <i class="fas fa-hammer"></i> ${(nft.mp || 0).toLocaleString()} MP
@@ -1503,28 +1550,13 @@ class MiningGame extends TSDGEMSGame {
                 `;
             } else {
                 // Show NFT gallery with smaller images - each NFT displayed individually
-                const individualWorkerNFTs = [];
-                this.workerNFTs.forEach(nft => {
-                    // Use actual asset IDs if available, otherwise create placeholder IDs
-                    const assets = nft.assets || [];
-                    const count = Math.max(assets.length, nft.count || 1);
-                    
-                    for (let i = 0; i < count; i++) {
-                        individualWorkerNFTs.push({
-                            ...nft,
-                            asset_id: assets[i] || `${nft.template_id}-${i}`, // Use real asset ID or placeholder
-                            uniqueId: `${nft.template_id}-${i}`
-                        });
-                    }
-                });
-                
                 // Filter out already staked workers
-                let availableWorkers = individualWorkerNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
-                
+                let availableWorkers = this.workerNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
+
                 // Sort by MP in descending order (highest first)
                 availableWorkers.sort((a, b) => (b.mp || 0) - (a.mp || 0));
-                
-                console.log('[Mining] Available workers after filtering and sorting:', availableWorkers.length, 'of', individualWorkerNFTs.length);
+
+                console.log('[Mining] Available workers after filtering and sorting:', availableWorkers.length, 'of', this.workerNFTs.length);
                 
                 const remainingSlots = workerLimit - currentWorkers;
                 
@@ -1556,10 +1588,10 @@ class MiningGame extends TSDGEMSGame {
                             </p>
                         </div>
                     </div>
-                    ${availableWorkers.length < individualWorkerNFTs.length ? `
+                    ${availableWorkers.length < this.workerNFTs.length ? `
                         <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 6px; padding: 10px; margin-bottom: 15px;">
                             <p style="color: #ff9800; margin: 0; font-size: 0.85em;">
-                                <i class="fas fa-info-circle"></i> ${individualWorkerNFTs.length - availableWorkers.length} worker(s) already staked
+                                <i class="fas fa-info-circle"></i> ${this.workerNFTs.length - availableWorkers.length} worker(s) already staked
                             </p>
                         </div>
                     ` : ''}
@@ -1567,22 +1599,24 @@ class MiningGame extends TSDGEMSGame {
                         Select multiple Worker NFTs to stake (max ${remainingSlots} more). Click to toggle selection.
                     </p>
                     <div class="nft-gallery-grid" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: ${window.innerWidth <= 768 ? '0.35rem' : '10px'}; padding: 5px; justify-content: start; overflow: visible;">
-                        ${availableWorkers.map((nft, idx) => `
-                            <div class="nft-card worker-select-card" id="worker-card-${idx}" 
-                                 style="border: 2px solid #00d4ff; border-radius: 6px; padding: ${window.innerWidth <= 768 ? '6px' : '8px'}; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s; position: relative; min-width: 0;" 
+                        ${availableWorkers.map((nft, idx) => {
+                            const isSelected = this.selectedWorkers && this.selectedWorkers.some(w => w.asset_id === nft.asset_id);
+                            return `
+                            <div class="nft-card worker-select-card" id="worker-card-${idx}"
+                                 style="border: 2px solid ${isSelected ? '#00ff64' : '#00d4ff'}; border-radius: 6px; padding: ${window.innerWidth <= 768 ? '6px' : '8px'}; background: ${isSelected ? 'rgba(0, 255, 100, 0.2)' : 'rgba(0, 0, 0, 0.3)'}; cursor: pointer; transition: all 0.3s; position: relative; min-width: 0; box-shadow: ${isSelected ? '0 0 15px rgba(0, 255, 100, 0.4)' : 'none'};"
                                  onclick="game.toggleWorkerSelection(${idx}, '${nft.template_id}', ${nft.mp}, '${nft.name}', ${slotNum}, ${remainingSlots}, '${nft.asset_id}')">
-                                <div class="selection-checkbox" style="position: absolute; top: 5px; right: 5px; width: ${window.innerWidth <= 768 ? '18px' : '22px'}; height: ${window.innerWidth <= 768 ? '18px' : '22px'}; border: 2px solid #00d4ff; border-radius: 4px; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center;">
-                                    <i class="fas fa-check" style="color: #00ff64; font-size: ${window.innerWidth <= 768 ? '10px' : '12px'}; display: none;"></i>
+                                <div style="position: relative;">
+                                    ${nft.imagePath ? `
+                                        <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: ${window.innerWidth <= 768 ? 'auto' : '100px'}; aspect-ratio: ${window.innerWidth <= 768 ? '1' : 'auto'}; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
+                                    ` : ''}
+                                    ${nft.template_mint && nft.template_mint !== 'unknown' ? `<div class="mint-badge">#${nft.template_mint}</div>` : ''}
                                 </div>
-                                ${nft.imagePath ? `
-                                    <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: ${window.innerWidth <= 768 ? 'auto' : '100px'}; aspect-ratio: ${window.innerWidth <= 768 ? '1' : 'auto'}; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
-                                ` : ''}
                                 <h4 style="color: #00d4ff; margin-bottom: 4px; font-size: ${window.innerWidth <= 768 ? '0.7em' : '0.85em'};">${nft.name}</h4>
                                 <p style="color: #00ff64; font-size: ${window.innerWidth <= 768 ? '0.65em' : '0.8em'}; font-weight: bold; margin: 4px 0;">
                                     <i class="fas fa-hammer"></i> ${(nft.mp || 0).toLocaleString()} MP
                                 </p>
                             </div>
-                        `).join('')}
+                        `}).join('')}
                     </div>
                     <div style="position: sticky; bottom: 0; background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 10px; margin: 10px -10px -10px -10px; border-top: 1px solid rgba(0, 212, 255, 0.2); display: flex; gap: 10px; z-index: 10;">
                         <button id="confirm-stake-workers" class="action-btn primary" style="flex: 1;" onclick="game.confirmStakeWorkers(${slotNum})" disabled>
@@ -1714,28 +1748,27 @@ class MiningGame extends TSDGEMSGame {
 
     toggleWorkerSelection(cardIdx, templateId, mp, name, slotNum, remainingSlots, assetId) {
         const card = document.getElementById(`worker-card-${cardIdx}`);
-        const checkbox = card.querySelector('.selection-checkbox i');
         const countSpan = document.getElementById('selected-worker-count');
         const confirmBtn = document.getElementById('confirm-stake-workers');
-        
+
         // Check if already selected
-        const existingIndex = this.selectedWorkers.findIndex(w => 
+        const existingIndex = this.selectedWorkers.findIndex(w =>
             w.cardIdx === cardIdx && w.template_id === templateId
         );
-        
+
         if (existingIndex >= 0) {
             // Deselect
             this.selectedWorkers.splice(existingIndex, 1);
             card.style.border = '2px solid #00d4ff';
             card.style.background = 'rgba(0, 0, 0, 0.3)';
-            checkbox.style.display = 'none';
+            card.style.boxShadow = 'none';
         } else {
             // Check if we can add more
             if (this.selectedWorkers.length >= remainingSlots) {
                 this.showNotification(`❌ You can only select ${remainingSlots} more worker(s)!`, 'error');
                 return;
             }
-            
+
             // Select
             this.selectedWorkers.push({
                 cardIdx,
@@ -1745,8 +1778,8 @@ class MiningGame extends TSDGEMSGame {
                 asset_id: assetId
             });
             card.style.border = '2px solid #00ff64';
-            card.style.background = 'rgba(0, 255, 100, 0.1)';
-            checkbox.style.display = 'block';
+            card.style.background = 'rgba(0, 255, 100, 0.2)';
+            card.style.boxShadow = '0 0 15px rgba(0, 255, 100, 0.4)';
         }
         
         // Update counter

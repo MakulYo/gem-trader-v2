@@ -12,17 +12,56 @@ class InventoryPage extends TSDGEMSGame {
         this.schemas = new Set();
         this.stakedAssetIds = new Set(); // Track staked assets
         this.currentPage = 1;
-        this.itemsPerPage = 20;
+
+        // Mobile optimization: fewer items per page to reduce memory usage
+        this.isMobile = this.detectMobile();
+        this.itemsPerPage = this.isMobile ? 12 : 20;
+
+        // Mobile optimization: clear cache when page becomes hidden
+        if (this.isMobile) {
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    console.log('[Inventory] 📱 Mobile page hidden, clearing inventory cache');
+                    this.clearInventoryCache();
+                }
+            });
+        }
+
         this.init();
     }
 
+    detectMobile() {
+        // Check for mobile devices
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        const isMobileDevice = /android|avantgo|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i.test(userAgent);
+
+        // Also check screen size as backup
+        const isSmallScreen = window.innerWidth <= 768 || window.innerHeight <= 600;
+
+        return isMobileDevice || isSmallScreen;
+    }
+
+    clearInventoryCache() {
+        // Clear inventory data to free memory on mobile
+        this.inventoryData = null;
+        this.allNFTs = [];
+        this.filteredNFTs = [];
+
+        // Clear DataManager cache for inventory if available
+        if (window.dataManager) {
+            window.dataManager.invalidate('inventory');
+        }
+
+        console.log('[Inventory] 📱 Inventory cache cleared');
+    }
+
     init() {this.setupEventListeners();
-        
+
         // Delayed wallet check to ensure wallet.js is fully initialized
         setTimeout(() => {
             this.checkWalletAndLoadInventory();
         }, 200);
-        
+
         this.showNotification('Inventory system ready', 'info');
     }
 
@@ -157,11 +196,12 @@ class InventoryPage extends TSDGEMSGame {
                     finalImagePath = `assets/gallery_images/${asset.image}`;
                 }
                 
-                console.log(`[Inventory] Processing asset ${asset.asset_id} (${asset.name}): template=${asset.template_id}, schema="${asset.schema}"`);
+                console.log(`[Inventory] Processing asset ${asset.asset_id} (${asset.name}): template=${asset.template_id}, schema="${asset.schema}", mint=${asset.template_mint}`);
                 
                 this.allNFTs.push({
                     asset_id: asset.asset_id,
                     template_id: asset.template_id,
+                    template_mint: asset.template_mint,
                     collection: this.inventoryData.collection || 'tsdmediagems',
                     name: asset.name,
                     image: finalImagePath,
@@ -211,6 +251,7 @@ class InventoryPage extends TSDGEMSGame {
 
                     this.allNFTs.push({
                         template_id: templateId,
+                        template_mint: 'unknown', // Fallback for template-based data
                         asset_id: `${templateId}-${i}`, // Fallback pseudo-ID
                         collection: this.inventoryData.collection || 'tsdmediagems',
                         name: name,
@@ -384,6 +425,10 @@ class InventoryPage extends TSDGEMSGame {
             imageElement = `<i class="fas ${schemaIcon} nft-placeholder"></i>`;
         }
         
+        // Mint badge for all NFTs (not just workers)
+        const mintBadge = nft.template_mint && nft.template_mint !== 'unknown' ?
+            `<div class="mint-badge">#${nft.template_mint}</div>` : '';
+
         card.innerHTML = `
             <div class="nft-card-header">
                 <span class="nft-template-id">Template #${nft.template_id}</span>
@@ -391,6 +436,7 @@ class InventoryPage extends TSDGEMSGame {
             </div>
             <div class="nft-image-container">
                 ${imageElement}
+                ${mintBadge}
             </div>
             <div class="nft-name">${nft.name}</div>
             <div class="nft-collection" style="color: ${schemaColor};">
@@ -536,9 +582,10 @@ class InventoryPage extends TSDGEMSGame {
         const schema = document.getElementById('schema-filter')?.value || '';
 
         this.filteredNFTs = this.allNFTs.filter(nft => {
-            const matchesSearch = !searchTerm || 
+            const matchesSearch = !searchTerm ||
                 nft.name.toLowerCase().includes(searchTerm) ||
                 nft.template_id.toString().includes(searchTerm) ||
+                (nft.template_mint && nft.template_mint.toString().includes(searchTerm)) ||
                 (nft.asset_id && nft.asset_id.toString().includes(searchTerm));
             
             const matchesSchema = !schema || nft.schema === schema;

@@ -7171,3 +7171,25 @@ body {
         font-size: 1.5rem !important;
     }
 }
+
+/* NFT Image Container - Position relative for badges */
+.nft-image-container {
+    position: relative;
+}
+
+/* Mint Badge - Yellow badge in bottom-center of all NFT cards */
+.mint-badge {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ffd700; /* Bright yellow */
+    color: #000; /* Black text for contrast */
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+}

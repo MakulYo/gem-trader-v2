@@ -15,7 +15,50 @@ class TradingGame extends TSDGEMSGame {
         this.stakedGems = {};
         this.inventoryData = null;
         this.polishedGemsCount = {}; // Track polished gems available for trading
+
+        // Mobile optimization: detect mobile and apply optimizations
+        this.isMobile = this.detectMobile();
+        if (this.isMobile) {
+            // Reduce chart data retention on mobile
+            this.currentChartDays = 7; // Shorter chart period on mobile
+
+            // Clear heavy data when page becomes hidden
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    console.log('[Trading] 📱 Mobile page hidden, clearing heavy cache');
+                    this.clearHeavyCache();
+                }
+            });
+        }
+
         this.init();
+    }
+
+    detectMobile() {
+        // Check for mobile devices
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        const isMobileDevice = /android|avantgo|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i.test(userAgent);
+
+        // Also check screen size as backup
+        const isSmallScreen = window.innerWidth <= 768 || window.innerHeight <= 600;
+
+        return isMobileDevice || isSmallScreen;
+    }
+
+    clearHeavyCache() {
+        // Clear large data structures to free memory on mobile
+        this.cityMatrix = null;
+        this.boostsData = null;
+        this.inventoryData = null;
+        this.chartData = null;
+
+        // Clear DataManager cache for heavy items
+        if (window.dataManager) {
+            window.dataManager.invalidate('cityMatrix');
+            window.dataManager.invalidate('inventory');
+        }
+
+        console.log('[Trading] 📱 Heavy cache cleared');
     }
 
     init() {
@@ -1230,6 +1273,13 @@ class TradingGame extends TSDGEMSGame {
 
         // Staked slot - show gem and bonus
         const gem = slotData.gem;
+
+        // Get template_mint for gem if available
+        const gemInventoryAsset = gem && this.inventoryData && this.inventoryData.assets ?
+            this.inventoryData.assets.find(asset => asset.asset_id === gem.asset_id) : null;
+        const gemTemplateMint = gemInventoryAsset && gemInventoryAsset.template_mint !== 'unknown' ?
+            gemInventoryAsset.template_mint : null;
+
         return `
             <div id="gem-slot-${slotNum}" class="gem-staking-slot staked" style="border: 2px solid ${gemColor}; box-shadow: 0 0 20px ${gemColor}33;">
                 <div class="slot-header">
@@ -1240,7 +1290,8 @@ class TradingGame extends TSDGEMSGame {
                     <h4 style="color: ${gemColor};">${gem.name}</h4>
                     <div class="bonus-indicator" style="background: linear-gradient(135deg, ${gemColor}, ${gemColor}cc); color: #000;">
                         <i class="fas fa-arrow-up"></i> +${(gem.bonus * 100).toFixed(0)}% Selling Bonus
-            </div>
+                    </div>
+                    ${gemTemplateMint ? `<div style="text-align: center; margin-top: 8px; color: #ffd700; font-size: 0.8em; font-weight: 600;">Mint #${gemTemplateMint}</div>` : ''}
                 </div>
                 <button class="action-btn danger" onclick="game.unstakeGem(${slotNum}, '${gem.asset_id}')" style="border-color: #ff4444;">
                     <i class="fas fa-times"></i> Unstake
@@ -1412,9 +1463,11 @@ class TradingGame extends TSDGEMSGame {
                 if (gemType && details.assets) {
                     console.log(`[Trading] Found ${details.assets.length}x Polished ${gemType} NFTs (template ${templateId})`);
                     details.assets.forEach(assetId => {
+                        const assetDetails = this.inventoryData.assets.find(asset => asset.asset_id === assetId);
                         gemNFTs.push({
                             asset_id: assetId,
                             template_id: templateId,
+                            template_mint: assetDetails ? assetDetails.template_mint : 'unknown',
                             name: details.name,
                             gemType: gemType,
                             isPolished: true,
@@ -1433,9 +1486,11 @@ class TradingGame extends TSDGEMSGame {
                 if (gemType && details.assets) {
                     console.log(`[Trading] Found ${details.assets.length}x Rough ${gemType} NFTs (template ${templateId})`);
                     details.assets.forEach(assetId => {
+                        const assetDetails = this.inventoryData.assets.find(asset => asset.asset_id === assetId);
                         gemNFTs.push({
                             asset_id: assetId,
                             template_id: templateId,
+                            template_mint: assetDetails ? assetDetails.template_mint : 'unknown',
                             name: details.name,
                             gemType: gemType,
                             isPolished: false,
@@ -1489,7 +1544,10 @@ class TradingGame extends TSDGEMSGame {
                                 <div class="gem-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px;">
                                     ${availableGems.map(gem => `
                                         <div class="gem-card" onclick="game.stakeGemToSlot(${slotNum}, '${gem.asset_id}', ${gem.template_id}, '${gem.name}', '${gem.gemType}', '${gem.imagePath}')" style="background: rgba(0, 0, 0, 0.4); border: 2px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: all 0.3s;">
-                                            <img src="${gem.imagePath}" alt="${gem.name}" onerror="this.src='assets/gallery_images/(1).png'" style="width: 100%; height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 10px;">
+                                            <div style="position: relative;">
+                                                <img src="${gem.imagePath}" alt="${gem.name}" onerror="this.src='assets/gallery_images/(1).png'" style="width: 100%; height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 10px;">
+                                                ${gem.template_mint && gem.template_mint !== 'unknown' ? `<div class="mint-badge">#${gem.template_mint}</div>` : ''}
+                                            </div>
                                             <p style="color: #fff; margin: 5px 0; font-weight: 600;">${gem.name}</p>
                                             <small style="color: #888;">ID: ${gem.asset_id}</small>
                                         </div>

@@ -3,21 +3,90 @@
 
 class DataManager {
     constructor() {
+        // Detect mobile devices for optimized caching
+        this.isMobile = this.detectMobile();
+        const mobileMultiplier = this.isMobile ? 0.3 : 1; // 70% shorter TTL on mobile
+
         this.cache = {
-            dashboard: { data: null, timestamp: null, ttl: 5 * 60 * 1000 }, // 5 min
-            inventory: { data: null, timestamp: null, ttl: 5 * 60 * 1000 },
-            cityMatrix: { data: null, timestamp: null, ttl: 5 * 60 * 1000 },
-            basePrice: { data: null, timestamp: null, ttl: 5 * 60 * 1000 },
-            leaderboard: { data: null, timestamp: null, ttl: 5 * 60 * 1000 },
-            activeMining: { data: null, timestamp: null, ttl: 30 * 1000 }, // 30 sec (active data)
-            activePolishing: { data: null, timestamp: null, ttl: 30 * 1000 },
-            stakedAssets: { data: null, timestamp: null, ttl: 5 * 60 * 1000 }
+            dashboard: { data: null, timestamp: null, ttl: Math.floor(5 * 60 * 1000 * mobileMultiplier) }, // 5 min / 1.5 min
+            inventory: { data: null, timestamp: null, ttl: Math.floor(2 * 60 * 1000 * mobileMultiplier) }, // 2 min / 40 sec (reduced)
+            cityMatrix: { data: null, timestamp: null, ttl: Math.floor(3 * 60 * 1000 * mobileMultiplier) }, // 3 min / 1 min (reduced)
+            basePrice: { data: null, timestamp: null, ttl: Math.floor(5 * 60 * 1000 * mobileMultiplier) }, // 5 min / 1.5 min
+            leaderboard: { data: null, timestamp: null, ttl: Math.floor(10 * 60 * 1000 * mobileMultiplier) }, // 10 min / 3 min (reduced)
+            activeMining: { data: null, timestamp: null, ttl: 30 * 1000 }, // 30 sec (same for active data)
+            activePolishing: { data: null, timestamp: null, ttl: 30 * 1000 }, // 30 sec (same for active data)
+            stakedAssets: { data: null, timestamp: null, ttl: Math.floor(3 * 60 * 1000 * mobileMultiplier) } // 3 min / 1 min (reduced)
         };
         this.loadingStates = new Map();
         this.backendService = window.backendService;
         this.currentActor = null;
-        
-        console.log('[DataManager] Data Manager initialized');
+
+        // Memory monitoring for mobile
+        if (this.isMobile) {
+            this.startMemoryMonitoring();
+        }
+
+        console.log(`[DataManager] Data Manager initialized (${this.isMobile ? 'mobile' : 'desktop'} mode)`);
+    }
+
+    detectMobile() {
+        // Check for mobile devices
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        const isMobileDevice = /android|avantgo|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i.test(userAgent);
+
+        // Also check screen size as backup
+        const isSmallScreen = window.innerWidth <= 768 || window.innerHeight <= 600;
+
+        return isMobileDevice || isSmallScreen;
+    }
+
+    startMemoryMonitoring() {
+        // Monitor memory usage on mobile every 30 seconds
+        this.memoryCheckInterval = setInterval(() => {
+            this.checkMemoryUsage();
+        }, 30 * 1000);
+
+        // Aggressive cleanup on page visibility change for mobile
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && this.isMobile) {
+                console.log('[DataManager] 📱 Mobile device hidden, clearing non-critical cache');
+                this.clearNonCriticalCache();
+            }
+        });
+    }
+
+    checkMemoryUsage() {
+        if (!this.isMobile) return;
+
+        try {
+            // Check if performance.memory is available (Chrome-based browsers)
+            if (performance.memory) {
+                const memUsage = performance.memory.usedJSHeapSize / performance.memory.totalJSHeapSize;
+                console.log(`[DataManager] 📱 Memory usage: ${(memUsage * 100).toFixed(1)}%`);
+
+                // If memory usage is high (>80%), clear some cache
+                if (memUsage > 0.8) {
+                    console.warn('[DataManager] 📱 High memory usage detected, clearing cache');
+                    this.clearNonCriticalCache();
+                }
+            }
+        } catch (e) {
+            // Memory API not available, use fallback
+            console.log('[DataManager] 📱 Memory monitoring not available');
+        }
+    }
+
+    clearNonCriticalCache() {
+        // Clear cache items that aren't immediately needed
+        const nonCriticalKeys = ['leaderboard', 'cityMatrix'];
+        nonCriticalKeys.forEach(key => {
+            this.invalidate(key);
+        });
+
+        // Force garbage collection if available
+        if (window.gc) {
+            window.gc();
+        }
     }
 
     isValidCache(cacheKey) {

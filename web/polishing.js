@@ -1,7 +1,9 @@
 // TSDGEMS - Polishing Page Script (Backend-Connected)
 
 // Polishing Constants (match backend)
-const POLISHING_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour
+// Dev environment: 1 minute, Prod: 1 hour
+const isDev = window.location.hostname.includes('tsdgems-dev');
+const POLISHING_DURATION_MS = isDev ? 1 * 60 * 1000 : 1 * 60 * 60 * 1000;
 const MAX_POLISHING_SLOTS = 10;
 const MAX_AMOUNT_PER_SLOT = 500;
 
@@ -58,8 +60,44 @@ class PolishingGame extends TSDGEMSGame {
         this.polishedGems = {}; // { polished_diamond: X, polished_ruby: Y, ... }
         this.selectedSlotForStaking = null;
         this.stakedTables = {}; // { slotNum: { template_id, name } }
-        
+
+        // Mobile optimization
+        this.isMobile = this.detectMobile();
+        if (this.isMobile) {
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    console.log('[Polishing] 📱 Mobile page hidden, clearing polishing cache');
+                    this.clearPolishingCache();
+                }
+            });
+        }
+
         this.init();
+    }
+
+    detectMobile() {
+        // Check for mobile devices
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        const isMobileDevice = /android|avantgo|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i.test(userAgent);
+
+        // Also check screen size as backup
+        const isSmallScreen = window.innerWidth <= 768 || window.innerHeight <= 600;
+
+        return isMobileDevice || isSmallScreen;
+    }
+
+    clearPolishingCache() {
+        // Clear polishing data to free memory on mobile
+        this.inventoryData = null;
+        this.polishingTableNFTs = [];
+
+        // Clear DataManager cache for polishing-related data
+        if (window.dataManager) {
+            window.dataManager.invalidate('inventory');
+            window.dataManager.invalidate('stakedAssets');
+        }
+
+        console.log('[Polishing] 📱 Polishing cache cleared');
     }
 
     init() {
@@ -284,14 +322,21 @@ class PolishingGame extends TSDGEMSGame {
             if (inventoryData) {
                 // Process polish table NFTs
                 if (inventoryData.equipmentDetails) {
-                    const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => ({
-                        template_id: templateId,
-                        name: details.name,
-                        count: details.count,
-                        image: details.image,
-                        imagePath: details.imagePath,
-                        assets: details.assets || []
-                    }));
+                    const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => {
+                        // Create individual NFT objects with template_mint
+                        const assets = details.assets || [];
+                        return assets.map(assetId => {
+                            const assetDetails = inventoryData.assets.find(asset => asset.asset_id === assetId);
+                            return {
+                                template_id: templateId,
+                                template_mint: assetDetails ? assetDetails.template_mint : 'unknown',
+                                name: details.name,
+                                image: details.image,
+                                imagePath: details.imagePath,
+                                asset_id: assetId
+                            };
+                        });
+                    }).flat();
                     
                     this.polishingTableNFTs = equipmentArray.filter(nft => {
                         const name = (nft.name || '').toLowerCase();
@@ -608,7 +653,13 @@ class PolishingGame extends TSDGEMSGame {
             const stakedTable = this.stakedTables[slot.slotNum];
 
             const maxAmount = Math.min(this.roughGemsCount, MAX_AMOUNT_PER_SLOT);
-            
+
+            // Get template_mint for table if available
+            const tableInventoryAsset = stakedTable && this.inventoryData && this.inventoryData.assets ?
+                this.inventoryData.assets.find(asset => asset.asset_id === stakedTable.asset_id) : null;
+            const tableTemplateMint = tableInventoryAsset && tableInventoryAsset.template_mint !== 'unknown' ?
+                tableInventoryAsset.template_mint : null;
+
             return `
                 <div class="polishing-slot ${stakedTable ? 'rented' : 'available'}">
                     <div class="slot-header">
@@ -617,10 +668,11 @@ class PolishingGame extends TSDGEMSGame {
                     <div class="slot-content-layout">
                         ${stakedTable && stakedTable.imagePath ? `
                             <div class="slot-polishing-image-container" style="text-align: center; margin: 15px 0;">
-                                <img src="${stakedTable.imagePath}" 
-                                     class="slot-polishing-image" 
-                                     alt="${stakedTable.name}" 
+                                <img src="${stakedTable.imagePath}"
+                                     class="slot-polishing-image"
+                                     alt="${stakedTable.name}"
                                      style="width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 2px solid rgba(255, 149, 0, 0.3);">
+                                ${tableTemplateMint ? `<div style="margin-top: 8px; color: #ffd700; font-size: 0.8em; font-weight: 600;">Mint #${tableTemplateMint}</div>` : ''}
                             </div>
                         ` : ''}
                         <p class="slot-description">${stakedTable ? 'Enter amount and start polishing' : 'Stake a Polishing Table NFT to begin'}</p>
@@ -762,29 +814,14 @@ class PolishingGame extends TSDGEMSGame {
                 </div>
             `;
         } else {
-            const individualTableNFTs = [];
-            this.polishingTableNFTs.forEach(nft => {
-                // Use actual asset IDs if available from equipmentDetails
-                const assets = nft.assets || [];
-                const count = Math.max(assets.length, nft.count || 1);
-                
-                for (let i = 0; i < count; i++) {
-                    individualTableNFTs.push({
-                        ...nft,
-                        asset_id: assets[i] || `${nft.template_id}-${i}`, // Use real asset ID or placeholder
-                        uniqueId: `${nft.template_id}-${i}`
-                    });
-                }
-            });
-            
             // Filter out already staked tables
-            let availableTables = individualTableNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
-            
+            let availableTables = this.polishingTableNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
+
             // Sort by priority/quality if needed (currently sorted by name)
             // You could add other sorting criteria here
             availableTables.sort((a, b) => a.name.localeCompare(b.name));
             
-            console.log('[Polishing] Available tables after filtering and sorting:', availableTables.length, 'of', individualTableNFTs.length);
+            console.log('[Polishing] Available tables after filtering and sorting:', availableTables.length, 'of', this.polishingTableNFTs.length);
             
             if (availableTables.length === 0) {
                 // All tables are already staked
@@ -806,19 +843,22 @@ class PolishingGame extends TSDGEMSGame {
                 <p style="margin-bottom: 10px; color: #888; font-size: 0.9em;">
                     Select a Polishing Table NFT to stake in this slot.
                 </p>
-                ${availableTables.length < individualTableNFTs.length ? `
+                ${availableTables.length < this.polishingTableNFTs.length ? `
                     <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 6px; padding: 8px; margin-bottom: 10px;">
                         <p style="color: #ff9800; margin: 0; font-size: 0.8em;">
-                            <i class="fas fa-info-circle"></i> ${individualTableNFTs.length - availableTables.length} table(s) already staked
+                            <i class="fas fa-info-circle"></i> ${this.polishingTableNFTs.length - availableTables.length} table(s) already staked
                         </p>
                     </div>
                 ` : ''}
                 <div class="nft-gallery-grid" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: ${window.innerWidth <= 768 ? '0.35rem' : '10px'}; padding: 5px; justify-content: start; overflow: visible;">
                     ${availableTables.map(nft => `
                         <div class="nft-card" style="border: 2px solid #ff9500; border-radius: 6px; padding: ${window.innerWidth <= 768 ? '6px' : '8px'}; background: rgba(0, 0, 0, 0.3); cursor: pointer; transition: all 0.3s; min-width: 0;" onclick="game.stakeTable('${nft.template_id}', ${slotNum}, '${nft.name}', '${nft.imagePath || ''}', '${nft.asset_id}')">
-                            ${nft.imagePath ? `
-                                <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: ${window.innerWidth <= 768 ? 'auto' : '100px'}; aspect-ratio: ${window.innerWidth <= 768 ? '1' : 'auto'}; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
-                            ` : ''}
+                            <div style="position: relative;">
+                                ${nft.imagePath ? `
+                                    <img src="${nft.imagePath}" alt="${nft.name}" style="width: 100%; height: ${window.innerWidth <= 768 ? 'auto' : '100px'}; aspect-ratio: ${window.innerWidth <= 768 ? '1' : 'auto'}; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" onerror="this.style.display='none'">
+                                ` : ''}
+                                ${nft.template_mint && nft.template_mint !== 'unknown' ? `<div class="mint-badge">#${nft.template_mint}</div>` : ''}
+                            </div>
                             <h4 style="color: #ff9500; margin-bottom: 4px; font-size: ${window.innerWidth <= 768 ? '0.7em' : '0.85em'};">${nft.name}</h4>
                         </div>
                     `).join('')}
