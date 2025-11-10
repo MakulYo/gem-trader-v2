@@ -2,22 +2,48 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Public reads for config + leaderboard + runtime bits
+    // --- 🔓 Public read-only collections ---
+    // These are safe to expose to all users
     match /game_config/{doc} { allow read: if true; }
     match /runtime/{doc}     { allow read: if true; }
     match /city_boosts/{doc} { allow read: if true; }
-
-    // Example past-season storage (if you use it publicly)
     match /leaderboard_seasons/{season} { allow read: if true; }
 
-    // Players (reads ok for MVP, writes via Functions only)
-    match /players/{account} {
+    // --- ⚓ Players ---
+    // Player data is readable (for public dashboards, leaderboards, etc.)
+    // All writes must go through Cloud Functions.
+    match /players/{actor} {
       allow read: if true;
       allow write: if false;
+
+      // Nested collections under players (meta, inventory, mining, etc.)
       match /{sub=**}/{doc} {
         allow read: if true;
         allow write: if false;
       }
+    }
+
+    // --- ⚙️ Staking documents ---
+    // Each player's staking data lives in /staking/{actor}
+    // Read allowed so UI can render live, write only via Functions.
+    match /staking/{actor} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // --- 🪙 Rate limit logs ---
+    // Internal system data written by Functions only
+    match /rate_limits/{key} {
+      allow read: if false;   // never expose rate-limit internals
+      allow write: if false;  // only Functions may write
+    }
+
+    // --- 💰 City boosts / pricing / runtime data ---
+    match /runtime/{doc} { allow read: if true; allow write: if false; }
+
+    // --- 🪓 Generic fallback (deny everything else) ---
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

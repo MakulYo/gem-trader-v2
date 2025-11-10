@@ -511,7 +511,7 @@ const completeMining = onRequest((req, res) =>
           roughKey: key,
           baseYield,
           yieldAmt: amt,
-          slotMiningPower: slotMP,
+          slotMiningPower: job.slotMiningPower,
           effectiveMiningPower: effectiveMP,
           ownershipAtCompletion: {
             missingAssets,  // Assets no longer owned at completion
@@ -538,7 +538,7 @@ const completeMining = onRequest((req, res) =>
           yieldAmt: amt,
           multiplier: boostMultiplier,
           completedAt: now,
-          slotMiningPower: slotMP,          // Original MP from staking
+          slotMiningPower: job.slotMiningPower,          // Original MP from staking
           effectiveMiningPower: effectiveMP, // MP after ownership validation
           ownershipAtCompletion: {          // Ownership check results
             missingAssets,  // [{asset_id, template_id, template_mint, type, name, mp}]
