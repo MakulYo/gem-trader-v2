@@ -56,6 +56,30 @@ class MiningGame extends TSDGEMSGame {
 
         // Mobile optimization
         this.isMobile = this.detectMobile();
+
+        // TEMP: Setup rebuild live data button
+        setTimeout(() => {
+          const rebuildBtn = document.getElementById('rebuild-live-btn');
+          if (rebuildBtn) {
+            rebuildBtn.addEventListener('click', async () => {
+              console.log('[Mining] 🔄 Triggering live data rebuild...');
+              try {
+                const response = await fetch(`${window.backendService.apiBase}/rebuildPlayerLive`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ data: { actor: this.currentActor || this.actor } })
+                });
+                const result = await response.json();
+                console.log('[Mining] Rebuild result:', result);
+                alert('Live data rebuild triggered! Check console logs.');
+              } catch (error) {
+                console.error('[Mining] Rebuild failed:', error);
+                alert('Rebuild failed: ' + error.message);
+              }
+            });
+          }
+        }, 1000);
+
         if (this.isMobile) {
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
@@ -66,6 +90,9 @@ class MiningGame extends TSDGEMSGame {
         }
 
         this.init();
+
+        // 🔥 Setup live data listeners for instant updates
+        this.setupLiveDataListeners();
     }
 
     detectMobile() {
@@ -92,6 +119,89 @@ class MiningGame extends TSDGEMSGame {
         }
 
         console.log('[Mining] 📱 Mining cache cleared');
+    }
+
+    // 🔥 Setup listeners for live mining slots data
+    setupLiveDataListeners() {
+        console.log('[Mining] Setting up live data listeners...');
+
+        // Listen for mining slots updates from live data
+        window.addEventListener('realtime:mining-slots', (event) => {
+            const { actor, slots } = event.detail;
+            if (actor === this.currentActor && slots) {
+                console.log('[Mining] 🔥 Realtime mining slots update:', slots.length, 'slots');
+                this.updateMiningSlotsFromLive(slots);
+            }
+        });
+
+        // Listen for profile updates (for Game $ and slot unlocks)
+        window.addEventListener('realtime:profile', (event) => {
+            const { actor, profile } = event.detail;
+            if (actor === this.currentActor && profile) {
+                console.log('[Mining] 🔥 Realtime profile update:', profile);
+
+                // Update effective slots
+                this.effectiveSlots = Math.min(profile.miningSlotsUnlocked || 0, MAX_SLOTS);
+
+                // Update Game $
+                if (profile.ingameCurrency !== undefined) {
+                    this.updateGameDollars(profile.ingameCurrency, false);
+                }
+
+                // Re-render slots if unlocks changed
+                this.renderMiningSlots();
+            }
+        });
+    }
+
+    // 🔥 Update mining slots from live data
+    updateMiningSlotsFromLive(slots) {
+        console.log('[Mining] Updating mining slots from live data:', slots?.map(slot => ({
+            id: slot.id,
+            state: slot.state,
+            stakedCount: slot.staked?.length || 0,
+            hasMine: slot.staked?.some(s => s.type === 'mine'),
+            hasWorkers: slot.staked?.some(s => s.type === 'worker')
+        })));
+
+        // Convert live slots format to activeJobs format
+        const activeJobs = slots
+            .filter(slot => slot.state === 'active' || slot.state === 'running')
+            .map(slot => ({
+                jobId: `job_slot_${slot.id}`,
+                slotId: `slot_${slot.id}`,
+                startedAt: slot.startedAt,
+                finishAt: slot.finishAt,
+                power: slot.power || 0,
+                state: slot.state
+            }));
+
+        this.activeJobs = activeJobs;
+        console.log('[Mining] Active jobs from live data:', this.activeJobs.length);
+
+        // Update staked assets from live data
+        if (slots) {
+            this.stakedMines = {};
+            this.stakedWorkers = {};
+
+            slots.forEach(slot => {
+                if (slot.staked) {
+                    const slotNum = slot.id;
+                    const mines = slot.staked.filter(asset => asset.type === 'mine');
+                    const workers = slot.staked.filter(asset => asset.type === 'worker');
+
+                    if (mines.length > 0) {
+                        this.stakedMines[slotNum] = mines[0]; // Usually only one mine per slot
+                    }
+
+                    if (workers.length > 0) {
+                        this.stakedWorkers[slotNum] = workers;
+                    }
+                }
+            });
+        }
+
+        this.renderMiningSlots();
     }
 
     init() {
@@ -326,12 +436,13 @@ class MiningGame extends TSDGEMSGame {
                 console.log('[Mining] Mining slots unlocked:', dashboard.player.miningSlotsUnlocked);
                 console.log('[Mining] Effective slots:', this.effectiveSlots);
                 
-                // Update header
-                const headerGameDollars = document.getElementById('header-game-dollars');
-                if (headerGameDollars) {
-                    const currency = dashboard.player.ingameCurrency || 0;
-                    headerGameDollars.textContent = `Game $: ${currency.toLocaleString()}`;
-                }
+                const rawCurrency = Number(dashboard.player.ingameCurrency ?? dashboard.player.ingame_currency ?? 0);
+                const previousCurrency = Number(this.currentGameDollars ?? 0);
+                const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
+                const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
+                    ? previousCurrency
+                    : sanitizedCurrency;
+                this.updateGameDollars(effectiveCurrency, false);
                 
                 // Update TSDM balance in mining stats
                 const tsdmBalance = document.getElementById('tsdm-balance-mining');
@@ -1145,12 +1256,13 @@ class MiningGame extends TSDGEMSGame {
             // Reload dashboard to update balances
             const dashboard = await this.backendService.getDashboard(this.currentActor);
             if (dashboard && dashboard.player) {
-                // Update header with new currency
-                const headerGameDollars = document.getElementById('header-game-dollars');
-                if (headerGameDollars) {
-                    const currency = dashboard.player.ingameCurrency || 0;
-                    headerGameDollars.textContent = `Game $: ${currency.toLocaleString()}`;
-                }
+                const rawCurrency = Number(dashboard.player.ingameCurrency ?? dashboard.player.ingame_currency ?? 0);
+                const previousCurrency = Number(this.currentGameDollars ?? 0);
+                const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
+                const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
+                    ? previousCurrency
+                    : sanitizedCurrency;
+                this.updateGameDollars(effectiveCurrency, true);
             }
             
             // Re-render slots (the completed job will be removed, slot returns to available state)
@@ -2214,14 +2326,29 @@ class MiningGame extends TSDGEMSGame {
         }, 1000);
     }
 
-    startAutoRefresh() {
+    async startAutoRefresh() {
         if (!this.currentActor) return;
-        
+
+        // Try to use TSDRealtime if available
+        if (window.TSDRealtime) {
+            try {
+                console.log('[Mining] 🎯 Starting TSDRealtime for mining data...');
+                window.TSDRealtime.start(this.currentActor);
+                console.log('[Mining] ✅ TSDRealtime active - instant updates enabled!');
+                return;
+            } catch (error) {
+                console.warn('[Mining] TSDRealtime failed, falling back to polling:', error);
+            }
+        } else {
+            console.warn('[Mining] TSDRealtime not available');
+        }
+
+        // Fallback: Polling method
         // Refresh mining data every 30 seconds
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
         }
-        
+
         this.refreshInterval = setInterval(async () => {
             if (this.isLoggedIn && this.currentActor) {
                 try {

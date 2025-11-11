@@ -599,6 +599,66 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
   })
 }
 
+/**
+ * Automatically unstake assets that are no longer owned
+ * @param {string} actor - WAX account name
+ * @param {string} page - Page type ('mining' or 'polishing')
+ * @param {number} slotNum - Slot number
+ * @param {Array} missingAssets - Array of missing assets: [{asset_id, type, name, ...}]
+ * @returns {Promise<{unstaked: Array, errors: Array}>}
+ */
+async function autoUnstakeMissingAssets(actor, page, slotNum, missingAssets) {
+  if (!missingAssets || missingAssets.length === 0) {
+    return { unstaked: [], errors: [] }
+  }
+
+  console.log(`[Staking] Auto-unstaking ${missingAssets.length} missing assets from ${page} slot ${slotNum} for ${actor}`)
+  
+  const unstaked = []
+  const errors = []
+
+  for (const missingAsset of missingAssets) {
+    const { asset_id, type } = missingAsset
+    
+    try {
+      // Determine assetType from type field or infer from context
+      let assetType = type
+      if (!assetType) {
+        // Try to infer from asset_id context (this is a fallback)
+        assetType = 'worker' // Default assumption, but should be provided
+      }
+
+      // Map type to assetType for unstakeAssetFromSlot
+      if (type === 'mine') assetType = 'mine'
+      else if (type === 'worker') assetType = 'worker'
+      else if (type === 'table') assetType = 'table'
+      else if (type === 'gem') assetType = 'gem'
+      else {
+        console.warn(`[Staking] Unknown asset type: ${type}, skipping auto-unstake for ${asset_id}`)
+        errors.push({ asset_id, error: `Unknown type: ${type}` })
+        continue
+      }
+
+      await unstakeAssetFromSlot(actor, page, slotNum, assetType, asset_id)
+      unstaked.push({
+        asset_id,
+        type: assetType,
+        name: missingAsset.name || `${assetType} ${asset_id}`
+      })
+      console.log(`[Staking] ✅ Auto-unstaked ${assetType} ${asset_id} from ${page} slot ${slotNum}`)
+    } catch (error) {
+      console.error(`[Staking] ❌ Failed to auto-unstake ${asset_id}:`, error.message)
+      errors.push({
+        asset_id,
+        type: missingAsset.type,
+        error: error.message
+      })
+    }
+  }
+
+  return { unstaked, errors }
+}
+
 // ========================================
 // CLOUD FUNCTIONS
 // ========================================

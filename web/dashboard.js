@@ -19,7 +19,6 @@ class DashboardGame extends TSDGEMSGame {
         this.backendService = window.backendService;
         this.isLoggedIn = false;
         this.currentActor = null;
-        this.realtimeUnsubscribers = [];
         
         console.log('Initializing dashboard...');
         this.init();
@@ -57,6 +56,9 @@ class DashboardGame extends TSDGEMSGame {
 
     setupWalletEventListeners() {
         console.log('[Dashboard] Setting up wallet event listeners...');
+
+        // Setup realtime inventory listeners
+        this.setupInventoryRealtimeListeners();
         
         // Listen for new wallet connection
         window.addEventListener('wallet-connected', async (event) => {
@@ -340,28 +342,32 @@ class DashboardGame extends TSDGEMSGame {
         console.log('[Dashboard] Player object:', player);
 
         // Ensure default values for missing fields
-        const ingameCurrency = player.ingameCurrency || 0;
+        const rawCurrency = Number(player.ingameCurrency ?? player.ingame_currency ?? 0);
+        const previousCurrency = Number(this.currentGameDollars ?? 0);
+        const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
+        const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
+            ? previousCurrency
+            : sanitizedCurrency;
         const balances = player.balances || { WAX: 0, TSDM: 0 };
         const roughGems = player.roughGems || {};
         const polishedGems = player.polishedGems || {};
         
         console.log('[Dashboard] Extracted values:');
-        console.log('[Dashboard] - ingameCurrency:', ingameCurrency);
+        console.log('[Dashboard] - ingameCurrency (raw):', rawCurrency);
+        console.log('[Dashboard] - ingameCurrency (effective):', effectiveCurrency);
         console.log('[Dashboard] - balances:', balances);
         console.log('[Dashboard] - TSDM:', balances.TSDM);
         console.log('[Dashboard] - roughGems:', roughGems);
         console.log('[Dashboard] - polishedGems:', polishedGems);
 
         // Update header game dollars
-        const headerGameDollars = document.getElementById('header-game-dollars');
-        if (headerGameDollars) {
-            headerGameDollars.textContent = `Game $: ${ingameCurrency.toLocaleString()}`;
-        }
+        this.updateGameDollars(effectiveCurrency, false);
+        const displayCurrency = this.currentGameDollars;
 
         // Update dashboard cards
         const tsdBalance = document.getElementById('tsd-balance');
         if (tsdBalance) {
-            tsdBalance.textContent = ingameCurrency.toLocaleString(undefined, { 
+            tsdBalance.textContent = displayCurrency.toLocaleString(undefined, { 
                 minimumFractionDigits: 2, 
                 maximumFractionDigits: 2 
             });
@@ -422,7 +428,7 @@ class DashboardGame extends TSDGEMSGame {
         console.log('[Dashboard] [OK] UI successfully updated!');
         console.log('[Dashboard] Final values displayed:');
         console.log('[Dashboard] - Account:', player.account);
-        console.log('[Dashboard] - Ingame $:', ingameCurrency);
+        console.log('[Dashboard] - Ingame $:', displayCurrency);
         console.log('[Dashboard] - TSDM:', balances.TSDM);
         console.log('[Dashboard] - Rough Gems types:', Object.keys(roughGems).length);
         console.log('[Dashboard] - Polished Gems types:', Object.keys(polishedGems).length);
@@ -441,7 +447,6 @@ class DashboardGame extends TSDGEMSGame {
         
         try {
             // Clean up realtime listeners
-            this.cleanupRealtimeListeners();
             
             // Stop polling
             if (this.refreshInterval) {
@@ -518,61 +523,74 @@ class DashboardGame extends TSDGEMSGame {
         }
         if (logoutBtn) logoutBtn.classList.add('hidden');    }
 
+    setupInventoryRealtimeListeners() {
+        console.log('[Dashboard] Setting up realtime inventory listeners...');
+
+        // Listen for inventory updates from dataManager
+        window.addEventListener('inventory:updated', (event) => {
+            const { type, data } = event.detail;
+            console.log('[Dashboard] 🔄 Realtime inventory update received:', type, data);
+
+            if (type === 'gems') {
+                // Update gem counts in dashboard
+                this.updateGemCountsFromRealtime(data);
+            }
+        });
+    }
+
+    updateGemCountsFromRealtime(gemsData) {
+        // Extract rough and polished gems
+        const roughGems = {};
+        const polishedGems = {};
+
+        Object.entries(gemsData).forEach(([key, value]) => {
+            if (key.startsWith('rough_') || key === 'rough_gems') {
+                roughGems[key] = value;
+            } else if (key.startsWith('polished_')) {
+                polishedGems[key] = value;
+            }
+        });
+
+        // Update dashboard counters
+        const roughGemsCount = document.getElementById('rough-gems-count');
+        if (roughGemsCount) {
+            const totalRough = Object.values(roughGems).reduce((a, b) => a + b, 0);
+            roughGemsCount.textContent = totalRough;
+        }
+
+        const polishedGemsCount = document.getElementById('polished-gems-count');
+        if (polishedGemsCount) {
+            const totalPolished = Object.values(polishedGems).reduce((a, b) => a + b, 0);
+            polishedGemsCount.textContent = totalPolished;
+        }
+
+        console.log('[Dashboard] ✅ Updated gem counts from realtime data');
+    }
+
     async startAutoRefresh() {
         if (!this.currentActor) {
             console.warn('[Dashboard] No actor set, cannot start auto-refresh');
             return;
         }
 
-        // Try to use Firestore Realtime Listeners if available
-        if (window.firebaseRealtimeService) {
+        // Try to use TSDRealtime if available
+        if (window.TSDRealtime) {
             try {
-                await window.firebaseRealtimeService.initialize();
-                this.setupRealtimeListeners();
+                console.log('[Dashboard] 🎯 Starting TSDRealtime for dashboard data...');
+                window.TSDRealtime.start(this.currentActor);
+                console.log('[Dashboard] ✅ TSDRealtime active - instant updates enabled!');
                 return;
             } catch (error) {
-                console.warn('[Dashboard] Realtime listeners failed, falling back to polling:', error);
+                console.warn('[Dashboard] TSDRealtime failed, falling back to polling:', error);
             }
+        } else {
+            console.warn('[Dashboard] TSDRealtime not available');
         }
 
         // Fallback: Polling method
         this.setupPolling();
     }
 
-    setupRealtimeListeners() {
-        console.log('[Dashboard] Setting up Firestore realtime listeners for:', this.currentActor);
-
-        // Clean up old listeners if any
-        this.cleanupRealtimeListeners();
-
-        // Listen to Dashboard changes (player + base price)
-        const [playerUnsubscribe, basePriceUnsubscribe] = window.firebaseRealtimeService.listenToDashboard(
-            this.currentActor,
-            (data) => {
-                console.log('[Dashboard] [REALTIME] Dashboard data updated in realtime!', data);
-                
-                // Firestore listener returns raw player data
-                // Wrap it in the expected structure { player: {...} }
-                if (data.player) {
-                    const normalizedData = {
-                        player: data.player,
-                        basePrice: data.basePrice
-                    };
-                    
-                    this.updateDashboardFromBackend(normalizedData);
-                }
-            }
-        );
-
-        this.realtimeUnsubscribers = [playerUnsubscribe, basePriceUnsubscribe];
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            this.cleanupRealtimeListeners();
-        });
-
-        console.log('[Dashboard] [OK] Realtime listeners active - instant updates enabled!');
-    }
 
     setupPolling() {
         console.log('[Dashboard] [POLLING] Setting up polling (30s interval)...');
@@ -613,17 +631,6 @@ class DashboardGame extends TSDGEMSGame {
         });
     }
 
-    cleanupRealtimeListeners() {
-        if (this.realtimeUnsubscribers.length > 0) {
-            console.log('[Dashboard] Cleaning up realtime listeners...');
-            this.realtimeUnsubscribers.forEach(unsubscribe => {
-                if (typeof unsubscribe === 'function') {
-                    unsubscribe();
-                }
-            });
-            this.realtimeUnsubscribers = [];
-        }
-    }
     
     showLoadingState(isLoading) {
         const statCards = document.querySelectorAll('.stat-card');

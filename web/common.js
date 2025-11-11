@@ -50,9 +50,12 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// Load and set cached Game $ value immediately (before page loads fully)
+    // Load and set cached Game $ value immediately (before page loads fully)
 document.addEventListener('DOMContentLoaded', () => {
-    const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+    // Use environment-specific localStorage key
+    const env = window.firebaseEnv || 'prod';
+    const cacheKey = `tsdgems_game_dollars_${env}`;
+    const cachedValue = localStorage.getItem(cacheKey);
     const header = document.getElementById('header-game-dollars');
     if (header && cachedValue) {
         const value = parseFloat(cachedValue);
@@ -65,8 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // Base Game State (shared across all pages)
 class TSDGEMSGame {
     constructor() {
+        // Use environment-specific localStorage key
+        const env = window.firebaseEnv || 'prod';
+        this.cacheKey = `tsdgems_game_dollars_${env}`;
+
         // Load cached Game $ value if available
-        const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+        const cachedValue = localStorage.getItem(this.cacheKey);
         this.currentGameDollars = cachedValue ? parseFloat(cachedValue) : 0;
         
         // Set initial value from cache if available
@@ -119,31 +126,40 @@ class TSDGEMSGame {
 
     // Update Game $ with animation
     updateGameDollars(newValue, animate = true) {
-        const oldValue = this.currentGameDollars;
-        
-        // Don't update if new value is lower than cached value (prevent going back to 0)
-        const cachedValue = localStorage.getItem('tsdgems_game_dollars');
-        if (newValue === 0 && cachedValue && parseFloat(cachedValue) > 0) {
-            console.log('[Game] Ignoring 0 value, keeping cached value:', cachedValue);
-            return; // Keep the existing value
+        const parsedValue = Number(newValue);
+        if (!Number.isFinite(parsedValue)) {
+            console.warn('[Game] Ignoring invalid Game $ value:', newValue);
+            return;
         }
-        
+
+        const oldValue = Number(this.currentGameDollars ?? 0);
+        const cachedValue = localStorage.getItem(this.cacheKey);
+        const cachedNumber = Number.isFinite(parseFloat(cachedValue)) ? parseFloat(cachedValue) : 0;
+        const shouldIgnoreZero = parsedValue <= 0 && (cachedNumber > 0 || oldValue > 0);
+        if (shouldIgnoreZero) {
+            console.log('[Game] Ignoring non-positive update, keeping previous Game $:', Math.max(cachedNumber, oldValue));
+            return;
+        }
+
         // Cache the new value
-        localStorage.setItem('tsdgems_game_dollars', newValue.toString());
+        localStorage.setItem(this.cacheKey, parsedValue.toString());
         
         // Only animate if we have a valid old value and it's different
-        if (animate && oldValue > 0 && Math.abs(newValue - oldValue) > 0) {
-            console.log(`[Game] Animating Game $ from ${oldValue} to ${newValue}`);
-            this.animateGameDollars(oldValue, newValue);
+        if (animate && oldValue > 0 && Math.abs(parsedValue - oldValue) > 0) {
+            console.log(`[Game] Animating Game $ from ${oldValue} to ${parsedValue}`);
+            this.animateGameDollars(oldValue, parsedValue);
         } else {
             // Direct update (first load or no change)
             const header = document.getElementById('header-game-dollars');
             if (header) {
-                header.textContent = `Game $: ${newValue.toLocaleString()}`;
+                header.textContent = `Game $: ${parsedValue.toLocaleString()}`;
             }
-            this.currentGameDollars = newValue;
-            console.log(`[Game] Set Game $ to ${newValue} (no animation)`);
+            this.currentGameDollars = parsedValue;
+            console.log(`[Game] Set Game $ to ${parsedValue} (no animation)`);
+            return;
         }
+
+        this.currentGameDollars = parsedValue;
     }
 
     applyBackendData(detail = {}) {

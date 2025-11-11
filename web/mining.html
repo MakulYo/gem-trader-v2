@@ -17,7 +17,7 @@
 <body data-guide-key="mining">
 <script>
   // Load cached Game $ value immediately to prevent flash
-  const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+  const cachedValue = localStorage.getItem('tsdgems_game_dollars_prod'); // fallback
   if (cachedValue && parseFloat(cachedValue) > 0) {
     // Wait for DOM ready
     if (document.readyState === 'loading') {
@@ -297,6 +297,8 @@
                     <p class="stat-value" id="total-mining-power">0</p>
                   </div>
                 </div>
+                <!-- TEMP DEBUG BUTTON -->
+                <button id="rebuild-live-btn" style="margin-left: 20px; background: #ff6b6b; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">🔄 Rebuild Live Data</button>
               </div>
             </div>
             
@@ -417,6 +419,8 @@
     <div id="mining-animations" class="mining-animations"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script type="module" src="firebase-config.js"></script>
+    <script src="realtime.js"></script>
     <script src="backend-service.js"></script>
     <script src="skeleton.js"></script>
     <script src="common.js"></script>

@@ -160,15 +160,23 @@ class BackendService {
 
       // Normalize to expected shape { player: {...} }
       if (data.profile) {
+        const previousCurrency = Number(this.dashboardData?.player?.ingameCurrency ?? 0);
+        const rawCurrency = Number(data.profile.ingameCurrency ?? data.profile.ingame_currency ?? 0);
+        const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
+        const stableCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
+          ? previousCurrency
+          : sanitizedCurrency;
+
         this.dashboardData = {
-          player: data.profile,
+          player: { ...data.profile, ingameCurrency: stableCurrency },
           inventory: data.inventory || []
         };
+        // Backward compatibility for legacy callers expecting .profile
+        this.dashboardData.profile = this.dashboardData.player;
 
-        // Update Game $ header
-        const currency = data.profile.ingameCurrency || 0;
+        // Update Game $ header (respect existing balance if backend reports zero)
         window.dispatchEvent(new CustomEvent('gameDollars:update', {
-          detail: { amount: currency, animate: false }
+          detail: { amount: stableCurrency, animate: false }
         }));
       } else {
         this.dashboardData = data;

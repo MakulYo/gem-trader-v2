@@ -15,6 +15,8 @@ const staking       = require('./modules/staking');
 const trading       = require('./modules/trading');
 const leaderboard   = require('./modules/leaderboard');
 const seasonsModule = require('./modules/seasons');
+const liveAggregator = require('./modules/live-aggregator');
+const triggers = require('./triggers');
 
 module.exports = {
   healthcheck,
@@ -29,4 +31,6 @@ module.exports = {
   ...trading,
   ...leaderboard,
   ...seasonsModule,
+  ...liveAggregator,
+  ...triggers,
 };

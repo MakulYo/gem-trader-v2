@@ -17,7 +17,7 @@
 <body data-guide-key="leaderboard">
 <script>
   // Load cached Game $ value immediately to prevent flash
-  const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+  const cachedValue = localStorage.getItem('tsdgems_game_dollars_prod'); // fallback
   if (cachedValue && parseFloat(cachedValue) > 0) {
     // Wait for DOM ready
     if (document.readyState === 'loading') {

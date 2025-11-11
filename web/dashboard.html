@@ -17,7 +17,7 @@
 <body>
 <script>
   // Load cached Game $ value immediately to prevent flash
-  const cachedValue = localStorage.getItem('tsdgems_game_dollars');
+  const cachedValue = localStorage.getItem('tsdgems_game_dollars_prod'); // fallback
   if (cachedValue && parseFloat(cachedValue) > 0) {
     // Wait for DOM ready
     if (document.readyState === 'loading') {
@@ -157,6 +157,8 @@
     <div id="notifications" class="notifications"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script type="module" src="firebase-config.js"></script>
+    <script src="realtime.js"></script>
     <script type="module" src="wallet.js"></script>
     <script src="common.js"></script>
     <script src="backend-service.js"></script>

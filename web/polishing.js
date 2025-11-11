@@ -73,6 +73,9 @@ class PolishingGame extends TSDGEMSGame {
         }
 
         this.init();
+
+        // 🔥 Setup live data listeners for instant updates
+        this.setupLiveDataListeners();
     }
 
     detectMobile() {
@@ -103,8 +106,95 @@ class PolishingGame extends TSDGEMSGame {
     init() {
         console.log('[Polishing] Running init()...');
         this.setupWalletIntegration();
-        this.setupWalletEventListeners();this.showNotification('Connect your wallet to access polishing operations', 'info');
+        this.setupWalletEventListeners();
+        this.showNotification('Connect your wallet to access polishing operations', 'info');
         console.log('[Polishing] Init complete');
+    }
+
+    // 🔥 Setup listeners for live polishing slots data
+    setupLiveDataListeners() {
+        console.log('[Polishing] Setting up live data listeners...');
+
+        // Listen for polishing slots updates from live data
+        window.addEventListener('realtime:polishing-slots', (event) => {
+            const { actor, slots } = event.detail;
+            if (actor === this.currentActor && slots) {
+                console.log('[Polishing] 🔥 Realtime polishing slots update:', slots.length, 'slots');
+                this.updatePolishingSlotsFromLive(slots);
+            }
+        });
+
+        // Listen for profile updates (for Game $ and slot unlocks)
+        window.addEventListener('realtime:profile', (event) => {
+            const { actor, profile } = event.detail;
+            if (actor === this.currentActor && profile) {
+                console.log('[Polishing] 🔥 Realtime profile update:', profile);
+
+                // Update effective slots
+                this.effectiveSlots = Math.min(profile.polishingSlotsUnlocked || 0, MAX_SLOTS);
+
+                // Update Game $
+                if (profile.ingameCurrency !== undefined) {
+                    this.updateGameDollars(profile.ingameCurrency, false);
+                }
+
+                // Re-render slots if unlocks changed
+                this.renderPolishingSlots();
+            }
+        });
+
+        // Listen for gems updates for rough gem counts
+        window.addEventListener('realtime:inventory-gems', (event) => {
+            const { actor, gems } = event.detail;
+            if (actor === this.currentActor && gems) {
+                console.log('[Polishing] 🔥 Realtime gems update:', gems);
+                this.updateGemCountsFromRealtime(gems);
+            }
+        });
+    }
+
+    // 🔥 Update polishing slots from live data
+    updatePolishingSlotsFromLive(slots) {
+        console.log('[Polishing] Updating polishing slots from live data...');
+
+        // Convert live slots format to activeJobs format
+        const activeJobs = slots
+            .filter(slot => slot.state === 'active' || slot.state === 'running')
+            .map(slot => ({
+                jobId: `job_slot_${slot.id}`,
+                slotId: `slot_${slot.id}`,
+                startedAt: slot.startedAt,
+                finishAt: slot.finishAt,
+                power: slot.power || 0,
+                state: slot.state
+            }));
+
+        this.activeJobs = activeJobs;
+        console.log('[Polishing] Active jobs from live data:', this.activeJobs.length);
+
+        // Update staked assets from live data
+        if (slots) {
+            this.stakedTables = {};
+            this.stakedGems = {};
+
+            slots.forEach(slot => {
+                if (slot.staked) {
+                    const slotNum = slot.id;
+                    const tables = slot.staked.filter(asset => asset.type === 'table');
+                    const gems = slot.staked.filter(asset => asset.type === 'gem');
+
+                    if (tables.length > 0) {
+                        this.stakedTables[slotNum] = tables[0]; // Usually only one table per slot
+                    }
+
+                    if (gems.length > 0) {
+                        this.stakedGems[slotNum] = gems;
+                    }
+                }
+            });
+        }
+
+        this.renderPolishingSlots();
     }
 
     setupWalletEventListeners() {
@@ -300,12 +390,13 @@ class PolishingGame extends TSDGEMSGame {
             if (dashboard && dashboard.player) {
                 console.log('[Polishing] Player data loaded:', dashboard.player);
                 
-                // Update header
-                const headerGameDollars = document.getElementById('header-game-dollars');
-                if (headerGameDollars) {
-                    const currency = dashboard.player.ingameCurrency || 0;
-                    headerGameDollars.textContent = `Game $: ${currency.toLocaleString()}`;
-                }
+                const rawCurrency = Number(dashboard.player.ingameCurrency ?? dashboard.player.ingame_currency ?? 0);
+                const previousCurrency = Number(this.currentGameDollars ?? 0);
+                const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
+                const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
+                    ? previousCurrency
+                    : sanitizedCurrency;
+                this.updateGameDollars(effectiveCurrency, false);
             }
             
             // Process active jobs
@@ -1190,11 +1281,13 @@ class PolishingGame extends TSDGEMSGame {
             // Reload dashboard to update balances
             const dashboard = await this.backendService.getDashboard(this.currentActor);
             if (dashboard && dashboard.player) {
-                const headerGameDollars = document.getElementById('header-game-dollars');
-                if (headerGameDollars) {
-                    const currency = dashboard.player.ingameCurrency || 0;
-                    headerGameDollars.textContent = `Game $: ${currency.toLocaleString()}`;
-                }
+                const rawCurrency = Number(dashboard.player.ingameCurrency ?? dashboard.player.ingame_currency ?? 0);
+                const previousCurrency = Number(this.currentGameDollars ?? 0);
+                const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
+                const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
+                    ? previousCurrency
+                    : sanitizedCurrency;
+                this.updateGameDollars(effectiveCurrency, true);
             }
             
             this.renderPolishingSlots();
@@ -1212,6 +1305,19 @@ class PolishingGame extends TSDGEMSGame {
         }
     }
 
+    updateGemCountsFromRealtime(gemsData) {
+        // Update rough gems count from realtime data
+        const roughGemsCount = gemsData.rough_gems || 0;
+        this.roughGemsCount = roughGemsCount;
+
+        console.log('[Polishing] ✅ Updated rough gems count from realtime:', this.roughGemsCount);
+
+        // Update the UI counters
+        this.updatePolishingStats();
+
+        // Refresh slot displays if needed
+        this.renderPolishingSlots();
+    }
 
     showPaymentModal(paymentId, amount, slotNum, paymentType) {
         const modalContent = `
@@ -1637,13 +1743,28 @@ class PolishingGame extends TSDGEMSGame {
         }, 1000);
     }
 
-    startAutoRefresh() {
+    async startAutoRefresh() {
         if (!this.currentActor) return;
-        
+
+        // Try to use TSDRealtime if available
+        if (window.TSDRealtime) {
+            try {
+                console.log('[Polishing] 🎯 Starting TSDRealtime for polishing data...');
+                window.TSDRealtime.start(this.currentActor);
+                console.log('[Polishing] ✅ TSDRealtime active - instant updates enabled!');
+                return;
+            } catch (error) {
+                console.warn('[Polishing] TSDRealtime failed, falling back to polling:', error);
+            }
+        } else {
+            console.warn('[Polishing] TSDRealtime not available');
+        }
+
+        // Fallback: Polling method
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
         }
-        
+
         this.refreshInterval = setInterval(async () => {
             if (this.isLoggedIn && this.currentActor) {
                 try {
@@ -1964,4 +2085,14 @@ document.addEventListener('DOMContentLoaded', () => {
     window.game = game; // Make game globally accessible for onclick handlers
     window.tsdgemsGame = game;
     console.log('[Polishing] window.game set:', window.game);
+
+    // Setup realtime inventory listeners
+    window.addEventListener('inventory:updated', (event) => {
+        const { type, data } = event.detail;
+        console.log('[Polishing] 🔄 Realtime inventory update received:', type, data);
+
+        if (type === 'gems' && game) {
+            game.updateGemCountsFromRealtime(data);
+        }
+    });
 });

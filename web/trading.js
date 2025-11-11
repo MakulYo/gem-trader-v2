@@ -204,48 +204,24 @@ class TradingGame extends TSDGEMSGame {
     }
 
     async startAutoRefresh() {
-        // Try to use Firestore Realtime Listeners if available
-        if (window.firebaseRealtimeService) {
+        // Try to use TSDRealtime if available
+        if (window.TSDRealtime) {
             try {
-                await window.firebaseRealtimeService.initialize();
-                this.setupRealtimeListeners();
+                console.log('[Trading] 🎯 Starting TSDRealtime for trading data...');
+                window.TSDRealtime.start(this.currentActor);
+                console.log('[Trading] ✅ TSDRealtime active - instant updates enabled!');
                 return;
             } catch (error) {
-                console.warn('[Trading] Realtime listeners failed, falling back to polling:', error);
+                console.warn('[Trading] TSDRealtime failed, falling back to polling:', error);
             }
+        } else {
+            console.warn('[Trading] TSDRealtime not available');
         }
 
         // Fallback: Polling method
         this.setupPolling();
     }
 
-    setupRealtimeListeners() {
-        console.log('[Trading] Setting up Firestore realtime listeners...');
-
-        // Listen to Base Price changes
-        const basePriceUnsubscribe = window.firebaseRealtimeService.listenToBasePrice((data) => {
-            console.log('[Trading] 🔥 Base price updated in realtime!', data);
-            this.basePriceData = data;
-            this.renderBasePriceDisplay();
-        });
-
-        // Listen to City Matrix changes (cities + boosts)
-        const [citiesUnsubscribe, boostsUnsubscribe] = window.firebaseRealtimeService.listenToCityMatrix((data) => {
-            console.log('[Trading] 🔥 City matrix updated in realtime!', data);
-            this.cityMatrix = data;
-            this.renderCityMatrix();
-        });
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            console.log('[Trading] Cleaning up realtime listeners...');
-            basePriceUnsubscribe();
-            citiesUnsubscribe();
-            boostsUnsubscribe();
-        });
-
-        console.log('[Trading] ✅ Realtime listeners active - instant updates enabled!');
-    }
 
     setupPolling() {
         // Clear existing interval if any
@@ -1791,6 +1767,68 @@ class TradingGame extends TSDGEMSGame {
         }
     }
 
+    updatePolishedGemsFromRealtime(gemsData) {
+        // Update polished gems count from realtime data
+        const newPolishedGemsCount = {};
+
+        Object.entries(gemsData).forEach(([key, value]) => {
+            if (key.startsWith('polished_')) {
+                // Extract gem type from key (e.g., 'polished_diamond' -> 'Diamond')
+                const gemType = key.replace('polished_', '').charAt(0).toUpperCase() +
+                               key.replace('polished_', '').slice(1).toLowerCase();
+                newPolishedGemsCount[gemType] = value || 0;
+            }
+        });
+
+        this.polishedGemsCount = newPolishedGemsCount;
+        console.log('[Trading] ✅ Updated polished gems count from realtime:', this.polishedGemsCount);
+
+        // Refresh the trading interface if it's currently displayed
+        this.updateSellControls();
+    }
+
+    updateCityBoostsFromRealtime(boosts) {
+        // Update city boost data from realtime data
+        const boostsObj = {};
+
+        if (boosts && Array.isArray(boosts)) {
+            boosts.forEach(cityBoost => {
+                if (cityBoost.id && cityBoost.bonuses) {
+                    boostsObj[cityBoost.id] = cityBoost.bonuses;
+                }
+            });
+        }
+
+        this.boostsData = boostsObj;
+        console.log('[Trading] ✅ Updated city boosts from realtime:', this.boostsData);
+
+        // Refresh the trading interface if it's currently displayed
+        this.updateSellControls();
+
+        // Refresh the city boost matrix if it's visible
+        const matrixWrapper = document.getElementById('city-boost-matrix-wrapper');
+        if (matrixWrapper && matrixWrapper.innerHTML && !matrixWrapper.innerHTML.includes('Loading')) {
+            this.renderCityBoostMatrix();
+        }
+    }
+
+    updateBasePriceFromRealtime(basePrice) {
+        // Update base price data from realtime data
+        this.basePriceData = basePrice;
+        console.log('[Trading] ✅ Updated base price from realtime:', this.basePriceData);
+
+        // Update the base price display if visible
+        this.renderBasePriceDisplay();
+
+        // Refresh the trading interface to recalculate estimated payouts
+        this.updateSellControls();
+
+        // Refresh chart if it's visible
+        if (this.chartInstance) {
+            this.refreshChart();
+        }
+    }
+
     capitalizeFirst(str) {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
@@ -1802,4 +1840,34 @@ document.addEventListener('DOMContentLoaded', () => {
     game = new TradingGame();
     window.tsdgemsGame = game;
     window.game = game; // Make globally accessible for onclick handlers
+
+    // Setup realtime inventory listeners
+    window.addEventListener('inventory:updated', (event) => {
+        const { type, data } = event.detail;
+        console.log('[Trading] 🔄 Realtime inventory update received:', type, data);
+
+        if (type === 'gems' && game) {
+            game.updatePolishedGemsFromRealtime(data);
+        }
+    });
+
+    // Setup realtime city boost listeners
+    window.addEventListener('realtime:city-boosts', (event) => {
+        const { boosts } = event.detail;
+        console.log('[Trading] 🔄 Realtime city boosts update received:', boosts);
+
+        if (game) {
+            game.updateCityBoostsFromRealtime(boosts);
+        }
+    });
+
+    // Setup realtime base price listeners
+    window.addEventListener('realtime:base-price', (event) => {
+        const { basePrice } = event.detail;
+        console.log('[Trading] 🔄 Realtime base price update received:', basePrice);
+
+        if (game) {
+            game.updateBasePriceFromRealtime(basePrice);
+        }
+    });
 });

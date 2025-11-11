@@ -7,6 +7,10 @@ class DataManager {
         this.isMobile = this.detectMobile();
         const mobileMultiplier = this.isMobile ? 0.3 : 1; // 70% shorter TTL on mobile
 
+        // Get environment for cache isolation
+        this.env = window.firebaseEnv || 'prod';
+        this.envPrefix = `${this.env}_`;
+
         this.cache = {
             dashboard: { data: null, timestamp: null, ttl: Math.floor(5 * 60 * 1000 * mobileMultiplier) }, // 5 min / 1.5 min
             inventory: { data: null, timestamp: null, ttl: Math.floor(2 * 60 * 1000 * mobileMultiplier) }, // 2 min / 40 sec (reduced)
@@ -20,13 +24,228 @@ class DataManager {
         this.loadingStates = new Map();
         this.backendService = window.backendService;
         this.currentActor = null;
+        this.liveData = null; // Store the latest live data aggregate
 
         // Memory monitoring for mobile
         if (this.isMobile) {
             this.startMemoryMonitoring();
         }
 
-        console.log(`[DataManager] Data Manager initialized (${this.isMobile ? 'mobile' : 'desktop'} mode)`);
+        // Setup realtime listeners for inventory sync
+        this.setupRealtimeListeners();
+
+        // Clean up any old environment-contaminated data
+        this.cleanupOldData();
+
+        console.log(`[DataManager] Data Manager initialized (${this.isMobile ? 'mobile' : 'desktop'} mode - ${this.env})`);
+    }
+
+    setupRealtimeListeners() {
+        console.log('[DataManager] Setting up realtime listeners...');
+
+        // 🔥 PRIMARY: Listen for live data aggregate updates (hydrates all caches)
+        window.addEventListener('realtime:live', (event) => {
+            const { actor, live } = event.detail;
+            if (actor === this.currentActor && live) {
+                console.log('[DataManager] 🔥 Live data hydration:', Object.keys(live));
+                this.hydrateFromLiveData(live);
+            }
+        });
+
+        // Legacy granular listeners (will be phased out as pages migrate to live data)
+        // Listen for inventory gems updates
+        window.addEventListener('realtime:inventory-gems', (event) => {
+            const { actor, gems } = event.detail;
+            if (actor === this.currentActor) {
+                console.log('[DataManager] 🔄 Realtime gems update:', gems);
+                this.updateInventoryGems(gems);
+            }
+        });
+
+        // Listen for inventory summary updates
+        window.addEventListener('realtime:inventory-summary', (event) => {
+            const { actor, summary } = event.detail;
+            if (actor === this.currentActor) {
+                console.log('[DataManager] 🔄 Realtime inventory summary update:', summary);
+                this.updateInventorySummary(summary);
+            }
+        });
+
+        // Listen for speedboost updates
+        window.addEventListener('realtime:inventory-speedboost', (event) => {
+            const { actor, speedboost } = event.detail;
+            if (actor === this.currentActor) {
+                console.log('[DataManager] 🔄 Realtime speedboost update:', speedboost);
+                this.updateInventorySpeedboost(speedboost);
+            }
+        });
+    }
+
+    updateInventoryGems(gems) {
+        const cached = this.cache.inventory;
+        if (cached.data) {
+            // Merge gems data into existing inventory cache
+            cached.data = { ...cached.data, ...gems };
+            cached.timestamp = Date.now();
+            console.log('[DataManager] ✅ Updated cached inventory with realtime gems');
+
+            // Emit event to notify components of inventory change
+            window.dispatchEvent(new CustomEvent('inventory:updated', {
+                detail: { type: 'gems', data: gems }
+            }));
+        }
+    }
+
+    updateInventorySummary(summary) {
+        const cached = this.cache.inventory;
+        if (cached.data) {
+            // Merge summary data into existing inventory cache
+            cached.data = { ...cached.data, ...summary };
+            cached.timestamp = Date.now();
+            console.log('[DataManager] ✅ Updated cached inventory with realtime summary');
+
+            // Emit event to notify components of inventory change
+            window.dispatchEvent(new CustomEvent('inventory:updated', {
+                detail: { type: 'summary', data: summary }
+            }));
+        }
+    }
+
+    updateInventorySpeedboost(speedboost) {
+        const cached = this.cache.inventory;
+        if (cached.data) {
+            // Merge speedboost data into existing inventory cache
+            cached.data = { ...cached.data, speedboost };
+            cached.timestamp = Date.now();
+            console.log('[DataManager] ✅ Updated cached inventory with realtime speedboost');
+
+            // Emit event to notify components of inventory change
+            window.dispatchEvent(new CustomEvent('inventory:updated', {
+                detail: { type: 'speedboost', data: speedboost }
+            }));
+        }
+    }
+
+    // 🔥 PRIMARY HYDRATION: Update all caches from live data aggregate
+    hydrateFromLiveData(live) {
+        const now = Date.now();
+        this.liveData = live; // Store the latest live data
+
+        // 1. Hydrate inventory cache (gems + inventory summary)
+        if (live.gems || live.inventorySummary) {
+            const inventoryCache = this.cache.inventory;
+            if (!inventoryCache.data) {
+                inventoryCache.data = {};
+            }
+
+            // Merge gems and summary data
+            if (live.gems) {
+                inventoryCache.data = { ...inventoryCache.data, ...live.gems };
+            }
+            if (live.inventorySummary) {
+                inventoryCache.data = { ...inventoryCache.data, ...live.inventorySummary };
+            }
+            inventoryCache.timestamp = now;
+
+            console.log('[DataManager] 🔥 Hydrated inventory cache from live data');
+
+            // Emit inventory updated event
+            window.dispatchEvent(new CustomEvent('inventory:updated', {
+                detail: { type: 'live-hydration', data: inventoryCache.data }
+            }));
+        }
+
+        // 2. Hydrate dashboard cache (profile data)
+        if (live.profile) {
+            const dashboardCache = this.cache.dashboard;
+            if (!dashboardCache.data) {
+                dashboardCache.data = {};
+            }
+            dashboardCache.data.player = live.profile;
+            dashboardCache.timestamp = now;
+            console.log('[DataManager] 🔥 Hydrated dashboard cache from live data');
+        }
+
+        // 3. Hydrate base price cache
+        if (live.pricing) {
+            const priceCache = this.cache.basePrice;
+            priceCache.data = live.pricing;
+            priceCache.timestamp = now;
+            console.log('[DataManager] 🔥 Hydrated base price cache from live data');
+        }
+
+        // 4. Hydrate city matrix cache (boosts)
+        if (live.boosts) {
+            const cityCache = this.cache.cityMatrix;
+            cityCache.data = live.boosts;
+            cityCache.timestamp = now;
+            console.log('[DataManager] 🔥 Hydrated city matrix cache from live data');
+        }
+
+        // 5. Hydrate active mining/polishing (slots data)
+        if (live.miningSlots) {
+            const miningCache = this.cache.activeMining;
+            miningCache.data = live.miningSlots;
+            miningCache.timestamp = now;
+            console.log('[DataManager] 🔥 Hydrated active mining cache from live data');
+        }
+
+        if (live.polishingSlots) {
+            const polishingCache = this.cache.activePolishing;
+            polishingCache.data = live.polishingSlots;
+            polishingCache.timestamp = now;
+            console.log('[DataManager] 🔥 Hydrated active polishing cache from live data');
+        }
+
+        // 6. Update Game $ from live profile data
+        if (live.profile && live.profile.ingameCurrency !== undefined) {
+            const env = window.firebaseEnv || 'prod';
+            const cacheKey = `tsdgems_game_dollars_${env}`;
+            localStorage.setItem(cacheKey, live.profile.ingameCurrency.toString());
+
+            // Update header display if Game $ is currently shown
+            if (window.tsdgemsGame && typeof window.tsdgemsGame.updateGameDollars === 'function') {
+                window.tsdgemsGame.updateGameDollars(live.profile.ingameCurrency, false);
+            }
+        }
+
+        console.log('[DataManager] 🔥 Live data hydration complete');
+    }
+
+    // 🔥 Check if live data is available and recent
+    hasLiveData() {
+        return this.liveData !== null;
+    }
+
+    // 🔥 Get live data if available
+    getLiveData() {
+        return this.liveData;
+    }
+
+    // 🔥 Get specific data from live data or cache
+    getLiveOrCached(key) {
+        if (this.liveData && this.liveData[key]) {
+            return this.liveData[key];
+        }
+        return this.get(key);
+    }
+
+    // Clean up old environment-contaminated data
+    cleanupOldData() {
+        try {
+            // Clear old Game $ localStorage keys that don't have environment prefix
+            const oldGameDollarsKey = 'tsdgems_game_dollars';
+            if (localStorage.getItem(oldGameDollarsKey)) {
+                console.log(`[DataManager] 🧹 Removing old Game $ key: ${oldGameDollarsKey}`);
+                localStorage.removeItem(oldGameDollarsKey);
+            }
+
+            // Clear any other old cache keys that might exist
+            // This is a safety measure for any future cache contamination
+            console.log(`[DataManager] ✅ Environment isolation active (${this.env})`);
+        } catch (error) {
+            console.warn('[DataManager] Failed to cleanup old data:', error);
+        }
     }
 
     detectMobile() {
@@ -96,33 +315,35 @@ class DataManager {
     }
 
     async get(cacheKey, fetchFunction, forceRefresh = false) {
+        // Use environment-specific cache key
+        const envCacheKey = `${this.envPrefix}${cacheKey}`;
         // Return cached if valid and not forcing refresh
         if (!forceRefresh && this.isValidCache(cacheKey)) {
-            console.log(`[DataManager] ✓ Returning cached ${cacheKey}`);
+            console.log(`[DataManager] ✓ Returning cached ${cacheKey} (${this.env})`);
             return this.cache[cacheKey].data;
         }
 
         // Check if already loading
-        if (this.loadingStates.has(cacheKey)) {
-            console.log(`[DataManager] ⏳ Waiting for existing ${cacheKey} request`);
-            return await this.loadingStates.get(cacheKey);
+        if (this.loadingStates.has(envCacheKey)) {
+            console.log(`[DataManager] ⏳ Waiting for existing ${cacheKey} request (${this.env})`);
+            return await this.loadingStates.get(envCacheKey);
         }
 
         // Start new fetch
-        console.log(`[DataManager] 🔄 Fetching fresh ${cacheKey}`);
+        console.log(`[DataManager] 🔄 Fetching fresh ${cacheKey} (${this.env})`);
         const loadPromise = fetchFunction().then(data => {
             this.cache[cacheKey].data = data;
             this.cache[cacheKey].timestamp = Date.now();
-            this.loadingStates.delete(cacheKey);
-            console.log(`[DataManager] ✅ Cached ${cacheKey}`);
+            this.loadingStates.delete(envCacheKey);
+            console.log(`[DataManager] ✅ Cached ${cacheKey} (${this.env})`);
             return data;
         }).catch(error => {
-            this.loadingStates.delete(cacheKey);
-            console.error(`[DataManager] ❌ Failed to fetch ${cacheKey}:`, error);
+            this.loadingStates.delete(envCacheKey);
+            console.error(`[DataManager] ❌ Failed to fetch ${cacheKey} (${this.env}):`, error);
             throw error;
         });
 
-        this.loadingStates.set(cacheKey, loadPromise);
+        this.loadingStates.set(envCacheKey, loadPromise);
         return await loadPromise;
     }
 
@@ -190,7 +411,10 @@ class DataManager {
         if (this.cache[cacheKey]) {
             this.cache[cacheKey].data = null;
             this.cache[cacheKey].timestamp = null;
-            console.log(`[DataManager] 🗑️ Invalidated cache: ${cacheKey}`);
+            // Also clear any loading states for this cache key
+            const envCacheKey = `${this.envPrefix}${cacheKey}`;
+            this.loadingStates.delete(envCacheKey);
+            console.log(`[DataManager] 🗑️ Invalidated cache: ${cacheKey} (${this.env})`);
         }
     }
 

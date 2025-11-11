@@ -21,6 +21,12 @@ service cloud.firestore {
         allow read: if true;
         allow write: if false;
       }
+
+      // Live data aggregate - owner-only read, Functions-only write
+      match /runtime/live {
+        allow read: if request.auth != null && request.auth.uid == actor;
+        allow write: if false; // Only Functions may write
+      }
     }
 
     // --- ⚙️ Staking documents ---

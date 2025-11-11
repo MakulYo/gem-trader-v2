@@ -96,8 +96,6 @@
     }
   ],
   "firestore": {
-    "database": "tsdgems",
-    "location": "eur3",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },

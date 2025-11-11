@@ -575,6 +575,13 @@ class InventoryPage extends TSDGEMSGame {
                 }
             });
         }
+
+        // Realtime inventory update listeners
+        window.addEventListener('inventory:updated', (event) => {
+            console.log('[Inventory] 🔄 Realtime inventory update received:', event.detail);
+            // Refresh inventory data from backend to get full updated inventory
+            this.loadInventory(true); // Force refresh
+        });
     }
 
     filterNFTs() {
