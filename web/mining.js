@@ -155,6 +155,8 @@ class MiningGame extends TSDGEMSGame {
             if (actor === this.currentActor && slots) {
                 console.log('[Mining] 🔥 Realtime mining slots update:', slots.length, 'slots');
                 this.updateMiningSlotsFromLive(slots);
+                // Also update staked assets from live data
+                this.updateStakedAssetsFromLive(slots);
             }
         });
 
@@ -178,53 +180,96 @@ class MiningGame extends TSDGEMSGame {
         });
     }
 
-    // 🔥 Update mining slots from live data
+    // 🔥 Update mining slots from live data (timing/state only)
     updateMiningSlotsFromLive(slots) {
-        console.log('[Mining] Updating mining slots from live data:', slots?.map(slot => ({
+        if (!slots || !Array.isArray(slots)) {
+            console.warn('[Mining] ⚠️ Invalid slots data in updateMiningSlotsFromLive:', slots);
+            return;
+        }
+
+        console.log('[Mining] Updating mining slots timing/state from live data:', slots.map(slot => ({
             id: slot.id,
             state: slot.state,
-            stakedCount: slot.staked?.length || 0,
-            hasMine: slot.staked?.some(s => s.type === 'mine'),
-            hasWorkers: slot.staked?.some(s => s.type === 'worker')
+            startedAt: slot.startedAt,
+            finishAt: slot.finishAt,
+            power: slot.power
         })));
 
-        // Convert live slots format to activeJobs format
+        // Convert live slots format to activeJobs format (timing/state only)
         const activeJobs = slots
-            .filter(slot => slot.state === 'active' || slot.state === 'running')
+            .filter(slot => slot && (slot.state === 'active' || slot.state === 'running'))
             .map(slot => ({
                 jobId: `job_slot_${slot.id}`,
                 slotId: `slot_${slot.id}`,
-                startedAt: slot.startedAt,
-                finishAt: slot.finishAt,
+                startedAt: slot.startedAt || null,
+                finishAt: slot.finishAt || null,
                 power: slot.power || 0,
-                state: slot.state
+                state: slot.state || 'idle'
             }));
 
         this.activeJobs = activeJobs;
         console.log('[Mining] Active jobs from live data:', this.activeJobs.length);
 
-        // Update staked assets from live data
-        if (slots) {
-            this.stakedMines = {};
-            this.stakedWorkers = {};
+        // Note: Asset updates are handled separately by updateStakedAssetsFromLive
+        // Only re-render if we have valid data
+        if (this.stakedMines !== undefined && this.stakedWorkers !== undefined) {
+            this.renderMiningSlots();
+        }
+    }
 
-            slots.forEach(slot => {
-                if (slot.staked) {
-                    const slotNum = slot.id;
-                    const mines = slot.staked.filter(asset => asset.type === 'mine');
-                    const workers = slot.staked.filter(asset => asset.type === 'worker');
+    updateStakedAssetsFromLive(slots) {
+        console.log('[Mining] Updating staked assets from live data:', slots?.map(slot => ({
+            id: slot.id,
+            stakedCount: slot.staked?.length || 0,
+            stakedTypes: slot.staked?.map(s => s.type) || []
+        })));
 
-                    if (mines.length > 0) {
-                        this.stakedMines[slotNum] = mines[0]; // Usually only one mine per slot
-                    }
-
-                    if (workers.length > 0) {
-                        this.stakedWorkers[slotNum] = workers;
-                    }
-                }
-            });
+        if (!slots || !Array.isArray(slots)) {
+            console.warn('[Mining] ⚠️ Invalid slots data in updateStakedAssetsFromLive:', slots);
+            return;
         }
 
+        // Reset staked assets
+        this.stakedMines = {};
+        this.stakedWorkers = {};
+        this.stakedSpeedboosts = {};
+
+        slots.forEach(slot => {
+            if (!slot || !slot.staked || !Array.isArray(slot.staked)) {
+                return; // Guard: skip invalid slot data
+            }
+
+            const slotNum = slot.id;
+            if (!slotNum || isNaN(slotNum)) {
+                console.warn('[Mining] ⚠️ Invalid slot ID:', slot);
+                return;
+            }
+
+            const mines = slot.staked.filter(asset => asset && asset.type === 'mine');
+            const workers = slot.staked.filter(asset => asset && asset.type === 'worker');
+            const speedboosts = slot.staked.filter(asset => asset && asset.type === 'speedboost');
+
+            if (mines.length > 0) {
+                this.stakedMines[slotNum] = mines[0]; // Usually only one mine per slot
+                console.log(`[Mining] ✅ Slot ${slotNum} has staked mine:`, mines[0].asset_id);
+            }
+
+            if (workers.length > 0) {
+                this.stakedWorkers[slotNum] = workers;
+                console.log(`[Mining] ✅ Slot ${slotNum} has ${workers.length} staked workers:`, workers.map(w => w.asset_id));
+            }
+
+            if (speedboosts.length > 0) {
+                // Store as array, but for now use first one for backward compatibility
+                // TODO: Update UI to handle multiple speedboosts per slot
+                this.stakedSpeedboosts[slotNum] = speedboosts.length === 1 ? speedboosts[0] : speedboosts;
+                console.log(`[Mining] ✅ Slot ${slotNum} has ${speedboosts.length} staked speedboost(s):`, speedboosts.map(sb => sb.asset_id));
+            }
+        });
+
+        console.log(`[Mining] ✅ Updated staked assets - mines: ${Object.keys(this.stakedMines).length}, workers: ${Object.keys(this.stakedWorkers).length}, speedboosts: ${Object.keys(this.stakedSpeedboosts).length}`);
+
+        // Re-render to show updated staked assets
         this.renderMiningSlots();
     }
 
@@ -443,17 +488,23 @@ class MiningGame extends TSDGEMSGame {
 
             // Fetch all data in parallel for better performance
             // Note: initPlayer is async in background for new players
+            console.log('[Mining] 📊 Fetching data from backend APIs...');
             const results = await Promise.all([
                 this.backendService.getDashboard(actor),
                 this.fetchActiveMiningJobs(actor).catch(() => ({ jobs: [] })),
                 this.fetchInventoryData(actor).catch(() => null),
                 this.backendService.getStakedAssets(actor).catch(() => ({ stakingData: {} }))
             ]);
+            console.log('[Mining] 📊 Backend data fetched - dashboard, activeJobs, inventory, stakedAssets');
             
             const [dashboard, activeJobs, inventoryData, stakedAssets] = results;
 
             if (dashboard && dashboard.player) {
-                console.log('[Mining] Player data loaded:', dashboard.player);
+                console.log('[Mining] 📊 Player data loaded from backend:', {
+                    ingameCurrency: dashboard.player.ingameCurrency,
+                    miningSlotsUnlocked: dashboard.player.miningSlotsUnlocked,
+                    fromCache: dashboard.cached || false
+                });
                 
                 // Get effective mining slots from player profile
                 this.effectiveSlots = Math.min(dashboard.player.miningSlotsUnlocked || 0, MAX_SLOTS);
@@ -573,9 +624,18 @@ class MiningGame extends TSDGEMSGame {
             console.log('[Mining] Loading staked assets...');
  
             const stakingResponse = preloadedResponse || await this.backendService.getStakedAssets(actor);
-            console.log('[Mining] Staking data received:', stakingResponse);
+            console.log('[Mining] 📊 Staking data received from backend:', {
+                hasData: !!stakingResponse?.stakingData,
+                miningSlots: stakingResponse?.stakingData?.mining ? Object.keys(stakingResponse.stakingData.mining) : [],
+                polishingSlots: stakingResponse?.stakingData?.polishing ? Object.keys(stakingResponse.stakingData.polishing) : [],
+                fromCache: stakingResponse?.cached || false
+            });
             if (stakingResponse && stakingResponse.stakingData && stakingResponse.stakingData.mining) {
-                console.log('[Mining] Mining staking data:', stakingResponse.stakingData.mining);
+                console.log('[Mining] 📊 Mining staking data details:', Object.entries(stakingResponse.stakingData.mining).map(([slot, data]) => ({
+                    slot,
+                    mine: data.mine?.asset_id,
+                    workers: data.workers?.length || 0
+                })));
             }
  
             if (stakingResponse && stakingResponse.stakingData) {
@@ -812,12 +872,15 @@ class MiningGame extends TSDGEMSGame {
                             <div class="speedboost-nft-display">
                                 <div style="position: relative;">
                                     ${(() => {
-                                        const displayImage = slot.stakedSpeedboost.imagePath || getSpeedboostImage(slot.stakedSpeedboost.template_id);
+                                        // Guard: ensure speedboost is an object
+                                        if (!slot.stakedSpeedboost) return '';
+                                        const sb = slot.stakedSpeedboost;
+                                        const displayImage = sb.imagePath || getSpeedboostImage(sb.template_id);
                                         if (displayImage) {
                                             return `
                                                 <img src="${displayImage}"
                                                      class="speedboost-nft-image"
-                                                     alt="${getSpeedboostName(slot.stakedSpeedboost.template_id, slot.stakedSpeedboost.name)}">
+                                                     alt="${getSpeedboostName(sb.template_id, sb.name)}">
                                             `;
                                         }
                                         return `
@@ -827,9 +890,12 @@ class MiningGame extends TSDGEMSGame {
                                         `;
                                     })()}
                                     ${(() => {
+                                        // Guard: ensure speedboost is an object
+                                        if (!slot.stakedSpeedboost) return '';
+                                        const sb = slot.stakedSpeedboost;
                                         // Get template_mint for speedboost if available
                                         const speedboostInventoryAsset = this.inventoryData && this.inventoryData.assets ?
-                                            this.inventoryData.assets.find(asset => asset.asset_id === slot.stakedSpeedboost.asset_id) : null;
+                                            this.inventoryData.assets.find(asset => asset.asset_id === sb.asset_id) : null;
                                         const speedboostTemplateMint = speedboostInventoryAsset && speedboostInventoryAsset.template_mint !== 'unknown' ?
                                             speedboostInventoryAsset.template_mint : null;
                                         return speedboostTemplateMint ? `
@@ -838,9 +904,17 @@ class MiningGame extends TSDGEMSGame {
                                     })()}
                                 </div>
                                 <div class="speedboost-nft-info">
-                                    <div class="speedboost-nft-name">${getSpeedboostName(slot.stakedSpeedboost.template_id, slot.stakedSpeedboost.name)}</div>
-                                    <div class="speedboost-nft-boost">Speed +${(slot.stakedSpeedboost.boost * 100).toFixed(1)}% / ×${(1 + slot.stakedSpeedboost.boost).toFixed(2)}</div>
-                                    <div class="speedboost-nft-mint">Reduces mining time by ${(slot.stakedSpeedboost.boost * 100).toFixed(1)}%</div>
+                                    ${(() => {
+                                        // Guard: ensure speedboost is an object
+                                        if (!slot.stakedSpeedboost) return '';
+                                        const sb = slot.stakedSpeedboost;
+                                        const boost = sb.boost || (sb.multiplier ? sb.multiplier - 1 : 0) || 0;
+                                        return `
+                                            <div class="speedboost-nft-name">${getSpeedboostName(sb.template_id, sb.name)}</div>
+                                            <div class="speedboost-nft-boost">Speed +${(boost * 100).toFixed(1)}% / ×${(1 + boost).toFixed(2)}</div>
+                                            <div class="speedboost-nft-mint">Reduces mining time by ${(boost * 100).toFixed(1)}%</div>
+                                        `;
+                                    })()}
                                 </div>
                             </div>
                             <div class="speedboost-actions">
@@ -990,9 +1064,14 @@ class MiningGame extends TSDGEMSGame {
                 } else {
                     // Fallback: calculate client-side
                     const stakedSpeedboost = this.stakedSpeedboosts[slot.slotNum];
-                    if (stakedSpeedboost && stakedSpeedboost.boost > 0) {
-                        effectiveDurationMs = MINING_DURATION_MS / (1 + stakedSpeedboost.boost);
-                        speedBoostInfo = `Speed +${(stakedSpeedboost.boost * 100).toFixed(1)}% / ×${(1 + stakedSpeedboost.boost).toFixed(2)}`;
+                    // Guard: handle both single object and array (for backward compatibility)
+                    if (stakedSpeedboost) {
+                        const speedboost = Array.isArray(stakedSpeedboost) ? stakedSpeedboost[0] : stakedSpeedboost;
+                        const boost = speedboost?.boost || (speedboost?.multiplier ? speedboost.multiplier - 1 : 0) || 0;
+                        if (boost > 0) {
+                            effectiveDurationMs = MINING_DURATION_MS / (1 + boost);
+                            speedBoostInfo = `Speed +${(boost * 100).toFixed(1)}% / ×${(1 + boost).toFixed(2)}`;
+                        }
                     }
                 }
 
@@ -1054,7 +1133,9 @@ class MiningGame extends TSDGEMSGame {
             // Available slot (unlocked but no job)
             const stakedMine = this.stakedMines[slot.slotNum];
             const stakedWorkers = this.stakedWorkers[slot.slotNum] || [];
-            const stakedSpeedboost = this.stakedSpeedboosts[slot.slotNum];
+            const stakedSpeedboostRaw = this.stakedSpeedboosts[slot.slotNum];
+            // Guard: handle both single object and array (for backward compatibility)
+            const stakedSpeedboost = stakedSpeedboostRaw ? (Array.isArray(stakedSpeedboostRaw) ? stakedSpeedboostRaw[0] : stakedSpeedboostRaw) : null;
 
             // Filter to only owned workers (those with mint numbers)
             const ownedWorkers = stakedWorkers.filter(w => {
@@ -2263,7 +2344,8 @@ class MiningGame extends TSDGEMSGame {
                                     <h4 style="color: #ffa500; margin-bottom: 15px;">Speedboost NFTs (${availableSpeedboosts.length} available)</h4>
                                     <div class="speedboost-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px;">
                                         ${availableSpeedboosts.map(speedboost => {
-                                            const boost = SPEEDBOOST_BY_TEMPLATE[speedboost.template_id] || 0;
+                                            const boostInfo = SPEEDBOOST_BY_TEMPLATE[speedboost.template_id] || { boost: 0 };
+                                            const boost = speedboost.boost ?? boostInfo.boost ?? 0;
                                             const cardImagePath = speedboost.imagePath || getSpeedboostImage(speedboost.template_id);
                                             const cardDisplayName = getSpeedboostName(speedboost.template_id, speedboost.name);
                                             return `
@@ -2279,7 +2361,7 @@ class MiningGame extends TSDGEMSGame {
                                                         ${speedboost.template_mint && speedboost.template_mint !== 'unknown' ? `<div class="mint-badge" style="position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); background: #ffd700; color: #000; padding: 2px 6px; border-radius: 10px; font-size: 0.7em; font-weight: bold; border: 1px solid #000;">#${speedboost.template_mint}</div>` : ''}
                                                     </div>
                                                     <p style="color: #fff; margin: 5px 0; font-weight: 600;">${cardDisplayName}</p>
-                                                    <p style="color: #ffd700; font-size: 0.9em; font-weight: bold;">Speed +${(boost.boost * 100).toFixed(1)}% / ×${(1 + boost.boost).toFixed(2)}</p>
+                                                    <p style="color: #ffd700; font-size: 0.9em; font-weight: bold;">Speed +${(boost * 100).toFixed(1)}% / ×${(1 + boost).toFixed(2)}</p>
                                                     <small style="color: #888;">ID: ${speedboost.asset_id}</small>
                                                 </div>
                                             `;
@@ -2311,6 +2393,23 @@ class MiningGame extends TSDGEMSGame {
     async stakeSpeedboostToSlot(slotNum, assetId) {
         console.log('[Mining] Staking speedboost:', assetId, 'to slot:', slotNum);
 
+        // Disable all speedboost cards in modal during processing
+        const modal = document.getElementById('speedboost-staking-modal');
+        const speedboostCards = modal ? modal.querySelectorAll('.speedboost-card') : [];
+        speedboostCards.forEach(card => {
+            card.style.pointerEvents = 'none';
+            card.style.opacity = '0.5';
+            card.style.cursor = 'not-allowed';
+        });
+
+        // Disable close button
+        const closeBtn = modal ? modal.querySelector('.close-btn') : null;
+        if (closeBtn) {
+            closeBtn.disabled = true;
+            closeBtn.style.pointerEvents = 'none';
+            closeBtn.style.opacity = '0.5';
+        }
+
         try {
             // Show loading state while staking
             this.showLoadingState(true, 'Staking speedboost...');
@@ -2318,6 +2417,8 @@ class MiningGame extends TSDGEMSGame {
             const speedboostNFT = this.speedboostNFTs.find(nft => nft.asset_id === assetId);
             const templateId = speedboostNFT ? speedboostNFT.template_id : null;
             const info = templateId ? SPEEDBOOST_BY_TEMPLATE[String(templateId)] : null;
+            const boost = speedboostNFT?.boost ?? info?.boost ?? 0;
+            const multiplier = 1 + boost;
 
             const result = await this.backendService.stakeAsset(
                 this.currentActor,
@@ -2328,28 +2429,53 @@ class MiningGame extends TSDGEMSGame {
                     asset_id: assetId,
                     template_id: templateId ? Number(templateId) : undefined,
                     name: speedboostNFT ? speedboostNFT.name : (templateId ? getSpeedboostName(templateId) : 'Speedboost'),
-                    boost: speedboostNFT?.boost ?? info?.boost ?? 0,
+                    boost: boost,
+                    multiplier: multiplier,
                     imagePath: speedboostNFT?.imagePath || null
                 }
             );
 
             if (result.success) {
+                // Optimistic update: update local state immediately
+                if (result.stakingData && result.stakingData.mining) {
+                    const slotKey = `slot${slotNum}`;
+                    const slotData = result.stakingData.mining[slotKey];
+                    if (slotData && slotData.speedboosts && slotData.speedboosts.length > 0) {
+                        // Handle array format (use first one for backward compatibility)
+                        this.stakedSpeedboosts[slotNum] = slotData.speedboosts.length === 1 
+                            ? slotData.speedboosts[0] 
+                            : slotData.speedboosts;
+                    }
+                }
+
                 // Close modal
                 this.closeSpeedboostStakingModal();
 
                 // Hide loading state
                 this.showLoadingState(false);
 
-                // Reload staked assets from backend to ensure UI is in sync
-                await this.loadStakedAssets(this.currentActor);
+                // Re-render to show updated state
+                this.renderMiningSlots();
 
                 this.showNotification(`✅ Staked ${speedboostNFT ? speedboostNFT.name : 'Speedboost'} to Slot ${slotNum}!`, 'success');
-                this.renderSpeedboostSlots();
             } else {
                 throw new Error(result.error || 'Failed to stake speedboost');
             }
         } catch (error) {
             console.error('[Mining] Failed to stake speedboost:', error);
+            
+            // Re-enable modal elements on error
+            speedboostCards.forEach(card => {
+                card.style.pointerEvents = 'auto';
+                card.style.opacity = '1';
+                card.style.cursor = 'pointer';
+            });
+            if (closeBtn) {
+                closeBtn.disabled = false;
+                closeBtn.style.pointerEvents = 'auto';
+                closeBtn.style.opacity = '1';
+            }
+
             this.showLoadingState(false);
             this.showNotification(`❌ Failed to stake speedboost: ${error.message}`, 'error');
         }
@@ -2358,10 +2484,23 @@ class MiningGame extends TSDGEMSGame {
     async unstakeSpeedboost(slotNum) {
         console.log('[Mining] Unstaking speedboost from slot:', slotNum);
 
-        const stakedSpeedboost = this.stakedSpeedboosts[slotNum];
-        if (!stakedSpeedboost) {
+        // Guard: handle both single object and array
+        const stakedSpeedboostRaw = this.stakedSpeedboosts[slotNum];
+        const stakedSpeedboost = stakedSpeedboostRaw ? (Array.isArray(stakedSpeedboostRaw) ? stakedSpeedboostRaw[0] : stakedSpeedboostRaw) : null;
+
+        if (!stakedSpeedboost || !stakedSpeedboost.asset_id) {
             this.showNotification('❌ No speedboost staked in this slot!', 'error');
             return;
+        }
+
+        // Disable unstake button during processing
+        const unstakeBtn = document.querySelector(`button[onclick="game.unstakeSpeedboost(${slotNum})"]`);
+        const originalBtnText = unstakeBtn ? unstakeBtn.innerHTML : '';
+        if (unstakeBtn) {
+            unstakeBtn.disabled = true;
+            unstakeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            unstakeBtn.style.pointerEvents = 'none';
+            unstakeBtn.style.opacity = '0.5';
         }
 
         try {
@@ -2376,16 +2515,27 @@ class MiningGame extends TSDGEMSGame {
             );
 
             if (result.success) {
-                // Reload staked assets from backend to ensure UI is in sync
-                await this.loadStakedAssets(this.currentActor);
+                // Optimistic update: remove from local state immediately
+                delete this.stakedSpeedboosts[slotNum];
 
-                this.showNotification(`✅ Unstaked ${stakedSpeedboost.name} from Slot ${slotNum}!`, 'success');
+                // Re-render to show updated state
                 this.renderMiningSlots();
+
+                this.showNotification(`✅ Unstaked ${stakedSpeedboost.name || 'Speedboost'} from Slot ${slotNum}!`, 'success');
             } else {
                 throw new Error(result.error || 'Failed to unstake speedboost');
             }
         } catch (error) {
             console.error('[Mining] Failed to unstake speedboost:', error);
+            
+            // Re-enable button on error
+            if (unstakeBtn) {
+                unstakeBtn.disabled = false;
+                unstakeBtn.innerHTML = originalBtnText;
+                unstakeBtn.style.pointerEvents = 'auto';
+                unstakeBtn.style.opacity = '1';
+            }
+
             this.showNotification(`❌ Failed to unstake speedboost: ${error.message}`, 'error');
         } finally {
             this.showLoadingState(false);

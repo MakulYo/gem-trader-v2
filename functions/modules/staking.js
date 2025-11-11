@@ -204,6 +204,11 @@ async function getAllStakedAssetIds(actor) {
           if (w.asset_id) allStakedAssetIds.add(w.asset_id)
         })
       }
+      if (slotData.speedboosts) {
+        slotData.speedboosts.forEach(sb => {
+          if (sb.asset_id) allStakedAssetIds.add(sb.asset_id)
+        })
+      }
     })
   }
   
@@ -283,6 +288,11 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
       if (slotData.workers) {
         slotData.workers.forEach(w => {
           if (w.asset_id) allStakedAssetIds.add(w.asset_id)
+        })
+      }
+      if (slotData.speedboosts) {
+        slotData.speedboosts.forEach(sb => {
+          if (sb.asset_id) allStakedAssetIds.add(sb.asset_id)
         })
       }
     })
@@ -385,16 +395,26 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
     
     console.log(`[Staking] Staked ${gemType} gem (${isPolished ? 'polished' : 'rough'}) with ${bonus * 100}% bonus`)
   } else if (assetType === 'speedboost') {
-    if (slot.speedboost) {
-      throw new Error(`speedboost already staked in slot ${slotNum}`)
+    // Multiple speedboosts per slot (array like workers)
+    if (!slot.speedboosts) {
+      slot.speedboosts = []
     }
-    slot.speedboost = {
+    
+    // Check if this speedboost is already staked in this slot
+    if (slot.speedboosts.some(sb => sb.asset_id === assetData.asset_id)) {
+      throw new Error(`Speedboost ${assetData.asset_id} already staked in slot ${slotNum}`)
+    }
+    
+    slot.speedboosts.push({
       asset_id: assetData.asset_id,
       template_id: assetData.template_id,
       name: assetData.name,
-      boost: assetData.boost || 0,
+      type: 'speedboost',
+      multiplier: assetData.multiplier || assetData.boost || 1.0,
       imagePath: assetData.imagePath || ''
-    }
+    })
+    
+    console.log(`[Staking] Staked speedboost ${assetData.asset_id} to slot ${slotNum}`)
     console.log(`[Staking] Staked speedboost ${assetData.asset_id} with ${(assetData.boost || 0) * 100}% boost`)
   } else {
     throw new Error(`Invalid asset type: ${assetType}`)
@@ -444,6 +464,11 @@ async function stakeWorkersBatch(actor, page, slotNum, workers) {
       if (slotData.workers) {
         slotData.workers.forEach(w => {
           if (w.asset_id) allStakedAssetIds.add(w.asset_id)
+        })
+      }
+      if (slotData.speedboosts) {
+        slotData.speedboosts.forEach(sb => {
+          if (sb.asset_id) allStakedAssetIds.add(sb.asset_id)
         })
       }
     })
@@ -584,10 +609,25 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
       console.log(`[Staking] Unstaking ${slot.gem.gemType} gem from slot ${slotNum}`)
       delete slot.gem
     } else if (assetType === 'speedboost') {
-      if (!slot.speedboost || slot.speedboost.asset_id !== assetId) {
-        throw new Error(`speedboost ${assetId} not found in slot ${slotNum}`)
+      // Multiple speedboosts per slot (array like workers)
+      if (!slot.speedboosts || slot.speedboosts.length === 0) {
+        throw new Error(`No speedboosts staked in slot ${slotNum}`)
       }
-      delete slot.speedboost
+
+      console.log(`[Staking] Speedboosts before unstake:`, slot.speedboosts.map(sb => sb.asset_id))
+      const initialLength = slot.speedboosts.length
+      slot.speedboosts = slot.speedboosts.filter(sb => sb.asset_id !== assetId)
+      console.log(`[Staking] Speedboosts after unstake:`, slot.speedboosts.map(sb => sb.asset_id))
+
+      if (slot.speedboosts.length === initialLength) {
+        throw new Error(`Speedboost ${assetId} not found in slot ${slotNum}`)
+      }
+
+      // Clean up empty speedboosts array
+      if (slot.speedboosts.length === 0) {
+        console.log(`[Staking] No speedboosts left, deleting speedboosts array`)
+        delete slot.speedboosts
+      }
     } else {
       throw new Error(`Invalid asset type: ${assetType}`)
     }
@@ -650,6 +690,7 @@ async function autoUnstakeMissingAssets(actor, page, slotNum, missingAssets) {
       else if (type === 'worker') assetType = 'worker'
       else if (type === 'table') assetType = 'table'
       else if (type === 'gem') assetType = 'gem'
+      else if (type === 'speedboost') assetType = 'speedboost'
       else {
         console.warn(`[Staking] Unknown asset type: ${type}, skipping auto-unstake for ${asset_id}`)
         errors.push({ asset_id, error: `Unknown type: ${type}` })
