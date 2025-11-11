@@ -28,9 +28,31 @@ const SLOT_UNLOCK_COSTS = [
     25000   // Slot 10
 ];
 
+// Speedboost mapping (template_id -> boost percentage)
+const SPEEDBOOST_BY_TEMPLATE = {
+    '901514': { boost: 0.0625, image: 'Rusty_Minecart.png', name: 'Rusty Minecart' },
+    '901513': { boost: 0.125,  image: 'Greased_Minecart.png', name: 'Greased Minecart' },
+    '901512': { boost: 0.25,   image: 'Refined_Minecart.png', name: 'Refined Minecart' },
+    '901510': { boost: 0.5,    image: 'Arcane_Minecart.png', name: 'Arcane Minecart' },
+    '901511': { boost: 1.0,    image: 'Golden_Express.png', name: 'Golden Express' }
+};
+
+function getSpeedboostImage(templateId) {
+    const info = SPEEDBOOST_BY_TEMPLATE[String(templateId)];
+    return info && info.image ? `assets/images/${info.image}` : null;
+}
+
+function getSpeedboostName(templateId, fallbackName) {
+    const info = SPEEDBOOST_BY_TEMPLATE[String(templateId)];
+    return (info && info.name) || fallbackName || 'Speedboost';
+}
+
 class MiningGame extends TSDGEMSGame {
     constructor() {
         super();
+
+        window.game = this;
+        window.tsdgemsGame = this;
         
         console.log('[Mining] ========================================');
         console.log('[Mining] 🎮 MiningGame Constructor');
@@ -46,6 +68,7 @@ class MiningGame extends TSDGEMSGame {
         this.inventoryData = null;
         this.mineNFTs = [];
         this.workerNFTs = [];
+        this.speedboostNFTs = [];
         this.selectedSlotForStaking = null;
         this.stakedMines = {}; // { slotNum: { template_id, name, mp } }
         this.stakedWorkers = {}; // { slotNum: [worker objects] }
@@ -111,6 +134,7 @@ class MiningGame extends TSDGEMSGame {
         this.inventoryData = null;
         this.mineNFTs = [];
         this.workerNFTs = [];
+        this.speedboostNFTs = [];
 
         // Clear DataManager cache for mining-related data
         if (window.dataManager) {
@@ -461,69 +485,10 @@ class MiningGame extends TSDGEMSGame {
             }
             
             // Process inventory data
-            if (inventoryData) {
-                this.inventoryData = inventoryData;
-                // Process mine and worker NFTs
-                if (inventoryData && inventoryData.equipmentDetails) {
-                    const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => {
-                        // Create individual NFT objects with template_mint
-                        const assets = details.assets || [];
-                        return assets.map(assetId => {
-                            const assetDetails = inventoryData.assets.find(asset => asset.asset_id === assetId);
-                            return {
-                                template_id: templateId,
-                                template_mint: assetDetails ? assetDetails.template_mint : 'unknown',
-                                name: details.name,
-                                mp: details.mp,
-                                image: details.image,
-                                imagePath: details.imagePath,
-                                asset_id: assetId
-                            };
-                        });
-                    }).flat();
-                    
-                    this.mineNFTs = equipmentArray.filter(nft => {
-                        const name = (nft.name || '').toLowerCase();
-                        return name.includes('mine');
-                    });
-                    
-                    this.workerNFTs = equipmentArray.filter(nft => {
-                        const name = (nft.name || '').toLowerCase();
-                        return !name.includes('mine') && !name.includes('polishing');
-                    });
-                }
-            }
+            this.updateInventoryStructures(inventoryData);
             
             // Process staked assets
-            if (stakedAssets && stakedAssets.stakingData) {
-                const stakingData = stakedAssets.stakingData;
-                this.stakedMines = {};
-                this.stakedWorkers = {};
-                
-                if (stakingData.mining) {
-                    Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
-                        const slotNum = parseInt(slotKey.replace('slot', ''));
-                        
-                        if (slotData.mine) {
-                            this.stakedMines[slotNum] = {
-                                template_id: slotData.mine.template_id,
-                                name: slotData.mine.name,
-                                mp: slotData.mine.mp,
-                                asset_id: slotData.mine.asset_id
-                            };
-                        }
-                        
-                        if (slotData.workers && slotData.workers.length > 0) {
-                            this.stakedWorkers[slotNum] = slotData.workers.map(worker => ({
-                                template_id: worker.template_id,
-                                name: worker.name,
-                                mp: worker.mp,
-                                asset_id: worker.asset_id
-                            }));
-                        }
-                    });
-                }
-            }
+            await this.loadStakedAssets(actor, stakedAssets);
                 
                  // Render UI
                  this.renderMiningSlots();
@@ -603,25 +568,65 @@ class MiningGame extends TSDGEMSGame {
         }
     }
 
-    async loadStakedAssets(actor) {
+    async loadStakedAssets(actor, preloadedResponse = null) {
         try {
             console.log('[Mining] Loading staked assets...');
-            
-            const stakingResponse = await this.backendService.getStakedAssets(actor);
+ 
+            const stakingResponse = preloadedResponse || await this.backendService.getStakedAssets(actor);
             console.log('[Mining] Staking data received:', stakingResponse);
-            
+            if (stakingResponse && stakingResponse.stakingData && stakingResponse.stakingData.mining) {
+                console.log('[Mining] Mining staking data:', stakingResponse.stakingData.mining);
+            }
+ 
             if (stakingResponse && stakingResponse.stakingData) {
                 const stakingData = stakingResponse.stakingData;
-                
+ 
                 // Initialize staking data
                 this.stakedMines = {};
                 this.stakedWorkers = {};
-                
+                this.stakedSpeedboosts = {};
+ 
                 // Process mining staking data
                 if (stakingData.mining) {
+                    // Collect all staked worker asset IDs for ownership validation
+                    const allStakedWorkerIds = [];
+                    Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
+                        if (slotData.workers && slotData.workers.length > 0) {
+                            slotData.workers.forEach(worker => {
+                                allStakedWorkerIds.push(worker.asset_id);
+                            });
+                        }
+                    });
+ 
+                    // Validate ownership of staked workers
+                    let ownedWorkerIds = new Set(allStakedWorkerIds);
+                    if (allStakedWorkerIds.length > 0) {
+                        try {
+                            const ownershipResponse = await fetch(`${this.backendService.apiBase}/validateOwnershipEndpoint`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ actor: actor, assetIds: allStakedWorkerIds })
+                            });
+ 
+                            if (ownershipResponse.ok) {
+                                const ownershipData = await ownershipResponse.json();
+                                if (ownershipData.valid && ownershipData.ownedAssets) {
+                                    ownedWorkerIds = new Set(ownershipData.ownedAssets.map(a => a.asset_id));
+                                } else if (ownershipData.apiError) {
+                                    console.warn('[Mining] Ownership validation API error, assuming all workers are owned');
+                                }
+                            } else {
+                                console.warn('[Mining] Failed to validate worker ownership, assuming all workers are owned');
+                            }
+                        } catch (error) {
+                            console.warn('[Mining] Error validating worker ownership:', error, 'assuming all workers are owned');
+                        }
+                    }
+ 
+                    // Process each slot
                     Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
                         const slotNum = parseInt(slotKey.replace('slot', ''));
-                        
+ 
                         if (slotData.mine) {
                             this.stakedMines[slotNum] = {
                                 template_id: slotData.mine.template_id,
@@ -630,10 +635,34 @@ class MiningGame extends TSDGEMSGame {
                                 asset_id: slotData.mine.asset_id
                             };
                         }
-                        
-                        // Always set workers array, even if empty (ensures UI updates correctly)
+ 
+                        // Filter workers to only include those still owned
                         if (slotData.workers && slotData.workers.length > 0) {
-                            this.stakedWorkers[slotNum] = slotData.workers.map(worker => ({
+                            const ownedWorkers = slotData.workers.filter(worker =>
+                                ownedWorkerIds.has(worker.asset_id)
+                            );
+ 
+                            // Auto-unstake workers that are no longer owned
+                            const unownedWorkers = slotData.workers.filter(worker =>
+                                !ownedWorkerIds.has(worker.asset_id)
+                            );
+ 
+                            if (unownedWorkers.length > 0) {
+                                console.log(`[Mining] Auto-unstaking ${unownedWorkers.length} worker(s) from slot ${slotNum} that are no longer owned:`,
+                                    unownedWorkers.map(w => `${w.name} (${w.asset_id})`));
+ 
+                                // Remove unowned workers from staking data (they will be unstaked server-side)
+                                unownedWorkers.forEach(async (worker) => {
+                                    try {
+                                        await this.backendService.unstakeAsset(actor, 'mining', slotNum, 'worker', worker.asset_id);
+                                        console.log(`[Mining] Auto-unstaked worker ${worker.name} from slot ${slotNum}`);
+                                    } catch (unstakeError) {
+                                        console.error(`[Mining] Failed to auto-unstake worker ${worker.name}:`, unstakeError);
+                                    }
+                                });
+                            }
+ 
+                            this.stakedWorkers[slotNum] = ownedWorkers.map(worker => ({
                                 template_id: worker.template_id,
                                 name: worker.name,
                                 mp: worker.mp,
@@ -643,21 +672,39 @@ class MiningGame extends TSDGEMSGame {
                             // Explicitly set to empty array if no workers (or workers property doesn't exist)
                             this.stakedWorkers[slotNum] = [];
                         }
+ 
+                        if (slotData.speedboost) {
+                            const templateId = String(slotData.speedboost.template_id);
+                            const info = SPEEDBOOST_BY_TEMPLATE[templateId] || { boost: slotData.speedboost.boost || 0 };
+                            this.stakedSpeedboosts[slotNum] = {
+                                template_id: slotData.speedboost.template_id,
+                                name: slotData.speedboost.name || getSpeedboostName(templateId),
+                                asset_id: slotData.speedboost.asset_id,
+                                boost: slotData.speedboost.boost ?? info.boost ?? 0,
+                                imagePath: slotData.speedboost.imagePath || getSpeedboostImage(templateId)
+                            };
+                        }
                     });
                 }
-                
+ 
                 console.log('[Mining] Loaded staked mines:', this.stakedMines);
                 console.log('[Mining] Loaded staked workers:', this.stakedWorkers);
+                console.log('[Mining] Loaded staked speedboosts:', this.stakedSpeedboosts);
+                return stakingResponse;
             } else {
                 console.log('[Mining] No staking data found, initializing empty');
                 this.stakedMines = {};
                 this.stakedWorkers = {};
+                this.stakedSpeedboosts = {};
+                return stakingResponse;
             }
-            
+ 
         } catch (error) {
             console.error('[Mining] Failed to load staked assets:', error);
             this.stakedMines = {};
             this.stakedWorkers = {};
+            this.stakedSpeedboosts = {};
+            throw error;
         }
     }
 
@@ -701,6 +748,163 @@ class MiningGame extends TSDGEMSGame {
         this._lastRenderTime = now;
 
         this._doRenderMiningSlots();
+    }
+
+    renderSpeedboostSlots() {
+        const slotsGrid = document.getElementById('speedboost-slots-grid');
+        if (!slotsGrid) {
+            console.warn('[Mining] No speedboost slots grid element found');
+            return;
+        }
+
+        console.log('[Mining] Rendering speedboost slots...');
+
+        const slots = [];
+        for (let i = 0; i < MAX_SLOTS; i++) {
+            const slotNum = i + 1;
+            const isMiningSlotUnlocked = i < this.effectiveSlots;
+            const stakedSpeedboost = this.stakedSpeedboosts[slotNum];
+            const stakedMine = this.stakedMines[slotNum];
+
+            slots.push({
+                slotNum,
+                isMiningSlotUnlocked,
+                stakedSpeedboost,
+                stakedMine
+            });
+        }
+
+        slotsGrid.innerHTML = slots.map(slot => {
+            const canUseSpeedboost = slot.isMiningSlotUnlocked;
+            const slotStatus = canUseSpeedboost ? (slot.stakedSpeedboost ? 'staked' : 'empty') : 'locked';
+
+            const mineName = slot.stakedMine && slot.stakedMine.name ? slot.stakedMine.name : 'No mine staked';
+            let mineMP = Number(slot.stakedMine && slot.stakedMine.mp ? slot.stakedMine.mp : 0);
+            if (Number.isNaN(mineMP)) {
+                mineMP = 0;
+            }
+
+            return `
+                <div class="speedboost-slot ${slotStatus}">
+                    <div class="speedboost-slot-header">
+                        <h4 class="speedboost-slot-title">Slot ${slot.slotNum}</h4>
+                        <span class="speedboost-slot-status ${slotStatus}">
+                            ${slot.stakedSpeedboost ? 'BOOSTED' : 'EMPTY'}
+                        </span>
+                    </div>
+                    <div class="speedboost-content">
+                        <div class="mine-info-display" style="padding: 0.75rem; background: rgba(0, 212, 255, 0.1); border-radius: 8px; border: 1px solid rgba(0, 212, 255, 0.3); margin-bottom: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <div style="position: relative;">
+                                    <img src="assets/images/small_mine.png"
+                                         style="width: 50px; height: 50px; border-radius: 6px; border: 2px solid #00d4ff;"
+                                         alt="${mineName}"
+                                         onerror="this.src='assets/gallery_images/(1).png'">
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="color: #00d4ff; font-weight: 600; font-size: 0.9em;">${mineName}</div>
+                                    <div style="color: #ffd700; font-size: 0.8em; font-weight: 500;"><i class="fas fa-hammer"></i> ${mineMP.toLocaleString()} MP</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${slot.stakedSpeedboost ? `
+                            <div class="speedboost-nft-display">
+                                <div style="position: relative;">
+                                    ${(() => {
+                                        const displayImage = slot.stakedSpeedboost.imagePath || getSpeedboostImage(slot.stakedSpeedboost.template_id);
+                                        if (displayImage) {
+                                            return `
+                                                <img src="${displayImage}"
+                                                     class="speedboost-nft-image"
+                                                     alt="${getSpeedboostName(slot.stakedSpeedboost.template_id, slot.stakedSpeedboost.name)}">
+                                            `;
+                                        }
+                                        return `
+                                            <div class="speedboost-image-fallback" style="width: 80px; height: 80px; border-radius: 8px; border: 2px dashed rgba(255,165,0,0.4); display: flex; align-items: center; justify-content: center; color: rgba(255,165,0,0.7);">
+                                                <i class="fas fa-bolt" style="font-size: 1.5rem;"></i>
+                                            </div>
+                                        `;
+                                    })()}
+                                    ${(() => {
+                                        // Get template_mint for speedboost if available
+                                        const speedboostInventoryAsset = this.inventoryData && this.inventoryData.assets ?
+                                            this.inventoryData.assets.find(asset => asset.asset_id === slot.stakedSpeedboost.asset_id) : null;
+                                        const speedboostTemplateMint = speedboostInventoryAsset && speedboostInventoryAsset.template_mint !== 'unknown' ?
+                                            speedboostInventoryAsset.template_mint : null;
+                                        return speedboostTemplateMint ? `
+                                            <span class="mint-badge" style="position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); background: #ffd700; color: #000; padding: 2px 6px; border-radius: 10px; font-size: 0.7em; font-weight: bold; border: 1px solid #000;">#${speedboostTemplateMint}</span>
+                                        ` : '';
+                                    })()}
+                                </div>
+                                <div class="speedboost-nft-info">
+                                    <div class="speedboost-nft-name">${getSpeedboostName(slot.stakedSpeedboost.template_id, slot.stakedSpeedboost.name)}</div>
+                                    <div class="speedboost-nft-boost">Speed +${(slot.stakedSpeedboost.boost * 100).toFixed(1)}% / ×${(1 + slot.stakedSpeedboost.boost).toFixed(2)}</div>
+                                    <div class="speedboost-nft-mint">Reduces mining time by ${(slot.stakedSpeedboost.boost * 100).toFixed(1)}%</div>
+                                </div>
+                            </div>
+                            <div class="speedboost-actions">
+                                <button onclick="game.unstakeSpeedboost(${slot.slotNum})" class="action-btn warning">
+                                    <i class="fas fa-times"></i> Unstake
+                                </button>
+                            </div>
+                        ` : `
+                            <div style="text-align: center; padding: 1rem; color: #888;">
+                                <i class="fas fa-bolt" style="font-size: 2.5rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
+                                <p style="font-size: 0.9rem; margin-bottom: 0.5rem;">No Speedboost staked</p>
+                                <div style="font-size: 0.8rem; opacity: 0.7; margin-bottom: 1rem;">
+                                    Available boosts: 6.25% • 12.5% • 25% • 50% • 100%
+                                </div>
+                            </div>
+                            <div class="speedboost-actions">
+                                <button onclick="game.openStakeSpeedboostModal(${slot.slotNum})" class="action-btn primary" ${canUseSpeedboost ? '' : 'disabled'}>
+                                    <i class="fas fa-bolt"></i> Stake Speedboost
+                                </button>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    }
+
+
+    refreshSpeedboostSlots() {
+        console.log('[Mining] Refreshing speedboost slots...');
+        this.loadInventoryAndAssets().then(() => {
+            this.renderSpeedboostSlots();
+        }).catch(error => {
+            console.error('[Mining] Failed to refresh speedboost slots:', error);
+            this.showNotification('❌ Failed to refresh speedboost slots', 'error');
+            // Render placeholder slots even if data refresh failed
+            this.renderSpeedboostSlots();
+        });
+    }
+
+    initSpeedboostPage() {
+        console.log('[Mining] Initializing speedboost page...');
+
+        // Add event listener for refresh button
+        const refreshBtn = document.getElementById('refresh-speedboost-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.refreshSpeedboostSlots();
+            });
+        }
+
+        // Render placeholders immediately
+        this.renderSpeedboostSlots();
+
+        // Load data and render speedboost slots
+        this.loadInventoryAndAssets().then(() => {
+            this.renderSpeedboostSlots();
+        }).catch(error => {
+            console.error('[Mining] Failed to load data for speedboost page:', error);
+            this.showNotification('❌ Failed to load speedboost data', 'error');
+            // Keep placeholder slots visible even on failure
+            this.renderSpeedboostSlots();
+        });
     }
 
     _doRenderMiningSlots() {
@@ -772,10 +976,30 @@ class MiningGame extends TSDGEMSGame {
             if (slot.activeJob) {
                 const job = slot.activeJob;
                 const now = Date.now();
+
+                // Calculate effective duration with speedboost
+                let effectiveDurationMs = MINING_DURATION_MS;
+                let speedBoostInfo = null;
+
+                // Prefer server-provided values
+                if (job.effectiveDurationMs) {
+                    effectiveDurationMs = job.effectiveDurationMs;
+                    if (job.slotSpeedBoostPct) {
+                        speedBoostInfo = `Speed +${(job.slotSpeedBoostPct * 100).toFixed(1)}%`;
+                    }
+                } else {
+                    // Fallback: calculate client-side
+                    const stakedSpeedboost = this.stakedSpeedboosts[slot.slotNum];
+                    if (stakedSpeedboost && stakedSpeedboost.boost > 0) {
+                        effectiveDurationMs = MINING_DURATION_MS / (1 + stakedSpeedboost.boost);
+                        speedBoostInfo = `Speed +${(stakedSpeedboost.boost * 100).toFixed(1)}% / ×${(1 + stakedSpeedboost.boost).toFixed(2)}`;
+                    }
+                }
+
                 const remaining = Math.max(0, job.finishAt - now);
-                const progress = Math.min(100, ((MINING_DURATION_MS - remaining) / MINING_DURATION_MS) * 100);
+                const progress = Math.min(100, ((effectiveDurationMs - remaining) / effectiveDurationMs) * 100);
                 const isComplete = remaining === 0;
-                
+
                 const slotMP = job.slotMiningPower || 0;
                 const expectedRewards = Math.max(1, Math.floor(slotMP / 20));
                 
@@ -830,10 +1054,20 @@ class MiningGame extends TSDGEMSGame {
             // Available slot (unlocked but no job)
             const stakedMine = this.stakedMines[slot.slotNum];
             const stakedWorkers = this.stakedWorkers[slot.slotNum] || [];
-            
-            // Calculate total MP
+            const stakedSpeedboost = this.stakedSpeedboosts[slot.slotNum];
+
+            // Filter to only owned workers (those with mint numbers)
+            const ownedWorkers = stakedWorkers.filter(w => {
+                const inventoryAsset = this.inventoryData && this.inventoryData.assets ?
+                    this.inventoryData.assets.find(asset => asset.asset_id === w.asset_id) : null;
+                const templateMint = inventoryAsset && inventoryAsset.template_mint !== 'unknown' ?
+                    inventoryAsset.template_mint : null;
+                return templateMint !== null;
+            });
+
+            // Calculate total MP using only owned workers
             const mineMP = stakedMine ? stakedMine.mp : 0;
-            const workersMP = stakedWorkers.reduce((sum, w) => sum + w.mp, 0);
+            const workersMP = ownedWorkers.reduce((sum, w) => sum + w.mp, 0);
             const totalMP = mineMP + workersMP;
             
             // Get appropriate mine image
@@ -895,13 +1129,13 @@ class MiningGame extends TSDGEMSGame {
                             `}
                         </div>
                     </div>
-                    ${stakedMine || stakedWorkers.length > 0 ? `
+                    ${stakedMine || ownedWorkers.length > 0 ? `
                         <div class="slot-workers">
                             <div class="worker-info">
-                                <span>Workers: ${stakedWorkers.length}${stakedMine ? `/${this.getWorkerLimit(stakedMine.name)}` : ''}</span>
+                                <span>Workers: ${ownedWorkers.length}${stakedMine ? `/${this.getWorkerLimit(stakedMine.name)}` : ''}</span>
                                 <span class="mining-power">MP: ${totalMP.toLocaleString()}</span>
                             </div>
-                            ${stakedWorkers.length > 0 ? `
+                            ${ownedWorkers.length > 0 ? `
                                 <div id="workers-list-${slot.slotNum}" style="display: none; margin-top: 0.5rem; padding: 0.75rem; padding-bottom: 4rem; background: rgba(0, 0, 0, 0.3); border-radius: 8px; max-height: 400px; overflow-y: auto; position: relative;">
                                     <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: rgba(0, 212, 255, 0.1); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
                                         <span style="color: #00d4ff; font-size: 0.85em;">
@@ -912,11 +1146,22 @@ class MiningGame extends TSDGEMSGame {
                                         </span>
                                     </div>
                                     ${(() => {
+                                        // Filter workers to only show those with mint numbers (owned workers)
+                                        const ownedWorkers = stakedWorkers.filter((w, originalIdx) => {
+                                            const inventoryAsset = this.inventoryData && this.inventoryData.assets ?
+                                                this.inventoryData.assets.find(asset => asset.asset_id === w.asset_id) : null;
+                                            const templateMint = inventoryAsset && inventoryAsset.template_mint !== 'unknown' ?
+                                                inventoryAsset.template_mint : null;
+                                            return templateMint !== null; // Only include workers with mint numbers
+                                        });
+
                                         // Calculate selected count for this slot
                                         let selectedCount = 0;
-                                        return stakedWorkers.map((w, idx) => {
-                                            const isLast = idx === stakedWorkers.length - 1;
-                                            const workerKey = `${slot.slotNum}-${idx}`;
+                                        return ownedWorkers.map((w, filteredIdx) => {
+                                            // Find the original index in the full stakedWorkers array
+                                            const originalIdx = stakedWorkers.findIndex(worker => worker.asset_id === w.asset_id);
+                                            const isLast = filteredIdx === ownedWorkers.length - 1;
+                                            const workerKey = `${slot.slotNum}-${originalIdx}`;
                                             const isSelected = this.selectedWorkersForUnstake.has(workerKey);
                                             if (isSelected) selectedCount++;
                                             // Try to get template_mint from inventory data
@@ -926,9 +1171,9 @@ class MiningGame extends TSDGEMSGame {
                                                 inventoryAsset.template_mint : null;
 
                                             return `
-                                            <div class="worker-unstake-card" id="worker-unstake-${slot.slotNum}-${idx}"
+                                            <div class="worker-unstake-card" id="worker-unstake-${slot.slotNum}-${originalIdx}"
                                                  style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem; background: ${isSelected ? 'rgba(255, 107, 107, 0.1)' : 'rgba(0, 212, 255, 0.1)'}; border-radius: 6px; margin-bottom: ${isLast ? '0.75rem' : '0.5rem'}; border: 2px solid ${isSelected ? '#ff6b6b' : 'rgba(0, 212, 255, 0.2)'}; cursor: pointer; transition: all 0.3s; position: relative;"
-                                                 onclick="game.toggleWorkerForUnstake(${slot.slotNum}, ${idx})">
+                                                 onclick="game.toggleWorkerForUnstake(${slot.slotNum}, ${originalIdx})">
                                                 <div style="flex: 1; pointer-events: none;">
                                                     <div style="color: #ffffff; font-weight: 600; font-size: 0.9em;">${w.name}</div>
                                                     <div style="color: #ffd700; font-size: 0.85em;"><i class="fas fa-hammer"></i> ${w.mp.toLocaleString()} MP${templateMint ? ` <span style="color: #ffd700; font-weight: bold;">#${templateMint}</span>` : ''}</div>
@@ -947,10 +1192,12 @@ class MiningGame extends TSDGEMSGame {
                                     })()}
                                 </div>
                             ` : ''}
+
+
                             <div class="slot-actions">
-                                ${stakedWorkers.length > 0 ? `
+                                ${ownedWorkers.length > 0 ? `
                                     <button onclick="game.toggleWorkersList(${slot.slotNum})" class="action-btn secondary">
-                                        <i class="fas fa-users"></i> Manage ${stakedWorkers.length} Worker${stakedWorkers.length > 1 ? 's' : ''}
+                                        <i class="fas fa-users"></i> Manage ${ownedWorkers.length} Worker${ownedWorkers.length > 1 ? 's' : ''}
                                         <i class="fas fa-chevron-down" id="workers-chevron-${slot.slotNum}" style="margin-left: 0.5rem;"></i>
                                     </button>
                                 ` : ''}
@@ -1141,7 +1388,32 @@ class MiningGame extends TSDGEMSGame {
             });
             
             if (!response.ok) {
-                const errorData = await response.json();
+                console.log('[Mining] Start mining failed with status:', response.status, response.statusText);
+
+                let errorData = null;
+                try {
+                    errorData = await response.json();
+                    console.log('[Mining] Error response JSON:', errorData);
+                } catch (parseError) {
+                    console.log('[Mining] Error parsing JSON, trying text:', parseError);
+                    // If response isn't valid JSON, try to get text
+                    const errorText = await response.text().catch(() => 'Unknown error');
+                    console.log('[Mining] Error response text:', errorText);
+                    throw new Error(`Failed to start mining: ${response.status} ${response.statusText} - ${errorText}`);
+                }
+
+                // Handle ownership validation errors specifically
+                if (errorData.error && errorData.error.startsWith('ownership_missing:')) {
+                    console.log('[Mining] Detected ownership_missing error, showing modal');
+                    const missingList = errorData.error.replace('ownership_missing: ', '');
+                    const missingDetails = errorData.details || [];
+
+                    // Show persistent modal requiring manual action
+                    this.showMissingWorkersModal(missingList, missingDetails, slotNum);
+                    return;
+                }
+
+                console.log('[Mining] Error not ownership_missing, throwing generic error');
                 throw new Error(errorData.error || 'Failed to start mining');
             }
             
@@ -1176,6 +1448,108 @@ class MiningGame extends TSDGEMSGame {
                 button.disabled = false;
                 button.innerHTML = originalText;
             }
+        }
+    }
+
+    showMissingWorkersModal(missingList, missingDetails, slotNum) {
+        console.log('[Mining] Showing missing workers modal:', { missingList, missingDetails, slotNum });
+
+        // Debug: Check for duplicates
+        const assetIds = missingDetails.map(w => w.asset_id);
+        const uniqueAssetIds = [...new Set(assetIds)];
+        if (assetIds.length !== uniqueAssetIds.length) {
+            console.warn('[Mining] Duplicate workers found in missingDetails:', assetIds);
+            // Filter out duplicates
+            const seen = new Set();
+            missingDetails = missingDetails.filter(worker => {
+                if (seen.has(worker.asset_id)) {
+                    return false;
+                }
+                seen.add(worker.asset_id);
+                return true;
+            });
+        }
+
+        // Debug: Check mint numbers
+        missingDetails.forEach((worker, index) => {
+            console.log(`[Mining] Worker ${index}: ${worker.name} - Mint: ${worker.template_mint} - Asset: ${worker.asset_id}`);
+        });
+
+        const modalContent = `
+            <div class="missing-workers-modal">
+                <div class="modal-header">
+                    <h3>⚠️ Missing Workers Detected</h3>
+                    <p>The following workers are no longer owned by you:</p>
+                </div>
+                <div class="modal-body">
+                    <div class="missing-workers-list">
+                        ${missingDetails.map(worker =>
+                            `<div class="missing-worker-item">
+                                <span class="worker-name">${worker.name}</span>
+                                <span class="worker-details">Template ${worker.template_id}${worker.template_mint && worker.template_mint !== 'unknown' ? `, Mint #${worker.template_mint}` : ''}</span>
+                            </div>`
+                        ).join('')}
+                    </div>
+                    <p class="modal-info">These workers will be automatically removed from your staking configuration.</p>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="game.closeMissingWorkersModal(${slotNum}, [${missingDetails.map(w => `'${w.asset_id}'`).join(', ')}])">
+                        Remove Workers & Continue
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Create and show modal
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay active'; // Add 'active' class to make it visible
+        modal.innerHTML = `
+            <div class="modal-content missing-workers-modal-wrapper">
+                ${modalContent}
+            </div>
+        `;
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        };
+
+        console.log('[Mining] Appending modal to body');
+        document.body.appendChild(modal);
+        console.log('[Mining] Modal appended, should be visible now');
+    }
+
+    async closeMissingWorkersModal(slotNum, assetIdsToRemove) {
+        // Remove the modal
+        const modal = document.querySelector('.missing-workers-modal-wrapper');
+        if (modal) {
+            modal.closest('.modal-overlay').remove();
+        }
+
+        try {
+            // Remove each missing worker
+            for (const assetId of assetIdsToRemove) {
+                await this.backendService.unstakeAsset(this.currentActor, 'mining', slotNum, 'worker', assetId);
+                console.log(`[Mining] Auto-removed unowned worker ${assetId} from slot ${slotNum}`);
+            }
+
+            // Reload staked assets to refresh UI
+            console.log('[Mining] Reloading staked assets after worker removal...');
+            await this.loadStakedAssets(this.currentActor);
+            console.log('[Mining] Staked assets reloaded. Current workers for slot', slotNum, ':', this.stakedWorkers[slotNum]);
+
+            // Re-render all slots to update the UI (with delay to ensure backend operations complete)
+            setTimeout(() => {
+                this.renderMiningSlots();
+            }, 1000);
+
+            // Show success notification
+            const count = assetIdsToRemove.length;
+            this.showNotification(`✅ Removed ${count} unowned worker${count > 1 ? 's' : ''} from Slot ${slotNum}`, 'success');
+
+        } catch (error) {
+            console.error('[Mining] Failed to remove unowned workers:', error);
+            this.showNotification('❌ Failed to remove unowned workers: ' + error.message, 'error');
         }
     }
 
@@ -1243,7 +1617,29 @@ class MiningGame extends TSDGEMSGame {
             const gemKey = result.roughKey || 'rough_gems';
             const amount = result.yieldAmt;
             const slotMP = result.slotMiningPower || 0;
-            
+            const effectiveMP = result.effectiveMiningPower || 0;
+
+            // Check if MP was reduced due to unowned workers
+            if (job && job.slotMiningPower > effectiveMP) {
+                const deductedMP = job.slotMiningPower - effectiveMP;
+                const ownershipInfo = result.ownershipAtCompletion;
+
+                let notificationMessage = `⚠️ ${deductedMP.toLocaleString()} MP removed - workers no longer owned:`;
+
+                if (ownershipInfo && ownershipInfo.missingAssets && ownershipInfo.missingAssets.length > 0) {
+                    const removedWorkers = ownershipInfo.missingAssets
+                        .filter(asset => asset.type === 'worker')
+                        .map(worker => `#${worker.template_mint}`)
+                        .join(', ');
+
+                    if (removedWorkers) {
+                        notificationMessage += ` ${removedWorkers}`;
+                    }
+                }
+
+                this.showNotification(notificationMessage, 'warning');
+            }
+
             // Delay server sync slightly to avoid state bouncing
             await new Promise(r => setTimeout(r, 1500));
             // Retry a few times until the job disappears server-side
@@ -1806,6 +2202,194 @@ class MiningGame extends TSDGEMSGame {
         this.selectedSlotForStaking = null;
         this.selectedWorkers = []; // Reset selection when closing modal
         console.log('[Mining] Modal closed, selection cleared');
+    }
+
+    openStakeSpeedboostModal(slotNum) {
+        console.log('[Mining] Opening stake speedboost modal for slot:', slotNum);
+
+        // Check if already staked
+        if (this.stakedSpeedboosts[slotNum]) {
+            this.showNotification('⚠️ A Speedboost is already staked in this slot. Unstake it first to stake a different one.', 'warning');
+            return;
+        }
+
+        // Get available speedboosts (not already staked)
+        const stakedAssetIds = this.getStakedAssetIds();
+        const availableSpeedboosts = this.speedboostNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
+
+        console.log('[Mining] Available speedboosts:', availableSpeedboosts.length, 'of', this.speedboostNFTs.length);
+
+        this.showSpeedboostStakingModal(slotNum, availableSpeedboosts);
+    }
+
+    showSpeedboostStakingModal(slotNum, availableSpeedboosts) {
+        console.log(`[Mining] showSpeedboostStakingModal called with ${availableSpeedboosts.length} speedboosts`);
+
+        // Remove existing modal if present
+        const existingModal = document.getElementById('speedboost-staking-modal');
+        if (existingModal) {
+            console.log('[Mining] Removing existing modal');
+            existingModal.remove();
+        }
+
+        const modalHTML = `
+            <div class="modal-overlay" id="speedboost-staking-modal" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; align-items: center; justify-content: center; overflow-y: auto; padding: 2rem 0;">
+                <div class="modal-content" style="background: rgba(20, 20, 30, 0.95); border: 2px solid #ffa500; border-radius: 12px; padding: 30px; max-width: 800px; width: 90%; max-height: calc(100vh - 4rem); overflow-y: auto;">
+                    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="color: #ffa500; margin: 0;"><i class="fas fa-bolt"></i> Stake Speedboost - Slot ${slotNum}</h3>
+                        <button class="close-btn" onclick="game.closeSpeedboostStakingModal()" style="background: transparent; border: none; color: #fff; font-size: 2em; cursor: pointer; padding: 0; width: 40px; height: 40px;">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="color: #888; margin-bottom: 20px;">
+                            Select a Speedboost NFT to stake in slot ${slotNum}. Speedboosts reduce mining time for faster gem production.
+                        </p>
+                        ${availableSpeedboosts.length === 0 ? `
+                            <div style="text-align: center; padding: 60px 20px; background: rgba(0, 0, 0, 0.2); border-radius: 8px; border: 2px dashed #888;">
+                                <i class="fas fa-bolt" style="font-size: 64px; color: #888; margin-bottom: 20px;"></i>
+                                <h3 style="color: #ffa500; margin-bottom: 15px; font-size: 1.3em;">No Speedboost NFTs Available</h3>
+                                <p style="color: #888; margin-bottom: 30px; max-width: 400px; margin-left: auto; margin-right: auto;">
+                                    You don't own any Speedboost NFTs yet, or all are already staked. Purchase speedboosts on NeftyBlocks to reduce mining time!
+                                </p>
+                                <a href="https://neftyblocks.com/collection/tsdmediagems" target="_blank" rel="noopener" class="action-btn primary" style="display: inline-block; text-decoration: none;">
+                                    <i class="fas fa-shopping-cart"></i> Visit Shop
+                                </a>
+                                <button class="action-btn secondary" onclick="game.closeSpeedboostStakingModal()" style="margin-left: 10px;">
+                                    <i class="fas fa-times"></i> Close
+                                </button>
+                            </div>
+                        ` : `
+                            <div class="speedboost-selection-grid">
+                                <div class="speedboost-type-group">
+                                    <h4 style="color: #ffa500; margin-bottom: 15px;">Speedboost NFTs (${availableSpeedboosts.length} available)</h4>
+                                    <div class="speedboost-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px;">
+                                        ${availableSpeedboosts.map(speedboost => {
+                                            const boost = SPEEDBOOST_BY_TEMPLATE[speedboost.template_id] || 0;
+                                            const cardImagePath = speedboost.imagePath || getSpeedboostImage(speedboost.template_id);
+                                            const cardDisplayName = getSpeedboostName(speedboost.template_id, speedboost.name);
+                                            return `
+                                                <div class="speedboost-card" onclick="game.stakeSpeedboostToSlot(${slotNum}, '${speedboost.asset_id}')" style="background: rgba(0, 0, 0, 0.4); border: 2px solid rgba(255, 165, 0, 0.3); border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: all 0.3s;">
+                                                    <div style="position: relative;">
+                                                        ${cardImagePath ? `
+                                                            <img src="${cardImagePath}" alt="${cardDisplayName}" style="width: 100%; height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 10px; border: 2px solid #ffa500;">
+                                                        ` : `
+                                                            <div style="width: 100%; height: 120px; border: 2px dashed rgba(255, 165, 0, 0.4); border-radius: 4px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; color: rgba(255,165,0,0.7);">
+                                                                <i class="fas fa-bolt" style="font-size: 2rem;"></i>
+                                                            </div>
+                                                        `}
+                                                        ${speedboost.template_mint && speedboost.template_mint !== 'unknown' ? `<div class="mint-badge" style="position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); background: #ffd700; color: #000; padding: 2px 6px; border-radius: 10px; font-size: 0.7em; font-weight: bold; border: 1px solid #000;">#${speedboost.template_mint}</div>` : ''}
+                                                    </div>
+                                                    <p style="color: #fff; margin: 5px 0; font-weight: 600;">${cardDisplayName}</p>
+                                                    <p style="color: #ffd700; font-size: 0.9em; font-weight: bold;">Speed +${(boost.boost * 100).toFixed(1)}% / ×${(1 + boost.boost).toFixed(2)}</p>
+                                                    <small style="color: #888;">ID: ${speedboost.asset_id}</small>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        console.log('[Mining] Inserting speedboost modal HTML into body');
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        console.log('[Mining] Speedboost modal inserted, should be visible');
+    }
+
+    closeSpeedboostStakingModal() {
+        console.log('[Mining] closeSpeedboostStakingModal called');
+        const modal = document.getElementById('speedboost-staking-modal');
+        if (modal) {
+            modal.remove();
+        }
+        console.log('[Mining] Speedboost modal closed');
+    }
+
+    async stakeSpeedboostToSlot(slotNum, assetId) {
+        console.log('[Mining] Staking speedboost:', assetId, 'to slot:', slotNum);
+
+        try {
+            // Show loading state while staking
+            this.showLoadingState(true, 'Staking speedboost...');
+
+            const speedboostNFT = this.speedboostNFTs.find(nft => nft.asset_id === assetId);
+            const templateId = speedboostNFT ? speedboostNFT.template_id : null;
+            const info = templateId ? SPEEDBOOST_BY_TEMPLATE[String(templateId)] : null;
+
+            const result = await this.backendService.stakeAsset(
+                this.currentActor,
+                'mining',
+                slotNum,
+                'speedboost',
+                {
+                    asset_id: assetId,
+                    template_id: templateId ? Number(templateId) : undefined,
+                    name: speedboostNFT ? speedboostNFT.name : (templateId ? getSpeedboostName(templateId) : 'Speedboost'),
+                    boost: speedboostNFT?.boost ?? info?.boost ?? 0,
+                    imagePath: speedboostNFT?.imagePath || null
+                }
+            );
+
+            if (result.success) {
+                // Close modal
+                this.closeSpeedboostStakingModal();
+
+                // Hide loading state
+                this.showLoadingState(false);
+
+                // Reload staked assets from backend to ensure UI is in sync
+                await this.loadStakedAssets(this.currentActor);
+
+                this.showNotification(`✅ Staked ${speedboostNFT ? speedboostNFT.name : 'Speedboost'} to Slot ${slotNum}!`, 'success');
+                this.renderSpeedboostSlots();
+            } else {
+                throw new Error(result.error || 'Failed to stake speedboost');
+            }
+        } catch (error) {
+            console.error('[Mining] Failed to stake speedboost:', error);
+            this.showLoadingState(false);
+            this.showNotification(`❌ Failed to stake speedboost: ${error.message}`, 'error');
+        }
+    }
+
+    async unstakeSpeedboost(slotNum) {
+        console.log('[Mining] Unstaking speedboost from slot:', slotNum);
+
+        const stakedSpeedboost = this.stakedSpeedboosts[slotNum];
+        if (!stakedSpeedboost) {
+            this.showNotification('❌ No speedboost staked in this slot!', 'error');
+            return;
+        }
+
+        try {
+            this.showLoadingState(true, 'Unstaking speedboost...');
+
+            const result = await this.backendService.unstakeAsset(
+                this.currentActor,
+                'mining',
+                slotNum,
+                'speedboost',
+                stakedSpeedboost.asset_id
+            );
+
+            if (result.success) {
+                // Reload staked assets from backend to ensure UI is in sync
+                await this.loadStakedAssets(this.currentActor);
+
+                this.showNotification(`✅ Unstaked ${stakedSpeedboost.name} from Slot ${slotNum}!`, 'success');
+                this.renderMiningSlots();
+            } else {
+                throw new Error(result.error || 'Failed to unstake speedboost');
+            }
+        } catch (error) {
+            console.error('[Mining] Failed to unstake speedboost:', error);
+            this.showNotification(`❌ Failed to unstake speedboost: ${error.message}`, 'error');
+        } finally {
+            this.showLoadingState(false);
+        }
     }
 
     async stakeMine(templateId, slotNum, mp, name, assetId) {
@@ -2613,11 +3197,114 @@ class MiningGame extends TSDGEMSGame {
         `;
         document.head.appendChild(style);
     }
+
+    async loadInventoryAndAssets(forceRefresh = false) {
+        if (!this.currentActor) {
+            console.warn('[Mining] loadInventoryAndAssets called without currentActor');
+            return;
+        }
+
+        try {
+            const [inventoryData, stakedAssets] = await Promise.all([
+                this.backendService.getInventory(this.currentActor, forceRefresh),
+                this.backendService.getStakedAssets(this.currentActor)
+            ]);
+
+            console.log('[Mining] loadInventoryAndAssets -> inventory:', inventoryData, 'staked:', stakedAssets);
+
+            this.updateInventoryStructures(inventoryData);
+            await this.loadStakedAssets(this.currentActor, stakedAssets);
+            return { inventoryData, stakedAssets };
+         } catch (error) {
+             console.error('[Mining] Failed to load inventory and assets:', error);
+             throw error;
+         }
+     }
+
+    updateInventoryStructures(inventoryData) {
+        this.inventoryData = inventoryData || null;
+        this.mineNFTs = [];
+        this.workerNFTs = [];
+        this.speedboostNFTs = [];
+
+        if (!inventoryData) {
+            return;
+        }
+
+        if (inventoryData.equipmentDetails) {
+            const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => {
+                const assets = details.assets || [];
+                return assets.map(assetId => {
+                    const assetDetails = (inventoryData.assets || []).find(asset => asset.asset_id === assetId);
+                    return {
+                        template_id: templateId,
+                        template_mint: assetDetails ? assetDetails.template_mint : 'unknown',
+                        name: details.name,
+                        mp: details.mp,
+                        image: details.image,
+                        imagePath: details.imagePath,
+                        asset_id: assetId
+                    };
+                });
+            }).flat();
+
+            this.mineNFTs = equipmentArray.filter(nft => (nft.name || '').toLowerCase().includes('mine'));
+            this.workerNFTs = equipmentArray.filter(nft => {
+                const name = (nft.name || '').toLowerCase();
+                return !name.includes('mine') && !name.includes('polishing');
+            });
+        }
+
+        const speedboostDetails = inventoryData.speedboostDetails || {};
+        const assets = inventoryData.assets || [];
+        const processed = new Set();
+        const speedboostList = [];
+
+        Object.entries(speedboostDetails).forEach(([templateId, details]) => {
+            const assetIds = details.assets || [];
+            assetIds.forEach(assetId => {
+                const assetRecord = assets.find(asset => asset.asset_id === assetId) || {};
+                const info = SPEEDBOOST_BY_TEMPLATE[String(templateId)] || { boost: details.boost || 0 };
+                speedboostList.push({
+                    asset_id: assetId,
+                    template_id: String(templateId),
+                    template_mint: assetRecord.template_mint || 'unknown',
+                    name: details.name || assetRecord.name || getSpeedboostName(templateId),
+                    boost: assetRecord.boost ?? details.boost ?? info.boost ?? 0,
+                    imagePath: details.imagePath || assetRecord.imagePath || getSpeedboostImage(templateId)
+                });
+                processed.add(assetId);
+            });
+        });
+
+        assets.forEach(asset => {
+            const templateId = String(asset.template_id || asset.template?.template_id);
+            if (!SPEEDBOOST_BY_TEMPLATE[templateId]) {
+                return;
+            }
+            if (processed.has(asset.asset_id)) {
+                return;
+            }
+            const info = SPEEDBOOST_BY_TEMPLATE[templateId];
+            speedboostList.push({
+                asset_id: asset.asset_id,
+                template_id: templateId,
+                template_mint: asset.template_mint || 'unknown',
+                name: getSpeedboostName(templateId, asset.name),
+                boost: asset.boost ?? info.boost ?? 0,
+                imagePath: asset.imagePath || getSpeedboostImage(templateId)
+            });
+        });
+
+        this.speedboostNFTs = speedboostList;
+        console.log('[Mining] speedboostNFTs prepared:', this.speedboostNFTs.length);
+    }
 }
 
 // Initialize mining when page loads
 let game;
 document.addEventListener('DOMContentLoaded', () => {
     game = new MiningGame();
+    window.game = game;
     window.tsdgemsGame = game;
 });

@@ -192,7 +192,9 @@ class InventoryPage extends TSDGEMSGame {
             this.inventoryData.assets.forEach(asset => {
                 // Build the image path
                 let finalImagePath = null;
-                if (asset.image) {
+                if (asset.imagePath) {
+                    finalImagePath = asset.imagePath;
+                } else if (asset.image) {
                     finalImagePath = `assets/gallery_images/${asset.image}`;
                 }
                 
@@ -207,7 +209,8 @@ class InventoryPage extends TSDGEMSGame {
                     image: finalImagePath,
                     schema: asset.schema,
                     mining_power: asset.mp || 0,
-                    category: asset.category
+                    category: asset.category,
+                    boost: asset.boost || 0
                 });
                 
                 this.collections.add(this.inventoryData.collection || 'tsdmediagems');
@@ -242,8 +245,10 @@ class InventoryPage extends TSDGEMSGame {
                 for (let i = 0; i < count; i++) {
                     // Use imagePath if available, otherwise build fallback path
                     let finalImagePath = null;
-                    if (image) {
+                    if (imagePath) {
                         // Always use the correct path for gallery_images
+                        finalImagePath = imagePath;
+                    } else if (image) {
                         finalImagePath = `assets/gallery_images/${image}`;
                     }
                     
@@ -403,10 +408,19 @@ class InventoryPage extends TSDGEMSGame {
         const schemaColor = this.getSchemaColor(nft.schema);
         
         // Mining Power display for equipment
-        const miningPowerDisplay = (nft.schema === 'equipment' || nft.schema === 'tools') && nft.mining_power > 0 ? 
-            `<div class="nft-attribute">
-                <span class="nft-attribute-key">Mining Power:</span> ${nft.mining_power} MP
-            </div>` : '';
+        let specialAttributes = '';
+        if ((nft.schema === 'equipment' || nft.schema === 'tools') && nft.mining_power > 0) {
+            specialAttributes += `
+                <div class="nft-attribute">
+                    <span class="nft-attribute-key">Mining Power:</span> ${nft.mining_power} MP
+                </div>`;
+        }
+        if (nft.schema === 'speedboost' && typeof nft.boost === 'number') {
+            specialAttributes += `
+                <div class="nft-attribute">
+                    <span class="nft-attribute-key">Speed Boost:</span> ${(nft.boost * 100).toFixed(2)}%
+                </div>`;
+        }
         
         // Create image element with fallback logic
         let imageElement = '';
@@ -443,7 +457,7 @@ class InventoryPage extends TSDGEMSGame {
                 <i class="fas ${schemaIcon}"></i> ${nft.schema || 'unknown'}
             </div>
             <div class="nft-attributes">
-                ${miningPowerDisplay}
+                ${specialAttributes}
                 <div class="nft-attribute">
                     <span class="nft-attribute-key">Collection:</span> ${nft.collection}
                 </div>
@@ -459,6 +473,7 @@ class InventoryPage extends TSDGEMSGame {
             case 'equipment': return 'fa-industry';
             case 'tools': return 'fa-tools';
             case 'shards': return 'fa-shapes';
+            case 'speedboost': return 'fa-bolt';
             default: return 'fa-box';
         }
     }
@@ -469,6 +484,7 @@ class InventoryPage extends TSDGEMSGame {
             case 'equipment': return '#00d4ff';
             case 'tools': return '#ff9500';
             case 'shards': return '#ff6b6b';
+            case 'speedboost': return '#ffa500';
             default: return '#aaa';
         }
     }

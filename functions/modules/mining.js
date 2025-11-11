@@ -85,20 +85,29 @@ async function validateOwnership(actor, assetIds) {
 
   try {
     const assets = await fetchAssetsByIds(assetIds)
-    const ownedAssetIds = new Set(assets.map(a => a.asset_id))
-    const missingIds = assetIds.filter(id => !ownedAssetIds.has(id))
 
-    // Get full asset details for missing ones (for error reporting)
+    // Filter assets that are actually owned by the actor
+    const ownedAssets = assets.filter(asset => asset.owner === actor)
+    const ownedAssetIds = new Set(ownedAssets.map(a => a.asset_id))
+
+    // Find missing assets (not owned by actor or not found)
+    const missingIds = assetIds.filter(id => !ownedAssetIds.has(id))
     const missingAssets = missingIds.map(id => {
-      // We need to find the asset details - they might be from staking data
-      // For now, return basic info - will be enhanced when we have full asset data
-      return { asset_id: id }
+      // Try to find asset data even if not owned (for error reporting)
+      const assetData = assets.find(a => a.asset_id === id) || {}
+      return {
+        asset_id: id,
+        template_id: assetData.template?.template_id || assetData.template_id,
+        template_mint: assetData.template_mint,
+        owner: assetData.owner,
+        name: assetData.name
+      }
     })
 
     const valid = missingIds.length === 0
-    console.log(`[Mining] Ownership validation: ${valid ? 'VALID' : 'INVALID'} (${assetIds.length - missingIds.length}/${assetIds.length} owned)`)
+    console.log(`[Mining] Ownership validation: ${valid ? 'VALID' : 'INVALID'} (${ownedAssets.length}/${assetIds.length} owned, ${missingIds.length} missing)`)
 
-    return { valid, ownedAssets: assets, missingAssets }
+    return { valid, ownedAssets, missingAssets }
   } catch (error) {
     console.warn(`[Mining] Ownership validation failed (API error):`, error.message)
     // In case of API failure, assume ownership is valid (graceful degradation)
@@ -178,7 +187,9 @@ async function ensureSeasonActiveOrThrow() {
   }
 }
 
-const MINING_DURATION_MS = 3 * 60 * 60 * 1000   // 3 hours
+// Detect dev environment by project ID
+const isDevProject = admin.app().options.projectId === 'tsdm-6896d';
+const MINING_DURATION_MS = isDevProject ? 1 * 60 * 1000 : 3 * 60 * 60 * 1000; // 1 min on dev, 3 hours on prod
 const MINING_COST_TSDM   = 50          // recorded only (no debit yet)
 const MAX_SLOTS          = 10
 
@@ -511,7 +522,11 @@ const completeMining = onRequest((req, res) =>
           roughKey: key,
           baseYield,
           yieldAmt: amt,
+<<<<<<< Updated upstream
           slotMiningPower: job.slotMiningPower,
+=======
+          slotMiningPower: job.slotMiningPower || 0,
+>>>>>>> Stashed changes
           effectiveMiningPower: effectiveMP,
           ownershipAtCompletion: {
             missingAssets,  // Assets no longer owned at completion
@@ -538,7 +553,11 @@ const completeMining = onRequest((req, res) =>
           yieldAmt: amt,
           multiplier: boostMultiplier,
           completedAt: now,
+<<<<<<< Updated upstream
           slotMiningPower: job.slotMiningPower,          // Original MP from staking
+=======
+          slotMiningPower: job.slotMiningPower || 0,          // Original MP from staking
+>>>>>>> Stashed changes
           effectiveMiningPower: effectiveMP, // MP after ownership validation
           ownershipAtCompletion: {          // Ownership check results
             missingAssets,  // [{asset_id, template_id, template_mint, type, name, mp}]
@@ -603,6 +622,27 @@ const unlockMiningSlot = onRequest((req, res) =>
   })
 )
 
+// POST /validateOwnership { actor, assetIds: string[] }
+// Returns { valid: boolean, ownedAssets: Asset[], apiError?: boolean }
+const validateOwnershipEndpoint = onRequest((req, res) =>
+  cors(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
+    const actor = requireActor(req, res); if (!actor) return
+    const assetIds = req.body?.assetIds
+    if (!Array.isArray(assetIds) || assetIds.length === 0) {
+      return res.status(400).json({ error: 'assetIds array required' })
+    }
+
+    try {
+      const validation = await validateOwnership(actor, assetIds)
+      res.json(validation)
+    } catch (error) {
+      console.error('[validateOwnership]', error)
+      res.status(500).json({ error: error.message, apiError: true })
+    }
+  })
+)
+
 // (Optional) Helper for UI: GET /getSpeedboost?actor=...
 const getSpeedboost = onRequest((req, res) =>
   cors(req, res, async () => {
@@ -618,14 +658,15 @@ const getSpeedboost = onRequest((req, res) =>
   })
 )
 
-module.exports = { 
-  startMining, 
-  getActiveMining, 
-  completeMining, 
+module.exports = {
+  startMining,
+  getActiveMining,
+  completeMining,
   unlockMiningSlot,
+  validateOwnershipEndpoint,
   getSpeedboost,          // optional UI helper
   // exported for possible external reference
-  SPEEDBOOST_RARITIES, 
-  getSpeedboostForSlot 
+  SPEEDBOOST_RARITIES,
+  getSpeedboostForSlot
 }
 

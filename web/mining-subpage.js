@@ -27,6 +27,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (subpage.id === subpageId) {
                     subpage.classList.add('active');
                     subpage.style.display = 'block';
+
+                    // Initialize speedboost page when switching to speed-boost subpage
+                    if (target === 'speed-boost' && window.game && typeof window.game.initSpeedboostPage === 'function') {
+                        console.log('[MiningSubPage] Initializing speedboost page...');
+                        window.game.initSpeedboostPage();
+                    }
                 } else {
                     subpage.classList.remove('active');
                     subpage.style.display = 'none';

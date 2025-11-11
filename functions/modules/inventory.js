@@ -90,6 +90,14 @@ const TEMPLATES_EQUIPMENT = new Map([
   [896279, { name: 'Polishing Table',       mp: 0,     image: 'polishingtable.jpg', imagePath: 'assets/gallery_images/polishingtable.jpg' }],
 ])
 
+const TEMPLATES_SPEEDBOOST = new Map([
+  [901514, { name: 'Rusty Minecart',   boost: 0.0625, image: 'Rusty_Minecart.png',   imagePath: 'assets/images/Rusty_Minecart.png' }],
+  [901513, { name: 'Greased Minecart', boost: 0.125,  image: 'Greased_Minecart.png', imagePath: 'assets/images/Greased_Minecart.png' }],
+  [901512, { name: 'Refined Minecart', boost: 0.25,   image: 'Refined_Minecart.png', imagePath: 'assets/images/Refined_Minecart.png' }],
+  [901510, { name: 'Arcane Minecart',  boost: 0.5,    image: 'Arcane_Minecart.png',  imagePath: 'assets/images/Arcane_Minecart.png' }],
+  [901511, { name: 'Golden Express',   boost: 1.0,    image: 'Golden_Express.png',   imagePath: 'assets/images/Golden_Express.png' }],
+])
+
 // --- Helpers ---
 function requireActor(req, res) {
   const actor = (req.method === 'GET' ? req.query.actor : req.body?.actor) || ''
@@ -173,10 +181,12 @@ function classifyAssets(assets) {
   let rough = 0
   let equipment = 0
   let totalMiningPower = 0
+  let speedboosts = 0
   const byTemplate = {}
   const polishedDetails = {}
   const roughDetails = {}
   const equipmentDetails = {}
+  const speedboostDetails = {}
   const assetsList = [] // NEW: Store individual assets with their IDs
 
   for (const a of assets) {
@@ -264,6 +274,26 @@ function classifyAssets(assets) {
         mp: info.mp,
         category: schema
       })
+    } else if (TEMPLATES_SPEEDBOOST.has(tid)) {
+      speedboosts += byTemplate[tid]
+      const info = TEMPLATES_SPEEDBOOST.get(tid)
+      if (!speedboostDetails[tid]) {
+        speedboostDetails[tid] = { name: info.name, boost: info.boost, image: info.image, imagePath: info.imagePath, count: 0, assets: [] }
+      }
+      speedboostDetails[tid].count = byTemplate[tid]
+      if (assetId) speedboostDetails[tid].assets.push(assetId)
+
+      assetsList.push({
+        asset_id: assetId,
+        template_id: tid,
+        template_mint: templateMint,
+        name: info?.name || assetName,
+        schema: 'speedboost',
+        image: info?.imagePath || null,
+        imagePath: info?.imagePath || null,
+        boost: info?.boost || 0,
+        category: 'speedboost'
+      })
     }
     // else ignore
   }
@@ -306,6 +336,15 @@ function classifyAssets(assets) {
     total += details.count; uniqueTemplates++
   }
 
+  for (const [tid, details] of Object.entries(speedboostDetails)) {
+    const key = `${tid}_${details.name}`
+    templateCounts[key] = {
+      template_id: Number(tid), name: details.name, schema: 'speedboost',
+      count: details.count, total_mining_power: 0, image: details.image, imagePath: details.imagePath, boost: details.boost
+    }
+    total += details.count; uniqueTemplates++
+  }
+
   // --- NEW: workers/mines/tables counts and derived slots ---
   let workersCount = 0
   let minesCount   = 0
@@ -330,6 +369,7 @@ function classifyAssets(assets) {
     polished,
     rough,
     equipment,
+    speedboosts,
     totalMiningPower,
     total,
     uniqueTemplates,
@@ -338,6 +378,7 @@ function classifyAssets(assets) {
     polishedDetails,
     roughDetails,
     equipmentDetails,
+    speedboostDetails,
     assets: assetsList, // NEW: Array of individual assets with their asset_ids
 
     // NEW fields

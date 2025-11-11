@@ -384,6 +384,18 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
     }
     
     console.log(`[Staking] Staked ${gemType} gem (${isPolished ? 'polished' : 'rough'}) with ${bonus * 100}% bonus`)
+  } else if (assetType === 'speedboost') {
+    if (slot.speedboost) {
+      throw new Error(`speedboost already staked in slot ${slotNum}`)
+    }
+    slot.speedboost = {
+      asset_id: assetData.asset_id,
+      template_id: assetData.template_id,
+      name: assetData.name,
+      boost: assetData.boost || 0,
+      imagePath: assetData.imagePath || ''
+    }
+    console.log(`[Staking] Staked speedboost ${assetData.asset_id} with ${(assetData.boost || 0) * 100}% boost`)
   } else {
     throw new Error(`Invalid asset type: ${assetType}`)
   }
@@ -571,6 +583,11 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
 
       console.log(`[Staking] Unstaking ${slot.gem.gemType} gem from slot ${slotNum}`)
       delete slot.gem
+    } else if (assetType === 'speedboost') {
+      if (!slot.speedboost || slot.speedboost.asset_id !== assetId) {
+        throw new Error(`speedboost ${assetId} not found in slot ${slotNum}`)
+      }
+      delete slot.speedboost
     } else {
       throw new Error(`Invalid asset type: ${assetType}`)
     }
