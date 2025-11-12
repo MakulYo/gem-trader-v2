@@ -131,7 +131,17 @@ class PolishingGame extends TSDGEMSGame {
                 console.log('[Polishing] 🔥 Realtime profile update:', profile);
 
                 // Update effective slots
-                this.effectiveSlots = Math.min(profile.polishingSlotsUnlocked || 0, MAX_SLOTS);
+                const unlockedSlots = typeof profile.polishingSlotsUnlocked === 'number'
+                    ? Math.max(0, Math.min(profile.polishingSlotsUnlocked, MAX_POLISHING_SLOTS))
+                    : null;
+
+                if (unlockedSlots !== null) {
+                    const previousSlots = this.effectiveSlots || 0;
+                    const nextSlots = Math.max(previousSlots, unlockedSlots);
+                    if (nextSlots !== previousSlots) {
+                        this.effectiveSlots = nextSlots;
+                    }
+                }
 
                 // Update Game $
                 if (profile.ingameCurrency !== undefined) {

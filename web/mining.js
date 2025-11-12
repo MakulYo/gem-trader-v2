@@ -76,6 +76,7 @@ class MiningGame extends TSDGEMSGame {
         this.selectedWorkersForUnstake = new Set(); // For multi-selection when unstaking
         this.completedJobsRendered = new Set(); // Track jobs that already triggered a completion re-render
         this.pendingCompletionJobs = new Set(); // Jobs we optimistically removed
+        this.loadingOverlayDepth = 0;
 
         // Mobile optimization
         this.isMobile = this.detectMobile();
@@ -259,11 +260,19 @@ class MiningGame extends TSDGEMSGame {
                 console.log(`[Mining] ✅ Slot ${slotNum} has ${workers.length} staked workers:`, workers.map(w => w.asset_id));
             }
 
-            if (speedboosts.length > 0) {
-                // Store as array, but for now use first one for backward compatibility
-                // TODO: Update UI to handle multiple speedboosts per slot
-                this.stakedSpeedboosts[slotNum] = speedboosts.length === 1 ? speedboosts[0] : speedboosts;
-                console.log(`[Mining] ✅ Slot ${slotNum} has ${speedboosts.length} staked speedboost(s):`, speedboosts.map(sb => sb.asset_id));
+            let speedboost = null;
+            if (slot.speedBoost) {
+                speedboost = slot.speedBoost;
+            } else if (speedboosts.length > 0) {
+                speedboost = speedboosts[0];
+            }
+
+            if (speedboost) {
+                const boostValue = typeof speedboost.boost === 'number'
+                    ? speedboost.boost
+                    : (typeof speedboost.multiplier === 'number' ? (speedboost.multiplier - 1) : 0);
+                this.stakedSpeedboosts[slotNum] = speedboost;
+                console.log(`[Mining] ✅ Slot ${slotNum} has speedboost ${speedboost.asset_id} with ${(boostValue * 100).toFixed(1)}% boost`);
             }
         });
 
@@ -761,9 +770,6 @@ class MiningGame extends TSDGEMSGame {
  
         } catch (error) {
             console.error('[Mining] Failed to load staked assets:', error);
-            this.stakedMines = {};
-            this.stakedWorkers = {};
-            this.stakedSpeedboosts = {};
             throw error;
         }
     }
@@ -778,7 +784,7 @@ class MiningGame extends TSDGEMSGame {
         // Add staked mines
         Object.values(this.stakedMines).forEach(mine => {
             if (mine.asset_id) {
-                stakedAssetIds.add(mine.asset_id);
+                stakedAssetIds.add(String(mine.asset_id));
             }
         });
         
@@ -787,9 +793,17 @@ class MiningGame extends TSDGEMSGame {
             if (Array.isArray(workers)) {
                 workers.forEach(worker => {
                     if (worker.asset_id) {
-                        stakedAssetIds.add(worker.asset_id);
+                        stakedAssetIds.add(String(worker.asset_id));
                     }
                 });
+            }
+        });
+
+        // Add staked speedboosts
+        Object.values(this.stakedSpeedboosts).forEach(speedboostRaw => {
+            const speedboost = Array.isArray(speedboostRaw) ? speedboostRaw[0] : speedboostRaw;
+            if (speedboost && speedboost.asset_id) {
+                stakedAssetIds.add(String(speedboost.asset_id));
             }
         });
         
@@ -823,7 +837,8 @@ class MiningGame extends TSDGEMSGame {
         for (let i = 0; i < MAX_SLOTS; i++) {
             const slotNum = i + 1;
             const isMiningSlotUnlocked = i < this.effectiveSlots;
-            const stakedSpeedboost = this.stakedSpeedboosts[slotNum];
+            const rawSpeedboost = this.stakedSpeedboosts[slotNum];
+            const stakedSpeedboost = Array.isArray(rawSpeedboost) ? rawSpeedboost[0] : rawSpeedboost;
             const stakedMine = this.stakedMines[slotNum];
 
             slots.push({
@@ -1052,35 +1067,49 @@ class MiningGame extends TSDGEMSGame {
                 const now = Date.now();
 
                 // Calculate effective duration with speedboost
-                let effectiveDurationMs = MINING_DURATION_MS;
-                let speedBoostInfo = null;
+                const baseDurationMs = job.baseDurationMs || MINING_DURATION_MS;
+                let effectiveDurationMs = job.effectiveDurationMs || baseDurationMs;
+                let speedBoostPct = job.slotSpeedBoostPct || 0;
+                let speedBoostMultiplier = job.slotSpeedBoostMultiplier || (1 + speedBoostPct);
 
-                // Prefer server-provided values
-                if (job.effectiveDurationMs) {
-                    effectiveDurationMs = job.effectiveDurationMs;
-                    if (job.slotSpeedBoostPct) {
-                        speedBoostInfo = `Speed +${(job.slotSpeedBoostPct * 100).toFixed(1)}%`;
-                    }
-                } else {
-                    // Fallback: calculate client-side
-                    const stakedSpeedboost = this.stakedSpeedboosts[slot.slotNum];
-                    // Guard: handle both single object and array (for backward compatibility)
+                if (!job.effectiveDurationMs) {
+                    // Fallback: calculate client-side from staked speedboost
+                    const stakedSpeedboostRaw = this.stakedSpeedboosts[slot.slotNum];
+                    const stakedSpeedboost = Array.isArray(stakedSpeedboostRaw) ? stakedSpeedboostRaw[0] : stakedSpeedboostRaw;
                     if (stakedSpeedboost) {
-                        const speedboost = Array.isArray(stakedSpeedboost) ? stakedSpeedboost[0] : stakedSpeedboost;
-                        const boost = speedboost?.boost || (speedboost?.multiplier ? speedboost.multiplier - 1 : 0) || 0;
-                        if (boost > 0) {
-                            effectiveDurationMs = MINING_DURATION_MS / (1 + boost);
-                            speedBoostInfo = `Speed +${(boost * 100).toFixed(1)}% / ×${(1 + boost).toFixed(2)}`;
+                        const fallbackBoost = typeof stakedSpeedboost.boost === 'number'
+                            ? stakedSpeedboost.boost
+                            : (typeof stakedSpeedboost.multiplier === 'number' ? (stakedSpeedboost.multiplier - 1) : 0);
+                        if (fallbackBoost > 0) {
+                            speedBoostPct = fallbackBoost;
+                            speedBoostMultiplier = 1 + fallbackBoost;
+                            effectiveDurationMs = Math.max(1, Math.round(baseDurationMs / speedBoostMultiplier));
                         }
                     }
                 }
 
+                if (!Number.isFinite(speedBoostMultiplier) || speedBoostMultiplier <= 0) {
+                    speedBoostMultiplier = 1;
+                }
+                if (!Number.isFinite(effectiveDurationMs) || effectiveDurationMs <= 0) {
+                    effectiveDurationMs = baseDurationMs;
+                }
+
+                const hasSpeedboost = speedBoostMultiplier > 1;
+                const speedBoostInfo = hasSpeedboost
+                    ? `Speed +${(speedBoostPct * 100).toFixed(1)}% / ×${speedBoostMultiplier.toFixed(2)}`
+                    : null;
+
                 const remaining = Math.max(0, job.finishAt - now);
-                const progress = Math.min(100, ((effectiveDurationMs - remaining) / effectiveDurationMs) * 100);
+                const progress = effectiveDurationMs > 0
+                    ? Math.min(100, Math.max(0, ((effectiveDurationMs - remaining) / effectiveDurationMs) * 100))
+                    : 0;
                 const isComplete = remaining === 0;
 
                 const slotMP = job.slotMiningPower || 0;
                 const expectedRewards = Math.max(1, Math.floor(slotMP / 20));
+                const effectiveDurationText = this.formatTime(effectiveDurationMs);
+                const baseDurationText = this.formatTime(baseDurationMs);
                 
                 return `
                     <div class="mining-slot active ${isComplete ? 'complete' : 'in-progress'}" data-job-id="${job.jobId}" style="border: 2px solid ${isComplete ? '#00ff64' : '#00d4ff'}; box-shadow: 0 0 20px ${isComplete ? 'rgba(0, 255, 100, 0.3)' : 'rgba(0, 212, 255, 0.3)'}; display: flex; flex-direction: column;">
@@ -1117,6 +1146,12 @@ class MiningGame extends TSDGEMSGame {
                             <div class="progress-bar" style="margin: 20px 0; background: rgba(255,255,255,0.1); border-radius: 8px; height: 20px; overflow: hidden;">
                                 <div class="progress-fill" style="width: ${progress}%; background: ${isComplete ? 'linear-gradient(90deg, #00ff64, #00aa44)' : 'linear-gradient(90deg, #00d4ff, #0088ff)'}; height: 100%; transition: width 1s linear;"></div>
                             </div>
+                            ${speedBoostInfo ? `
+                                <div class="speedboost-applied" style="margin-top: 6px; color: #ffd700; font-weight: 500;">
+                                    ⚡ ${speedBoostInfo}<br>
+                                    <small style="color: rgba(255, 215, 0, 0.8);">Base ${baseDurationText} → Boosted ${effectiveDurationText}</small>
+                                </div>
+                            ` : ''}
                             <p style="color: ${isComplete ? '#00ff64' : '#888'}; font-size: 1.2em; margin-top: 15px;">
                                 ${isComplete ? '✅ Mining Complete!' : `${Math.floor(progress)}% Complete`}
                             </p>
@@ -1137,18 +1172,19 @@ class MiningGame extends TSDGEMSGame {
             // Guard: handle both single object and array (for backward compatibility)
             const stakedSpeedboost = stakedSpeedboostRaw ? (Array.isArray(stakedSpeedboostRaw) ? stakedSpeedboostRaw[0] : stakedSpeedboostRaw) : null;
 
+            const inventoryAssets = Array.isArray(this.inventoryData?.assets) ? this.inventoryData.assets : [];
+
             // Filter to only owned workers (those with mint numbers)
             const ownedWorkers = stakedWorkers.filter(w => {
-                const inventoryAsset = this.inventoryData && this.inventoryData.assets ?
-                    this.inventoryData.assets.find(asset => asset.asset_id === w.asset_id) : null;
+                const inventoryAsset = inventoryAssets.find(asset => asset.asset_id === w.asset_id);
                 const templateMint = inventoryAsset && inventoryAsset.template_mint !== 'unknown' ?
                     inventoryAsset.template_mint : null;
                 return templateMint !== null;
             });
 
             // Calculate total MP using only owned workers
-            const mineMP = stakedMine ? stakedMine.mp : 0;
-            const workersMP = ownedWorkers.reduce((sum, w) => sum + w.mp, 0);
+            const mineMP = stakedMine ? (Number(stakedMine.mp) || 0) : 0;
+            const workersMP = ownedWorkers.reduce((sum, w) => sum + (Number(w.mp) || 0), 0);
             const totalMP = mineMP + workersMP;
             
             // Get appropriate mine image
@@ -1174,8 +1210,8 @@ class MiningGame extends TSDGEMSGame {
             const isGreyedImage = !stakedMine;
 
             // Get template_mint for mine if available
-            const mineInventoryAsset = stakedMine && this.inventoryData && this.inventoryData.assets ?
-                this.inventoryData.assets.find(asset => asset.asset_id === stakedMine.asset_id) : null;
+            const mineInventoryAsset = stakedMine ?
+                inventoryAssets.find(asset => asset.asset_id === stakedMine.asset_id) : null;
             const mineTemplateMint = mineInventoryAsset && mineInventoryAsset.template_mint !== 'unknown' ?
                 mineInventoryAsset.template_mint : null;
 
@@ -1502,13 +1538,17 @@ class MiningGame extends TSDGEMSGame {
             console.log('[Mining] Mining started successfully:', data);
             
             // Extract timing information from backend response
-            // Backend returns: { ok: true, jobId, finishAt }
-            const finishAt = data.finishAt || (Date.now() + MINING_DURATION_MS);
+            const baseDurationMs = data.baseDurationMs || MINING_DURATION_MS;
+            const effectiveDurationMs = data.effectiveDurationMs || baseDurationMs;
+            const finishAt = data.finishAt || (Date.now() + effectiveDurationMs);
             const remainingTime = Math.max(0, finishAt - Date.now());
-            const hours = Math.floor(remainingTime / (1000 * 60 * 60));
-            const minutes = Math.floor((remainingTime % (1000 * 60 * 60)) / (1000 * 60));
+            const speedBoostPct = data.slotSpeedBoostPct || 0;
+            const speedBoostMultiplier = data.slotSpeedBoostMultiplier || (1 + speedBoostPct);
+            const boostText = speedBoostPct > 0
+                ? ` (Speed +${(speedBoostPct * 100).toFixed(1)}% / ×${speedBoostMultiplier.toFixed(2)})`
+                : '';
             
-            this.showNotification(`✅ Mining job started! Complete in ${hours}h ${minutes}m`, 'success');
+            this.showNotification(`✅ Mining job started! Complete in ${this.formatTime(remainingTime)}${boostText}`, 'success');
             
             // Refresh mining data to show the active job with timer
             await this.fetchActiveMiningJobs(this.currentActor);
@@ -2285,26 +2325,53 @@ class MiningGame extends TSDGEMSGame {
         console.log('[Mining] Modal closed, selection cleared');
     }
 
-    openStakeSpeedboostModal(slotNum) {
+    async openStakeSpeedboostModal(slotNum) {
         console.log('[Mining] Opening stake speedboost modal for slot:', slotNum);
 
-        // Check if already staked
-        if (this.stakedSpeedboosts[slotNum]) {
-            this.showNotification('⚠️ A Speedboost is already staked in this slot. Unstake it first to stake a different one.', 'warning');
-            return;
+        this.showLoadingState(true, 'Loading Speedboosts...');
+
+        try {
+            // Refresh inventory/staked data to ensure latest state (force refresh to avoid cached values)
+            try {
+                await this.loadInventoryAndAssets(true);
+            } catch (refreshError) {
+                console.warn('[Mining] Failed to refresh inventory before opening speedboost modal:', refreshError);
+                // Continue with best-effort data
+            }
+
+            // Get available speedboosts (not already staked)
+            const stakedAssetIds = this.getStakedAssetIds();
+            const stakedSpeedboostIds = new Set(
+                Object.values(this.stakedSpeedboosts)
+                    .map(sb => Array.isArray(sb) ? sb[0] : sb)
+                    .filter(sb => sb && sb.asset_id)
+                    .map(sb => String(sb.asset_id))
+            );
+
+            const availableSpeedboosts = this.speedboostNFTs.filter(nft => {
+                const assetId = String(nft.asset_id);
+                return !stakedAssetIds.has(assetId) && !stakedSpeedboostIds.has(assetId);
+            });
+
+            console.log('[Mining] Available speedboosts:', availableSpeedboosts.length, 'of', this.speedboostNFTs.length);
+
+            const currentSpeedboostRaw = this.stakedSpeedboosts[slotNum];
+            const currentSpeedboost = Array.isArray(currentSpeedboostRaw) ? currentSpeedboostRaw[0] : currentSpeedboostRaw || null;
+
+            // Ensure overlay has time to render before modal injection
+            await new Promise(resolve => requestAnimationFrame(resolve));
+
+            this.showSpeedboostStakingModal(slotNum, availableSpeedboosts, currentSpeedboost);
+        } catch (error) {
+            console.error('[Mining] Failed to open speedboost modal:', error);
+            this.showNotification(`❌ Failed to load speedboosts: ${error.message}`, 'error');
+        } finally {
+            this.showLoadingState(false);
         }
-
-        // Get available speedboosts (not already staked)
-        const stakedAssetIds = this.getStakedAssetIds();
-        const availableSpeedboosts = this.speedboostNFTs.filter(nft => !stakedAssetIds.has(nft.asset_id));
-
-        console.log('[Mining] Available speedboosts:', availableSpeedboosts.length, 'of', this.speedboostNFTs.length);
-
-        this.showSpeedboostStakingModal(slotNum, availableSpeedboosts);
     }
 
-    showSpeedboostStakingModal(slotNum, availableSpeedboosts) {
-        console.log(`[Mining] showSpeedboostStakingModal called with ${availableSpeedboosts.length} speedboosts`);
+    showSpeedboostStakingModal(slotNum, availableSpeedboosts, currentSpeedboost = null) {
+        console.log(`[Mining] showSpeedboostStakingModal called with ${availableSpeedboosts.length} speedboosts (current: ${currentSpeedboost ? currentSpeedboost.asset_id : 'none'})`);
 
         // Remove existing modal if present
         const existingModal = document.getElementById('speedboost-staking-modal');
@@ -2322,8 +2389,28 @@ class MiningGame extends TSDGEMSGame {
                     </div>
                     <div class="modal-body">
                         <p style="color: #888; margin-bottom: 20px;">
-                            Select a Speedboost NFT to stake in slot ${slotNum}. Speedboosts reduce mining time for faster gem production.
+                            Select a Speedboost NFT to apply to slot ${slotNum}. Speedboosts reduce mining time for faster gem production.
                         </p>
+                        ${(() => {
+                            if (!currentSpeedboost) return '';
+                            const boost = typeof currentSpeedboost.boost === 'number'
+                                ? currentSpeedboost.boost
+                                : (typeof currentSpeedboost.multiplier === 'number' ? (currentSpeedboost.multiplier - 1) : 0);
+                            const boostText = `Speed +${(boost * 100).toFixed(1)}% / ×${(1 + boost).toFixed(2)}`;
+                            return `
+                                <div class="current-speedboost-notice" style="border: 1px solid rgba(255,165,0,0.4); background: rgba(255,165,0,0.12); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;">
+                                    <div style="display: flex; align-items: center; gap: 12px;">
+                                        <i class="fas fa-info-circle" style="color: #ffd700; font-size: 1.4em;"></i>
+                                        <div>
+                                            <div style="color: #ffd700; font-weight: 600;">Current Speedboost</div>
+                                            <div style="color: #fff;">${getSpeedboostName(currentSpeedboost.template_id, currentSpeedboost.name)}</div>
+                                            <div style="color: rgba(255,215,0,0.8); font-size: 0.9em;">${boostText}</div>
+                                            <div style="color: #888; font-size: 0.85em; margin-top: 4px;">Selecting a new Speedboost will automatically replace the current one.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        })()}
                         ${availableSpeedboosts.length === 0 ? `
                             <div style="text-align: center; padding: 60px 20px; background: rgba(0, 0, 0, 0.2); border-radius: 8px; border: 2px dashed #888;">
                                 <i class="fas fa-bolt" style="font-size: 64px; color: #888; margin-bottom: 20px;"></i>
@@ -2440,11 +2527,12 @@ class MiningGame extends TSDGEMSGame {
                 if (result.stakingData && result.stakingData.mining) {
                     const slotKey = `slot${slotNum}`;
                     const slotData = result.stakingData.mining[slotKey];
-                    if (slotData && slotData.speedboosts && slotData.speedboosts.length > 0) {
-                        // Handle array format (use first one for backward compatibility)
-                        this.stakedSpeedboosts[slotNum] = slotData.speedboosts.length === 1 
-                            ? slotData.speedboosts[0] 
-                            : slotData.speedboosts;
+                    if (slotData) {
+                        if (slotData.speedboost) {
+                            this.stakedSpeedboosts[slotNum] = slotData.speedboost;
+                        } else if (Array.isArray(slotData.speedboosts) && slotData.speedboosts.length > 0) {
+                            this.stakedSpeedboosts[slotNum] = slotData.speedboosts[0];
+                        }
                     }
                 }
 
@@ -2456,6 +2544,7 @@ class MiningGame extends TSDGEMSGame {
 
                 // Re-render to show updated state
                 this.renderMiningSlots();
+                this.renderSpeedboostSlots();
 
                 this.showNotification(`✅ Staked ${speedboostNFT ? speedboostNFT.name : 'Speedboost'} to Slot ${slotNum}!`, 'success');
             } else {
@@ -2520,6 +2609,7 @@ class MiningGame extends TSDGEMSGame {
 
                 // Re-render to show updated state
                 this.renderMiningSlots();
+                this.renderSpeedboostSlots();
 
                 this.showNotification(`✅ Unstaked ${stakedSpeedboost.name || 'Speedboost'} from Slot ${slotNum}!`, 'success');
             } else {
@@ -3110,6 +3200,7 @@ class MiningGame extends TSDGEMSGame {
         let loader = document.getElementById('mining-loading-overlay');
         
         if (isLoading) {
+            this.loadingOverlayDepth = (this.loadingOverlayDepth || 0) + 1;
             if (!loader) {
                 loader = document.createElement('div');
                 loader.id = 'mining-loading-overlay';
@@ -3125,7 +3216,8 @@ class MiningGame extends TSDGEMSGame {
                     flex-direction: column;
                     justify-content: center;
                     align-items: center;
-                    z-index: 10000;
+                    z-index: 20000;
+                    pointer-events: all;
                     animation: fadeIn 0.3s ease;
                     overflow: hidden;
                 `;
@@ -3165,10 +3257,13 @@ class MiningGame extends TSDGEMSGame {
             
             loader.style.display = 'flex';
         } else {
-            if (loader) {
+            this.loadingOverlayDepth = Math.max((this.loadingOverlayDepth || 0) - 1, 0);
+            if (loader && this.loadingOverlayDepth === 0) {
                 loader.style.animation = 'fadeOut 0.3s ease';
                 setTimeout(() => {
-                    loader.style.display = 'none';
+                    if (this.loadingOverlayDepth === 0) {
+                        loader.style.display = 'none';
+                    }
                 }, 300);
             }
         }

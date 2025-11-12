@@ -69,11 +69,16 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
     miningActiveSnap.docs.forEach(doc => {
       const jobData = doc.data();
       const slotId = jobData.slotId ? parseInt(jobData.slotId.replace('slot_', ''), 10) : 1;
-      console.log(`[LiveAggregator] 📊 Mining job: slotId=${slotId}, power=${jobData.power}, startedAt=${jobData.startedAt}`);
+      console.log(`[LiveAggregator] 📊 Mining job: slotId=${slotId}, power=${jobData.power}, startedAt=${jobData.startedAt}, boost=${jobData.slotSpeedBoostPct ?? 0}`);
       activeJobsBySlot.set(slotId, {
         startedAt: jobData.startedAt || null,
         finishAt: jobData.finishAt || null,
-        power: jobData.power || 0
+        power: jobData.power || jobData.slotMiningPower || 0,
+        effectiveDurationMs: jobData.effectiveDurationMs || null,
+        baseDurationMs: jobData.baseDurationMs || null,
+        slotSpeedBoostPct: jobData.slotSpeedBoostPct || 0,
+        slotSpeedBoostMultiplier: jobData.slotSpeedBoostMultiplier || 1,
+        slotSpeedBoostAssetId: jobData.slotSpeedBoostAssetId || null
       });
     });
 
@@ -90,6 +95,11 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
             startedAt: activeJob?.startedAt || null,
             finishAt: activeJob?.finishAt || null,
             power: activeJob?.power || 0,
+            effectiveDurationMs: activeJob?.effectiveDurationMs || null,
+            baseDurationMs: activeJob?.baseDurationMs || null,
+            slotSpeedBoostPct: activeJob?.slotSpeedBoostPct || 0,
+            slotSpeedBoostMultiplier: activeJob?.slotSpeedBoostMultiplier || 1,
+            slotSpeedBoostAssetId: activeJob?.slotSpeedBoostAssetId || null,
             staked: [] // Will be populated below
           });
         }
@@ -138,17 +148,108 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 
     console.log(`[LiveAggregator] 📊 Created ${polishingSlots.length} polishing slots from staking data`);
 
+    // Ensure active jobs without staking entries are still represented
+    activePolishingJobsBySlot.forEach((jobData, slotNum) => {
+      const alreadyExists = polishingSlots.some(slot => slot.id === slotNum);
+      if (!alreadyExists) {
+        console.warn(`[LiveAggregator] ⚠️ Polishing slot ${slotNum} has an active job but no staking data. Creating fallback entry.`);
+        polishingSlots.push({
+          id: slotNum,
+          state: 'active',
+          startedAt: jobData.startedAt || null,
+          finishAt: jobData.finishAt || null,
+          power: jobData.power || 0,
+          staked: []
+        });
+      }
+    });
+
+    const computeSpeedboostBoost = (asset) => {
+      if (!asset) return 0;
+      const rawBoost = Number(asset.boost);
+      if (Number.isFinite(rawBoost) && rawBoost > 0) {
+        return rawBoost;
+      }
+      const rawMultiplier = Number(asset.multiplier);
+      if (Number.isFinite(rawMultiplier) && rawMultiplier > 0) {
+        return Math.max(0, rawMultiplier - 1);
+      }
+      return 0;
+    };
+
+    const computeSpeedboostMultiplier = (asset, boostHint = null) => {
+      if (!asset) return 1;
+      const rawMultiplier = Number(asset.multiplier);
+      if (Number.isFinite(rawMultiplier) && rawMultiplier > 0) {
+        return rawMultiplier;
+      }
+      const boost = boostHint !== null ? boostHint : computeSpeedboostBoost(asset);
+      return 1 + boost;
+    };
+
+    const pickSpeedboost = (slotData) => {
+      if (!slotData || typeof slotData !== 'object') {
+        return null;
+      }
+
+      if (slotData.speedboost) {
+        return slotData.speedboost;
+      }
+
+      if (Array.isArray(slotData.speedboosts) && slotData.speedboosts.length > 0) {
+        return slotData.speedboosts.reduce((best, candidate) => {
+          if (!best) return candidate;
+          return computeSpeedboostBoost(candidate) > computeSpeedboostBoost(best) ? candidate : best;
+        }, null);
+      }
+
+      return null;
+    };
+
     // Helper function to normalize asset with type field
     const normalizeAsset = (asset, type) => {
       if (!asset) return null;
-      return {
-        asset_id: asset.asset_id || asset.assetId,
-        template_id: asset.template_id || asset.templateId,
-        name: asset.name || `${type} ${asset.asset_id || asset.assetId}`,
-        type: asset.type || type,
-        mp: asset.mp || asset.miningPower || 0,
-        multiplier: asset.multiplier || asset.boost || 1.0
+
+      const assetId = asset.asset_id || asset.assetId;
+      if (!assetId) return null;
+
+      const normalized = {
+        asset_id: assetId,
+        type: asset.type || type
       };
+
+      const templateId = asset.template_id || asset.templateId;
+      if (templateId) normalized.template_id = templateId;
+
+      const name = asset.name || asset.display_name || `${type} ${assetId}`;
+      if (name) normalized.name = name;
+
+      if (normalized.type === 'speedboost') {
+        const boost = computeSpeedboostBoost(asset);
+        const multiplier = computeSpeedboostMultiplier(asset, boost);
+        normalized.boost = boost;
+        normalized.multiplier = multiplier;
+        normalized.mp = 0;
+
+        const rarity = asset.rarity;
+        if (rarity) normalized.rarity = rarity;
+
+        const templateMint = asset.template_mint || asset.templateMint;
+        if (templateMint) normalized.template_mint = templateMint;
+
+        const imagePath = asset.imagePath || asset.image_url;
+        if (imagePath) normalized.imagePath = imagePath;
+      } else {
+        const mpValue = Number(asset.mp ?? asset.miningPower ?? 0);
+        normalized.mp = Number.isFinite(mpValue) ? mpValue : 0;
+
+        const multiplier = Number(asset.multiplier ?? asset.boost ?? 1);
+        if (Number.isFinite(multiplier) && multiplier !== 1) {
+          normalized.multiplier = multiplier;
+        }
+      }
+
+      return normalized;
     };
 
     // Populate staked assets for mining slots (slots already created above)
@@ -158,7 +259,8 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
         console.log(`[LiveAggregator] 🎯 Populating mining slot ${slot.id}:`, {
           hasMine: !!slotData.mine,
           workersCount: slotData.workers?.length || 0,
-          speedboostsCount: slotData.speedboosts?.length || 0,
+          speedboostAsset: slotData.speedboost?.asset_id || pickSpeedboost(slotData)?.asset_id || null,
+          legacySpeedboostCount: Array.isArray(slotData.speedboosts) ? slotData.speedboosts.length : 0,
           slotDataKeys: Object.keys(slotData)
         });
         slot.staked = [];
@@ -177,15 +279,24 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
           });
         }
         
-        // Add speedboosts (normalized with type)
-        if (slotData.speedboosts && Array.isArray(slotData.speedboosts)) {
-          slotData.speedboosts.forEach(speedboost => {
-            const normalizedSpeedboost = normalizeAsset(speedboost, 'speedboost');
-            if (normalizedSpeedboost) slot.staked.push(normalizedSpeedboost);
-          });
+        const rawSpeedboost = pickSpeedboost(slotData);
+        if (rawSpeedboost) {
+          const normalizedSpeedboost = normalizeAsset(rawSpeedboost, 'speedboost');
+          if (normalizedSpeedboost) {
+            slot.speedBoost = normalizedSpeedboost;
+            slot.speedBoostPct = normalizedSpeedboost.boost;
+            slot.speedBoostMultiplier = normalizedSpeedboost.multiplier;
+            slot.staked.push({ ...normalizedSpeedboost });
+          }
+        }
+
+        if (!slot.speedBoost) {
+          slot.speedBoost = null;
+          slot.speedBoostPct = 0;
+          slot.speedBoostMultiplier = 1;
         }
         
-        console.log(`[LiveAggregator] ✅ Populated mining slot ${slot.id} with ${slot.staked.length} assets:`, slot.staked.map(s => ({ type: s.type, asset_id: s.asset_id })));
+        console.log(`[LiveAggregator] ✅ Populated mining slot ${slot.id} with ${slot.staked.length} assets:`, slot.staked.map(s => ({ type: s.type, asset_id: s.asset_id, boost: s.boost ?? null })));
       } else {
         console.log(`[LiveAggregator] ⚠️ No staking data found for mining slot ${slot.id}`);
         slot.staked = [];
@@ -196,7 +307,8 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       id: s.id,
       state: s.state,
       stakedCount: s.staked.length,
-      stakedTypes: s.staked.map(asset => asset.type)
+      stakedTypes: s.staked.map(asset => asset.type),
+      speedBoostPct: s.speedBoostPct || 0
     })));
 
     // Populate staked assets for polishing slots (slots already created above)
@@ -249,12 +361,19 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
     const boosts = boostsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // 8. Build minimal profile data
+    const miningSlotsUnlockedFromProfile = Number(profile.miningSlotsUnlocked ?? profile.mining_slots_unlocked ?? 0) || 0;
+    const polishingSlotsUnlockedFromProfile = Number(profile.polishingSlotsUnlocked ?? profile.polishing_slots_unlocked ?? 0) || 0;
+    const inventoryMiningSlots = Number(inventorySummary?.miningSlots ?? inventorySummary?.mining_slots ?? 0) || 0;
+    const inventoryPolishingSlots = Number(inventorySummary?.polishingSlots ?? inventorySummary?.polishing_slots ?? 0) || 0;
+    const stakedMiningSlotCount = stakingData.mining ? Object.keys(stakingData.mining).length : 0;
+    const stakedPolishingSlotCount = stakingData.polishing ? Object.keys(stakingData.polishing).length : 0;
+
     const liveProfile = {
-      ingameCurrency: profile.ingameCurrency || 0,
+      ingameCurrency: Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0) || 0,
       level: profile.level || 1,
       name: profile.account || actor,
-      miningSlotsUnlocked: profile.miningSlotsUnlocked || 1,
-      polishingSlotsUnlocked: profile.polishingSlotsUnlocked || 0
+      miningSlotsUnlocked: Math.max(1, miningSlotsUnlockedFromProfile, inventoryMiningSlots, stakedMiningSlotCount),
+      polishingSlotsUnlocked: Math.max(0, polishingSlotsUnlockedFromProfile, inventoryPolishingSlots, stakedPolishingSlotCount)
     };
 
     // 9. Build live data structure

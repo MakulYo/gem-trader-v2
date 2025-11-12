@@ -174,14 +174,128 @@ async function getStakingData(actor) {
   const snap = await staking.get()
   
   if (!snap.exists) {
-    return {
+    return normalizeStakingData({
       mining: {},
       polishing: {},
       updatedAt: FieldValue.serverTimestamp()
-    }
+    })
   }
   
-  return snap.data() || { mining: {}, polishing: {} }
+  const data = snap.data() || { mining: {}, polishing: {} }
+  return normalizeStakingData(data)
+}
+
+/**
+ * Normalize a raw speedboost entry into the canonical single-slot structure.
+ * @param {object} entry
+ * @returns {object|null}
+ */
+function normalizeSpeedboostEntry(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return null
+  }
+
+  const assetId = entry.asset_id || entry.assetId
+  if (!assetId) {
+    return null
+  }
+
+  const templateId = entry.template_id ?? entry.templateId ?? null
+  const templateMint = entry.template_mint ?? entry.templateMint ?? null
+  const rarity = entry.rarity ?? null
+  const name = entry.name || entry.display_name || `Speedboost ${assetId}`
+  const imagePath = entry.imagePath || entry.image_url || null
+
+  const rawBoost = entry.boost !== undefined ? Number(entry.boost) : null
+  let boost = Number.isFinite(rawBoost) ? rawBoost : null
+
+  const rawMultiplier = entry.multiplier !== undefined ? Number(entry.multiplier) : null
+  let multiplier = Number.isFinite(rawMultiplier) ? rawMultiplier : null
+
+  if (boost === null && multiplier !== null) {
+    boost = multiplier - 1
+  }
+
+  if (multiplier === null && boost !== null) {
+    multiplier = 1 + boost
+  }
+
+  if (!Number.isFinite(boost) || boost < 0) {
+    boost = Math.max(0, boost || 0)
+  }
+
+  if (!Number.isFinite(multiplier) || multiplier <= 0) {
+    multiplier = 1 + boost
+  }
+
+  const normalized = {
+    asset_id: assetId,
+    type: 'speedboost',
+    boost,
+    multiplier
+  }
+
+  if (templateId) normalized.template_id = templateId
+  if (templateMint) normalized.template_mint = templateMint
+  if (rarity) normalized.rarity = rarity
+  if (name) normalized.name = name
+  if (imagePath) normalized.imagePath = imagePath
+
+  return normalized
+}
+
+/**
+ * Normalize legacy speedboost arrays into a single speedboost entry per slot.
+ * @param {object} slotData
+ */
+function normalizeSlotSpeedboost(slotData) {
+  if (!slotData || typeof slotData !== 'object') {
+    return
+  }
+
+  let normalized = null
+
+  if (Array.isArray(slotData.speedboosts) && slotData.speedboosts.length > 0) {
+    const normalizedEntries = slotData.speedboosts
+      .map(entry => normalizeSpeedboostEntry(entry))
+      .filter(Boolean)
+
+    if (normalizedEntries.length > 0) {
+      normalized = normalizedEntries.reduce((best, current) => {
+        if (!best) return current
+        return current.boost > best.boost ? current : best
+      }, null)
+    }
+  } else if (slotData.speedboost) {
+    normalized = normalizeSpeedboostEntry(slotData.speedboost)
+  }
+
+  if (normalized) {
+    slotData.speedboost = normalized
+  } else {
+    delete slotData.speedboost
+  }
+
+  if (slotData.speedboosts) {
+    delete slotData.speedboosts
+  }
+}
+
+/**
+ * Normalize staking data structure for backward compatibility.
+ * @param {object} stakingData
+ * @returns {object}
+ */
+function normalizeStakingData(stakingData) {
+  if (!stakingData || typeof stakingData !== 'object') {
+    return stakingData
+  }
+
+  if (stakingData.mining && typeof stakingData.mining === 'object') {
+    Object.values(stakingData.mining).forEach(slotData => normalizeSlotSpeedboost(slotData))
+  }
+
+  return stakingData
 }
 
 /**
@@ -204,9 +318,12 @@ async function getAllStakedAssetIds(actor) {
           if (w.asset_id) allStakedAssetIds.add(w.asset_id)
         })
       }
-      if (slotData.speedboosts) {
+      if (slotData.speedboost?.asset_id) {
+        allStakedAssetIds.add(slotData.speedboost.asset_id)
+      }
+      if (Array.isArray(slotData.speedboosts)) {
         slotData.speedboosts.forEach(sb => {
-          if (sb.asset_id) allStakedAssetIds.add(sb.asset_id)
+          if (sb?.asset_id) allStakedAssetIds.add(sb.asset_id)
         })
       }
     })
@@ -290,9 +407,12 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
           if (w.asset_id) allStakedAssetIds.add(w.asset_id)
         })
       }
-      if (slotData.speedboosts) {
+      if (slotData.speedboost?.asset_id) {
+        allStakedAssetIds.add(slotData.speedboost.asset_id)
+      }
+      if (Array.isArray(slotData.speedboosts)) {
         slotData.speedboosts.forEach(sb => {
-          if (sb.asset_id) allStakedAssetIds.add(sb.asset_id)
+          if (sb?.asset_id) allStakedAssetIds.add(sb.asset_id)
         })
       }
     })
@@ -325,6 +445,7 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
   }
   
   const slot = stakingData[page][`slot${slotNum}`]
+  normalizeSlotSpeedboost(slot)
   
   // Handle different asset types
   if (assetType === 'mine' || assetType === 'table') {
@@ -395,27 +516,40 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
     
     console.log(`[Staking] Staked ${gemType} gem (${isPolished ? 'polished' : 'rough'}) with ${bonus * 100}% bonus`)
   } else if (assetType === 'speedboost') {
-    // Multiple speedboosts per slot (array like workers)
-    if (!slot.speedboosts) {
-      slot.speedboosts = []
-    }
-    
-    // Check if this speedboost is already staked in this slot
-    if (slot.speedboosts.some(sb => sb.asset_id === assetData.asset_id)) {
-      throw new Error(`Speedboost ${assetData.asset_id} already staked in slot ${slotNum}`)
-    }
-    
-    slot.speedboosts.push({
+    const boost = assetData.boost !== undefined ? Number(assetData.boost) : null
+    const multiplier = assetData.multiplier !== undefined ? Number(assetData.multiplier) : null
+
+    const normalizedSpeedboost = normalizeSpeedboostEntry({
       asset_id: assetData.asset_id,
       template_id: assetData.template_id,
+      template_mint: assetData.template_mint,
       name: assetData.name,
-      type: 'speedboost',
-      multiplier: assetData.multiplier || assetData.boost || 1.0,
-      imagePath: assetData.imagePath || ''
+      boost,
+      multiplier,
+      rarity: assetData.rarity,
+      imagePath: assetData.imagePath
     })
-    
-    console.log(`[Staking] Staked speedboost ${assetData.asset_id} to slot ${slotNum}`)
-    console.log(`[Staking] Staked speedboost ${assetData.asset_id} with ${(assetData.boost || 0) * 100}% boost`)
+
+    if (!normalizedSpeedboost) {
+      throw new Error(`Invalid speedboost payload for asset ${assetData.asset_id}`)
+    }
+
+    if (slot.speedboost && slot.speedboost.asset_id === normalizedSpeedboost.asset_id) {
+      slot.speedboost = { ...slot.speedboost, ...normalizedSpeedboost }
+      console.log(`[Staking] Refreshed speedboost ${assetData.asset_id} in slot ${slotNum}`)
+    } else {
+      if (slot.speedboost?.asset_id) {
+        console.log(`[Staking] Replacing speedboost ${slot.speedboost.asset_id} with ${assetData.asset_id} in slot ${slotNum}`)
+      }
+      slot.speedboost = normalizedSpeedboost
+      console.log(`[Staking] Staked speedboost ${assetData.asset_id} to slot ${slotNum}`)
+    }
+
+    const boostPct = Number(normalizedSpeedboost.boost || 0)
+    const multiplierVal = Number(normalizedSpeedboost.multiplier || 1)
+    console.log(`[Staking] Speedboost ${assetData.asset_id} provides ${(boostPct * 100).toFixed(2)}% speed (×${multiplierVal.toFixed(3)})`)
+
+    delete slot.speedboosts
   } else {
     throw new Error(`Invalid asset type: ${assetType}`)
   }
@@ -466,9 +600,12 @@ async function stakeWorkersBatch(actor, page, slotNum, workers) {
           if (w.asset_id) allStakedAssetIds.add(w.asset_id)
         })
       }
-      if (slotData.speedboosts) {
+      if (slotData.speedboost?.asset_id) {
+        allStakedAssetIds.add(slotData.speedboost.asset_id)
+      }
+      if (Array.isArray(slotData.speedboosts)) {
         slotData.speedboosts.forEach(sb => {
-          if (sb.asset_id) allStakedAssetIds.add(sb.asset_id)
+          if (sb?.asset_id) allStakedAssetIds.add(sb.asset_id)
         })
       }
     })
@@ -554,7 +691,7 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
       throw new Error(`No staking data found for ${actor}`)
     }
 
-    const stakingData = stakingDoc.data()
+    const stakingData = normalizeStakingData(stakingDoc.data())
     console.log(`[Staking] Current staking data before unstake:`, JSON.stringify(stakingData, null, 2))
 
     // Check if page exists
@@ -569,6 +706,7 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
     }
 
     const slot = stakingData[page][slotKey]
+    normalizeSlotSpeedboost(slot)
     console.log(`[Staking] Current slot data:`, JSON.stringify(slot, null, 2))
 
     // Handle different asset types
@@ -609,24 +747,25 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
       console.log(`[Staking] Unstaking ${slot.gem.gemType} gem from slot ${slotNum}`)
       delete slot.gem
     } else if (assetType === 'speedboost') {
-      // Multiple speedboosts per slot (array like workers)
-      if (!slot.speedboosts || slot.speedboosts.length === 0) {
-        throw new Error(`No speedboosts staked in slot ${slotNum}`)
-      }
+      if (slot.speedboost?.asset_id === assetId) {
+        console.log(`[Staking] Unstaking speedboost ${assetId} from slot ${slotNum}`)
+        delete slot.speedboost
+      } else if (Array.isArray(slot.speedboosts) && slot.speedboosts.length > 0) {
+        console.log(`[Staking] Speedboosts before legacy unstake:`, slot.speedboosts.map(sb => sb.asset_id))
+        const initialLength = slot.speedboosts.length
+        slot.speedboosts = slot.speedboosts.filter(sb => sb.asset_id !== assetId)
+        console.log(`[Staking] Speedboosts after legacy unstake:`, slot.speedboosts.map(sb => sb.asset_id))
 
-      console.log(`[Staking] Speedboosts before unstake:`, slot.speedboosts.map(sb => sb.asset_id))
-      const initialLength = slot.speedboosts.length
-      slot.speedboosts = slot.speedboosts.filter(sb => sb.asset_id !== assetId)
-      console.log(`[Staking] Speedboosts after unstake:`, slot.speedboosts.map(sb => sb.asset_id))
+        if (slot.speedboosts.length === initialLength) {
+          throw new Error(`Speedboost ${assetId} not found in slot ${slotNum}`)
+        }
 
-      if (slot.speedboosts.length === initialLength) {
-        throw new Error(`Speedboost ${assetId} not found in slot ${slotNum}`)
-      }
-
-      // Clean up empty speedboosts array
-      if (slot.speedboosts.length === 0) {
-        console.log(`[Staking] No speedboosts left, deleting speedboosts array`)
-        delete slot.speedboosts
+        if (slot.speedboosts.length === 0) {
+          console.log(`[Staking] No speedboosts left, deleting legacy speedboosts array`)
+          delete slot.speedboosts
+        }
+      } else {
+        throw new Error(`No speedboost staked in slot ${slotNum}`)
       }
     } else {
       throw new Error(`Invalid asset type: ${assetType}`)

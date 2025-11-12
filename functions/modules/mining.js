@@ -127,6 +127,7 @@ async function getStakedAssetsForSlot(actor, slotNum) {
 
   const assets = []
   let totalMP = 0
+  let speedboost = null
 
   if (stakingSnap.exists) {
     const stakingData = stakingSnap.data()
@@ -161,11 +162,38 @@ async function getStakedAssetsForSlot(actor, slotNum) {
           totalMP += Number(worker.mp) || 0
         })
       }
+
+      const slotSpeedboost =
+        slotData.speedboost ||
+        (Array.isArray(slotData.speedboosts) && slotData.speedboosts.length > 0
+          ? slotData.speedboosts[0]
+          : null)
+
+      if (slotSpeedboost && slotSpeedboost.asset_id) {
+        const boost = Number(slotSpeedboost.boost ?? (slotSpeedboost.multiplier ? slotSpeedboost.multiplier - 1 : 0)) || 0
+        const multiplier = Number(slotSpeedboost.multiplier ?? (1 + boost)) || (1 + boost)
+
+        speedboost = {
+          asset_id: slotSpeedboost.asset_id,
+          template_id: slotSpeedboost.template_id,
+          name: slotSpeedboost.name || `Speedboost ${slotSpeedboost.asset_id}`,
+          boost,
+          multiplier,
+          type: 'speedboost',
+          mp: 0
+        }
+
+        if (slotSpeedboost.rarity) speedboost.rarity = slotSpeedboost.rarity
+        if (slotSpeedboost.template_mint) speedboost.template_mint = slotSpeedboost.template_mint
+        if (slotSpeedboost.imagePath) speedboost.imagePath = slotSpeedboost.imagePath
+
+        assets.push({ ...speedboost })
+      }
     }
   }
 
-  console.log(`[Mining] Slot ${slotNum} staked assets: ${assets.length} assets, total MP: ${totalMP}`)
-  return { assets, totalMP }
+  console.log(`[Mining] Slot ${slotNum} staked assets: ${assets.length} assets, total MP: ${totalMP}, speedboost: ${speedboost ? speedboost.asset_id : 'none'}`)
+  return { assets, totalMP, speedboost }
 }
 
 function requireActor(req, res) {
@@ -317,8 +345,12 @@ const startMining = onRequest((req, res) =>
         if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
       }
 
-      // Get staked assets and validate ownership
-      const { assets: stakedAssets, totalMP: slotMiningPower } = await getStakedAssetsForSlot(actor, slotNum)
+      // Get staked assets (including current speedboost) and validate ownership
+      const {
+        assets: stakedAssets,
+        totalMP: slotMiningPower,
+        speedboost: slotSpeedboost
+      } = await getStakedAssetsForSlot(actor, slotNum)
 
       // Check if mine is staked (required for mining)
       const hasMine = stakedAssets.some(a => a.type === 'mine')
@@ -378,13 +410,14 @@ const startMining = onRequest((req, res) =>
         console.warn(`[startMining] ⚠️ Starting mining without ownership validation (API error) for slot ${slotNum}`)
       }
 
-      // (Optional) peek assigned speedboost for UI
-      const sb = await getSpeedboostForSlot(actor, slotNum)
-
       const now = Date.now()
       const jobId = `job_${now}_${Math.floor(Math.random()*1e6)}`
       const slotId = `slot_${slotNum}`
-      const finishAt = now + MINING_DURATION_MS
+      const boostPct = slotSpeedboost ? Number(slotSpeedboost.boost || 0) : 0
+      const speedMultiplier = boostPct > 0 ? (slotSpeedboost?.multiplier || (1 + boostPct)) : 1
+      const effectiveDurationMs = Math.max(1, Math.round(MINING_DURATION_MS / speedMultiplier))
+      const finishAt = now + effectiveDurationMs
+      console.log(`[startMining] Slot ${slotNum} speedboost ${boostPct * 100}% -> effective duration ${effectiveDurationMs}ms (base ${MINING_DURATION_MS}ms)`)
 
       // Create assets snapshot for ownership validation at completion
       // assetsSnapshot: [{asset_id, template_id, template_mint, name, mp, type}] - used in completeMining to verify continued ownership
@@ -408,14 +441,46 @@ const startMining = onRequest((req, res) =>
       }
 
       await active.doc(jobId).set({
-        jobId, slotId, slotNum, actor, startedAt: now, finishAt, status: 'active',
+        jobId,
+        slotId,
+        slotNum,
+        actor,
+        startedAt: now,
+        finishAt,
+        status: 'active',
         costTsdm: MINING_COST_TSDM,
         slotMiningPower,
-        assetsSnapshot, // New field: snapshot for ownership validation at completion
-        // snapshot current boost assignment for transparency (not used for calc; we re-read at completion)
-        speedboostPreview: { boost: sb.boost, rarity: sb.rarity, template_id: sb.template_id }
+        assetsSnapshot, // Snapshot for ownership validation at completion
+        baseDurationMs: MINING_DURATION_MS,
+        effectiveDurationMs,
+        slotSpeedBoostPct: boostPct,
+        slotSpeedBoostMultiplier: speedMultiplier,
+        slotSpeedBoostAssetId: slotSpeedboost?.asset_id || null,
+        speedboostPreview: slotSpeedboost
+          ? {
+              asset_id: slotSpeedboost.asset_id,
+              template_id: slotSpeedboost.template_id ?? null,
+              template_mint: slotSpeedboost.template_mint ?? null,
+              boost: boostPct,
+              multiplier: speedMultiplier,
+              rarity: slotSpeedboost.rarity ?? null
+            }
+          : null
       })
-      res.json({ ok: true, jobId, slotId, slotNum, finishAt, slotMiningPower, speedboostPreview: sb })
+      res.json({
+        ok: true,
+        jobId,
+        slotId,
+        slotNum,
+        finishAt,
+        slotMiningPower,
+        baseDurationMs: MINING_DURATION_MS,
+        effectiveDurationMs,
+        slotSpeedBoostPct: boostPct,
+        slotSpeedBoostMultiplier: speedMultiplier,
+        slotSpeedBoostAssetId: slotSpeedboost?.asset_id || null,
+        speedboostPreview: slotSpeedboost
+      })
     } catch (e) {
       if (e.status === 403) return res.status(403).json({ error: 'season-locked' })
       console.error('[startMining]', e)
@@ -501,9 +566,27 @@ const completeMining = onRequest((req, res) =>
       // base reward: effective MP / 20, minimum 1
       const baseYield = Math.max(1, Math.floor(effectiveMP / 20))
 
-      // read current assigned speedboost for this slot
-      const { boost: sbBoost, rarity: sbRarity, template_id: sbTemplate } = await getSpeedboostForSlot(actor, job.slotNum)
-      const boostMultiplier = 1 + (sbBoost || 0)
+      // Determine speedboost effect captured at job start, fallback to current slot assignment
+      let boostPct = typeof job.slotSpeedBoostPct === 'number' ? job.slotSpeedBoostPct : null
+      let boostMultiplier = typeof job.slotSpeedBoostMultiplier === 'number' ? job.slotSpeedBoostMultiplier : null
+      let boostMeta = job.speedboostPreview || null
+
+      if (boostPct === null || boostMultiplier === null) {
+        const sbSnapshot = await getSpeedboostForSlot(actor, job.slotNum)
+        boostPct = typeof sbSnapshot.boost === 'number' ? sbSnapshot.boost : 0
+        boostMultiplier = 1 + (boostPct || 0)
+        boostMeta = {
+          boost: boostPct,
+          multiplier: boostMultiplier,
+          rarity: sbSnapshot.rarity || null,
+          template_id: sbSnapshot.template_id || null
+        }
+      }
+
+      // Ensure sane defaults
+      boostPct = Number.isFinite(boostPct) ? boostPct : 0
+      boostMultiplier = Number.isFinite(boostMultiplier) && boostMultiplier > 0 ? boostMultiplier : (1 + boostPct)
+
       const amt = Math.max(1, Math.floor(baseYield * boostMultiplier))
 
       const key = 'rough_gems'
@@ -531,10 +614,11 @@ const completeMining = onRequest((req, res) =>
             effectiveMp: effectiveMP   // MP used for reward calculation
           },
           speedboostApplied: {
-            boost: sbBoost || 0,
+            boost: boostPct,
             multiplier: boostMultiplier,
-            rarity: sbRarity || null,
-            template_id: sbTemplate || null
+            rarity: boostMeta?.rarity ?? null,
+            template_id: boostMeta?.template_id ?? null,
+            asset_id: boostMeta?.asset_id ?? job.slotSpeedBoostAssetId ?? null
           }
         })
         tx.delete(jobRef)
@@ -557,7 +641,13 @@ const completeMining = onRequest((req, res) =>
             deductedMp: deductedMP,    // Total MP removed due to missing assets
             effectiveMp: effectiveMP   // Final MP used for rewards
           },
-          speedboost: { boost: sbBoost || 0, rarity: sbRarity || null, template_id: sbTemplate || null }
+          speedboost: {
+            boost: boostPct,
+            multiplier: boostMultiplier,
+            rarity: boostMeta?.rarity ?? null,
+            template_id: boostMeta?.template_id ?? null,
+            asset_id: boostMeta?.asset_id ?? job.slotSpeedBoostAssetId ?? null
+          }
         }
       })
     } catch (e) {
