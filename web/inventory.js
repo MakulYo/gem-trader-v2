@@ -104,6 +104,7 @@ class InventoryPage extends TSDGEMSGame {
             if (!this.isEventForCurrentActor(actor)) {
                 return;
             }
+            console.log('[InventoryRealtime] live aggregate received, hasSummary:', !!live?.inventorySummary, 'hasGems:', !!live?.gems, 'hasAssets:', !!live?.inventoryAssets);
             this.mergeLiveInventoryData(live);
             this.renderRealtimeInventory();
         };
@@ -113,6 +114,7 @@ class InventoryPage extends TSDGEMSGame {
             if (!this.isEventForCurrentActor(actor)) {
                 return;
             }
+            console.log('[InventoryRealtime] inventory-summary update, total:', summary?.total || summary?.totalNFTs || 0);
             this.realtimeData.summary = summary || null;
             this.renderRealtimeInventory();
         };
@@ -122,6 +124,7 @@ class InventoryPage extends TSDGEMSGame {
             if (!this.isEventForCurrentActor(actor)) {
                 return;
             }
+            console.log('[InventoryRealtime] inventory-gems update, gem types:', Object.keys(gems || {}).length);
             this.realtimeData.gems = gems || {};
             this.renderRealtimeInventory();
         };
@@ -554,8 +557,9 @@ class InventoryPage extends TSDGEMSGame {
     }
 
     async loadInventory(forceRefresh = false) {
-        // DISABLED: Manual data fetching removed - relying solely on realtime events
+        // LEGACY WRAPPER: Manual data fetching removed - relying solely on realtime events
         // All inventory data loading is now handled via TSDRealtime events (realtime:inventory-gems, realtime:inventory-summary, etc.)
+        console.log('[InventoryLegacyLoader] loadInventory called - now just starts realtime for actor:', this.currentActor);
         
         if (!this.currentActor) {
             console.log('[Inventory] No actor connected, skipping inventory load');
@@ -933,14 +937,6 @@ class InventoryPage extends TSDGEMSGame {
     }
 
     setupEventListeners() {
-        // Refresh button - REMOVED: Manual refresh disabled, relying solely on realtime events
-        // const refreshBtn = document.getElementById('refresh-inventory-btn');
-        // if (refreshBtn) {
-        //     refreshBtn.addEventListener('click', () => {
-        //         this.showNotification('Inventory updates automatically via realtime events.', 'info');
-        //     });
-        // }
-
         // Search input
         const searchInput = document.getElementById('search-input');
         if (searchInput) {
@@ -1001,15 +997,6 @@ class InventoryPage extends TSDGEMSGame {
         this.currentPage = 1; // Reset to page 1 after filtering
         this.renderNFTs();
     }
-
-    // REMOVED: refreshInventory function - manual refresh disabled, relying solely on realtime events
-    // async refreshInventory() {
-    //     if (!this.currentActor) {
-    //         this.showNotification('Connect your wallet first!', 'warning');
-    //         return;
-    //     }
-    //     this.showNotification('Inventory updates automatically via realtime stream. No manual refresh required.', 'info');
-    // }
 }
 
 // Initialize inventory page when DOM loads
