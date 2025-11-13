@@ -78,6 +78,7 @@ class InventoryPage extends TSDGEMSGame {
 
         this.prepareInventoryForRealtime();
         this.showNotification('Inventory system ready', 'info');
+        console.log('[Inventory] Init complete, starting backendService.getInventory()...');
     }
 
     getEmptyRealtimeState() {
@@ -613,13 +614,22 @@ class InventoryPage extends TSDGEMSGame {
             return;
         }
 
+        // Guard: Ensure backendService is available
+        const backendService = this.backendService || window.backendService;
+        if (!backendService || typeof backendService.getInventory !== 'function') {
+            console.error('[Inventory] backendService.getInventory is not available', backendService);
+            this.showNotification('Inventory service not available. Please refresh the page.', 'error');
+            this.showEmptyState('error');
+            return;
+        }
+
         // Start realtime for stats updates
         this.startRealtimeForActor(this.currentActor);
 
         // Load NFT list from backend (only once, not from realtime)
         try {
             console.log('[Inventory] Loading NFT list from backend...');
-            const inventoryData = await this.backendService.getInventory(this.currentActor, forceRefresh);
+            const inventoryData = await backendService.getInventory(this.currentActor, forceRefresh);
             
             if (inventoryData && inventoryData.assets) {
                 this.inventoryData = inventoryData;
@@ -683,11 +693,16 @@ class InventoryPage extends TSDGEMSGame {
             console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
             
             // Realtime: Stable sort for NFTs to prevent shuffling
-            // Sort by template_id first, then asset_id for consistent ordering
+            // Sort by template_id first (numeric), then asset_id (numeric) for consistent ordering
             this.allNFTs.sort((a, b) => {
-                const templateCompare = String(a.template_id || '').localeCompare(String(b.template_id || ''));
-                if (templateCompare !== 0) return templateCompare;
-                return String(a.asset_id || '').localeCompare(String(b.asset_id || ''));
+                const templateA = Number(a.template_id) || 0;
+                const templateB = Number(b.template_id) || 0;
+                if (templateA !== templateB) {
+                    return templateA - templateB;
+                }
+                const assetA = Number(a.asset_id) || 0;
+                const assetB = Number(b.asset_id) || 0;
+                return assetA - assetB;
             });
             
             this.filteredNFTs = [...this.allNFTs];
@@ -747,11 +762,16 @@ class InventoryPage extends TSDGEMSGame {
             console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
             
             // Realtime: Stable sort for NFTs to prevent shuffling
-            // Sort by template_id first, then asset_id for consistent ordering
+            // Sort by template_id first (numeric), then asset_id (numeric) for consistent ordering
             this.allNFTs.sort((a, b) => {
-                const templateCompare = String(a.template_id || '').localeCompare(String(b.template_id || ''));
-                if (templateCompare !== 0) return templateCompare;
-                return String(a.asset_id || '').localeCompare(String(b.asset_id || ''));
+                const templateA = Number(a.template_id) || 0;
+                const templateB = Number(b.template_id) || 0;
+                if (templateA !== templateB) {
+                    return templateA - templateB;
+                }
+                const assetA = Number(a.asset_id) || 0;
+                const assetB = Number(b.asset_id) || 0;
+                return assetA - assetB;
             });
             
             this.filteredNFTs = [...this.allNFTs];

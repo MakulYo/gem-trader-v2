@@ -88,26 +88,11 @@ class MiningGame extends TSDGEMSGame {
         // Mobile optimization
         this.isMobile = this.detectMobile();
 
-        // TEMP: Setup rebuild live data button
+        // Realtime: Removed rebuild live data button - no longer needed with realtime architecture
         setTimeout(() => {
           const rebuildBtn = document.getElementById('rebuild-live-btn');
           if (rebuildBtn) {
-            rebuildBtn.addEventListener('click', async () => {
-              console.log('[Mining] 🔄 Triggering live data rebuild...');
-              try {
-                const response = await fetch(`${window.backendService.apiBase}/rebuildPlayerLive`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ data: { actor: this.currentActor || this.actor } })
-                });
-                const result = await response.json();
-                console.log('[Mining] Rebuild result:', result);
-                alert('Live data rebuild triggered! Check console logs.');
-              } catch (error) {
-                console.error('[Mining] Rebuild failed:', error);
-                alert('Rebuild failed: ' + error.message);
-              }
-            });
+            rebuildBtn.style.display = 'none'; // Hide the button
           }
         }, 1000);
 
@@ -650,7 +635,7 @@ class MiningGame extends TSDGEMSGame {
         this.showNotification('Connect your wallet to access mining operations', 'info');
         }
         
-        console.log('[Mining] Init complete');
+        console.log('[Mining] Init complete, listeners registered, waiting for live data...');
     }
 
     setupWalletEventListeners() {
@@ -734,17 +719,10 @@ class MiningGame extends TSDGEMSGame {
             });
         }
         
-        // Refresh button
+        // Realtime: Removed refresh button - data updates automatically via realtime
         const refreshBtn = document.getElementById('refresh-mining-btn');
         if (refreshBtn) {
-            refreshBtn.addEventListener('click', async () => {
-                const icon = refreshBtn.querySelector('i');
-                if (icon) icon.classList.add('fa-spin');
-                
-                await this.refreshInventory();
-                
-                if (icon) icon.classList.remove('fa-spin');
-            });
+            refreshBtn.style.display = 'none'; // Hide the button
         }
     }
     
@@ -1085,12 +1063,10 @@ class MiningGame extends TSDGEMSGame {
     initSpeedboostPage() {
         console.log('[Mining] Initializing speedboost page...');
 
-        // Add event listener for refresh button
+        // Realtime: Removed refresh button - data updates automatically via realtime
         const refreshBtn = document.getElementById('refresh-speedboost-btn');
         if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => {
-                this.refreshSpeedboostSlots();
-            });
+            refreshBtn.style.display = 'none'; // Hide the button
         }
 
         // Render placeholders immediately
@@ -1128,8 +1104,8 @@ class MiningGame extends TSDGEMSGame {
             }
         }
 
-        console.log('[Mining] Rendering mining slots...');
-        console.log('[Mining] - Effective slots:', this.effectiveSlots);
+        // Realtime: Rendering mining slots from live.profile.miningSlotsUnlocked only
+        console.log('[MiningRealtime] Rendering mining slots: unlockedCount =', this.effectiveSlots, ', totalSlots =', MAX_SLOTS);
         console.log('[Mining] - Active jobs:', this.activeJobs.length);
         console.log('[Mining] - Preserving open dropdowns:', openDropdowns);
         
@@ -1665,9 +1641,11 @@ class MiningGame extends TSDGEMSGame {
                 ? ` (Speed +${(speedBoostPct * 100).toFixed(1)}% / ×${speedBoostMultiplier.toFixed(2)})`
                 : '';
             
+            console.log('[MiningAction] startMining slot=' + slotNum + ', result=success');
             this.showNotification(`✅ Mining job started! Complete in ${this.formatTime(remainingTime)}${boostText}`, 'success');
             this.showNotification('Awaiting realtime confirmation for the new mining job...', 'info');
             
+            // Realtime: Don't mutate local state - wait for realtime update
             // Start timer updates if not already running
             if (!this.timerInterval) {
                 this.startTimerUpdates();
@@ -1833,12 +1811,25 @@ class MiningGame extends TSDGEMSGame {
             });
             
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to complete mining');
+                const errorData = await response.json().catch(() => ({}));
+                const errorMsg = errorData.error || `HTTP ${response.status}`;
+                
+                // Realtime: On error, revert optimistic UI and wait for realtime update
+                if (response.status === 404 || errorMsg.includes('not found') || errorMsg.includes('already completed')) {
+                    console.log('[MiningAction] Job not found or already completed, reverting optimistic UI');
+                    // Remove from pending - realtime will update the actual state
+                    this.pendingCompletionJobs.delete(jobId);
+                    // Re-render to show actual state from live.miningSlots
+                    this.renderMiningSlots();
+                    this.showNotification('Job already completed or not found. Waiting for realtime update...', 'info');
+                } else {
+                    throw new Error(errorMsg);
+                }
+                return;
             }
             
             const data = await response.json();
-            console.log('[Mining] Mining completed:', data);
+            console.log('[MiningAction] completeMining slot=..., result=success');
             
             const result = data.result;
             const gemKey = result.roughKey || 'rough_gems';
@@ -1867,14 +1858,21 @@ class MiningGame extends TSDGEMSGame {
                 this.showNotification(notificationMessage, 'warning');
             }
 
+            // Realtime: Wait for realtime update to remove job from UI
             this.showNotification('Awaiting realtime confirmation for rewards...', 'info');
-
-            // Re-render slots (the completed job will be removed once realtime updates arrive)
-            this.renderMiningSlots();
-            this.updateMiningStats();
+            
+            // Don't re-render here - let realtime update handle it
             
         } catch (error) {
             console.error('[Mining] Failed to complete mining:', error);
+            // Realtime: On error, revert optimistic UI changes
+            this.pendingCompletionJobs.delete(jobId);
+            // Restore job to activeJobs if it was removed optimistically
+            if (job && !this.activeJobs.find(j => j.jobId === jobId)) {
+                this.activeJobs.push(job);
+            }
+            this.renderMiningSlots();
+            this.updateMiningStats();
             this.showNotification('❌ Failed to claim rewards: ' + error.message, 'error');
         } finally {
             // Re-enable the button
@@ -1883,8 +1881,6 @@ class MiningGame extends TSDGEMSGame {
                 claimButton.innerHTML = '<i class="fas fa-gift"></i> CLAIM REWARDS';
                 claimButton.style.opacity = '1';
             }
-            // Remove from pending set after sync attempts
-            this.pendingCompletionJobs.delete(jobId);
         }
     }
 

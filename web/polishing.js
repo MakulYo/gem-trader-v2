@@ -115,7 +115,7 @@ class PolishingGame extends TSDGEMSGame {
         this.setupWalletIntegration();
         this.setupWalletEventListeners();
         this.showNotification('Connect your wallet to access polishing operations', 'info');
-        console.log('[Polishing] Init complete');
+        console.log('[Polishing] Init complete, listeners registered, waiting for live data...');
     }
 
     // 🔥 Setup listeners for live polishing slots data
@@ -376,19 +376,24 @@ class PolishingGame extends TSDGEMSGame {
         this.updateGameDollars(effectiveCurrency, false);
         console.log('[PolishingRealtime] Updated Game $ from live.profile:', effectiveCurrency);
 
-        if (typeof profile.polishingSlotsUnlocked === 'number') {
-            const unlocked = Math.max(0, Math.min(profile.polishingSlotsUnlocked, MAX_POLISHING_SLOTS));
+        // Realtime: Get polishing slots unlocked from live.profile.polishingStationsUnlocked only
+        if (typeof profile.polishingStationsUnlocked === 'number' || typeof profile.polishingSlotsUnlocked === 'number') {
+            const unlocked = Math.max(0, Math.min(profile.polishingStationsUnlocked ?? profile.polishingSlotsUnlocked ?? 0, MAX_POLISHING_SLOTS));
             if (unlocked !== this.effectiveSlots) {
                 this.effectiveSlots = unlocked;
+                console.log('[PolishingRealtime] Updated polishing slots unlocked from profile:', unlocked);
                 this.renderPolishingSlots();
             }
         }
     }
 
+    // Realtime: Update polishing slots from live.polishingSlots only
     applyPolishingSlotsFromRealtime(slots) {
         if (!Array.isArray(slots)) {
-            return;
+            console.warn('[PolishingRealtime] applyPolishingSlotsFromRealtime: slots is not an array:', slots);
+            slots = [];
         }
+        console.log('[PolishingRealtime] Updated polishing slots from live, count=' + slots.length);
         this.realtimeData.polishingSlots = slots;
         this.updatePolishingSlotsFromLive(slots);
         this.updatePolishingStats();
@@ -1243,12 +1248,20 @@ class PolishingGame extends TSDGEMSGame {
             });
             
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to start polishing');
+                const errorData = await response.json().catch(() => ({}));
+                const errorMsg = errorData.error || `HTTP ${response.status}`;
+                
+                // Realtime: On error, show message and don't modify local state
+                if (response.status === 400 && (errorMsg.includes('already in use') || errorMsg.includes('slot'))) {
+                    this.showNotification('Slot is already in use. Waiting for realtime update...', 'warning');
+                } else {
+                    throw new Error(errorMsg);
+                }
+                return;
             }
             
             const data = await response.json();
-            console.log('[Polishing] Polishing started:', data);
+            console.log('[PolishingAction] startPolishing slot=' + slotNum + ', amount=' + amount + ', result=success');
             
             const finishAt = data.finishAt || (Date.now() + POLISHING_DURATION_MS);
             const remainingTime = Math.max(0, finishAt - Date.now());
@@ -1259,15 +1272,14 @@ class PolishingGame extends TSDGEMSGame {
             // Close modal
             this.closeStakeModal();
             
-            // Wait for realtime updates to refresh slots and inventory
+            // Realtime: Wait for realtime update to update slot state
             this.showNotification('Realtime update pending...', 'info');
-            this.renderPolishingSlots();
-            this.updatePolishingStats();
             
             // Start timer updates if not already running
             if (!this.timerInterval) {
                 this.startTimerUpdates();
-            }} catch (error) {
+            }
+        } catch (error) {
             console.error('[Polishing] Failed to start polishing:', error);
             this.showNotification('❌ Failed to start polishing: ' + error.message, 'error');
         }
@@ -1290,6 +1302,9 @@ class PolishingGame extends TSDGEMSGame {
         try {
             console.log('[Polishing] Completing polishing job:', jobId);
             
+            // Find the job before making changes
+            const job = this.activeJobs.find(j => j.jobId === jobId);
+            
             // Optimistic UI: remove job locally so the slot returns to normal instantly
             this.activeJobs = this.activeJobs.filter(j => j.jobId !== jobId);
             this.pendingCompletionJobs.add(jobId);
@@ -1307,12 +1322,29 @@ class PolishingGame extends TSDGEMSGame {
             });
             
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to complete polishing');
+                const errorData = await response.json().catch(() => ({}));
+                const errorMsg = errorData.error || `HTTP ${response.status}`;
+                
+                // Realtime: On error, revert optimistic UI and wait for realtime update
+                if (response.status === 404 || response.status === 500 || errorMsg.includes('not found') || errorMsg.includes('already completed')) {
+                    console.log('[PolishingAction] Job not found or already completed, reverting optimistic UI');
+                    // Remove from pending - realtime will update the actual state
+                    this.pendingCompletionJobs.delete(jobId);
+                    // Restore job if it was removed optimistically
+                    if (job && !this.activeJobs.find(j => j.jobId === jobId)) {
+                        this.activeJobs.push(job);
+                    }
+                    // Re-render to show actual state from live.polishingSlots
+                    this.renderPolishingSlots();
+                    this.showNotification('Job already completed or not found. Waiting for realtime update...', 'info');
+                } else {
+                    throw new Error(errorMsg);
+                }
+                return;
             }
             
             const data = await response.json();
-            console.log('[Polishing] Polishing completed:', data);
+            console.log('[PolishingAction] completePolishing slot=..., result=success');
             
             const result = data.result;
             const totalOut = result.totalOut || 0;
@@ -1321,13 +1353,21 @@ class PolishingGame extends TSDGEMSGame {
             // Show reward popup with actual results
             this.showRewardPopup(totalOut, 'Polished Gems', results);
             
+            // Realtime: Wait for realtime update to remove job from UI
             this.showNotification('Realtime update pending...', 'info');
-            this.renderPolishingSlots();
-            this.updatePolishingStats();
+            
+            // Don't re-render here - let realtime update handle it
         } catch (error) {
             console.error('[Polishing] Failed to complete polishing:', error);
-            this.showNotification('❌ Failed to claim rewards: ' + error.message, 'error');
+            // Realtime: On error, revert optimistic UI changes
             this.pendingCompletionJobs.delete(jobId);
+            // Restore job if it was removed optimistically
+            if (job && !this.activeJobs.find(j => j.jobId === jobId)) {
+                this.activeJobs.push(job);
+            }
+            this.renderPolishingSlots();
+            this.updatePolishingStats();
+            this.showNotification('❌ Failed to claim rewards: ' + error.message, 'error');
         } finally {
             // Re-enable the button
             if (claimButton) {
@@ -1339,11 +1379,28 @@ class PolishingGame extends TSDGEMSGame {
     }
 
     // Realtime: Update gem counts from live.gems only
+    // Structure: live.gems.rough (object) or flat rough_gems key
     updateGemCountsFromRealtime(gemsData) {
         // Update rough gems count from realtime data
-        const roughGemsCount = gemsData.rough_gems || 0;
+        let roughGemsCount = 0;
+        
+        // Handle both nested (live.gems.rough) and flat (rough_gems) structures
+        if (gemsData.rough && typeof gemsData.rough === 'object') {
+            // Nested structure: live.gems.rough = { rough_diamond: X, rough_ruby: Y, ... }
+            roughGemsCount = Object.values(gemsData.rough).reduce((sum, val) => sum + Number(val || 0), 0);
+        } else if (gemsData.rough_gems !== undefined) {
+            // Flat structure: live.gems.rough_gems = number
+            roughGemsCount = Number(gemsData.rough_gems || 0);
+        } else {
+            // Fallback: sum all rough_* keys
+            Object.entries(gemsData).forEach(([key, value]) => {
+                if (key.startsWith('rough_') || key === 'rough') {
+                    roughGemsCount += Number(value || 0);
+                }
+            });
+        }
+        
         this.roughGemsCount = roughGemsCount;
-
         console.log('[PolishingRealtime] Updated gem counts from live.gems - rough:', roughGemsCount);
 
         // Update the UI counters

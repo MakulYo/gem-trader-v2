@@ -90,6 +90,7 @@ class TradingGame extends TSDGEMSGame {
         this.setupActorListener();
         this.prepareTradingForRealtime();
         this.showNotification('Waiting for realtime trading data...', 'info');
+        console.log('[Trading] Init complete, waiting for realtime data...');
         
         // Check if actor is already available after a short delay
         setTimeout(() => {
@@ -1682,22 +1683,35 @@ class TradingGame extends TSDGEMSGame {
     }
 
     // Realtime: Update polished gems from live.gems only
+    // Structure: live.gems.polished (object) or flat polished_* keys
     updatePolishedGemsFromRealtime(gemsData) {
         // Update polished gems count from realtime data
         const newPolishedGemsCount = {};
 
-        Object.entries(gemsData).forEach(([key, value]) => {
-            if (key.startsWith('polished_')) {
-                // Extract gem type from key (e.g., 'polished_diamond' -> 'Diamond')
-                const gemType = key.replace('polished_', '').charAt(0).toUpperCase() +
-                               key.replace('polished_', '').slice(1).toLowerCase();
-                newPolishedGemsCount[gemType] = value || 0;
-            }
-        });
+        // Handle both nested (live.gems.polished) and flat (polished_*) structures
+        if (gemsData.polished && typeof gemsData.polished === 'object') {
+            // Nested structure: live.gems.polished = { polished_diamond: X, polished_ruby: Y, ... }
+            Object.entries(gemsData.polished).forEach(([key, value]) => {
+                if (key.startsWith('polished_')) {
+                    const gemType = key.replace('polished_', '').charAt(0).toUpperCase() +
+                                   key.replace('polished_', '').slice(1).toLowerCase();
+                    newPolishedGemsCount[gemType] = Number(value || 0);
+                }
+            });
+        } else {
+            // Flat structure: sum all polished_* keys
+            Object.entries(gemsData).forEach(([key, value]) => {
+                if (key.startsWith('polished_')) {
+                    const gemType = key.replace('polished_', '').charAt(0).toUpperCase() +
+                                   key.replace('polished_', '').slice(1).toLowerCase();
+                    newPolishedGemsCount[gemType] = Number(value || 0);
+                }
+            });
+        }
 
         this.polishedGemsCount = newPolishedGemsCount;
         const totalPolished = Object.values(newPolishedGemsCount).reduce((sum, val) => sum + (val || 0), 0);
-        console.log('[TradingRealtime] Updated polished gems from live.gems - total:', totalPolished, 'types:', Object.keys(newPolishedGemsCount).length);
+        console.log('[TradingRealtime] Updated polished gem counts from live.gems.polished total =', totalPolished);
 
         // Refresh the trading interface if it's currently displayed
         this.updateSellControls();
@@ -1717,7 +1731,7 @@ class TradingGame extends TSDGEMSGame {
 
         this.boostsData = boostsObj;
         this.cityMatrix = { boosts: boostsObj };
-        console.log('[Trading] ✅ Updated city boosts from realtime:', this.boostsData);
+        console.log('[TradingRealtime] Updated market data from live.boosts/cityMatrix, cities:', Object.keys(boostsObj).length);
 
         // Refresh the trading interface if it's currently displayed
         this.updateSellControls();
@@ -1729,10 +1743,11 @@ class TradingGame extends TSDGEMSGame {
         }
     }
 
+    // Realtime: Update base price from live.pricing only
     updateBasePriceFromRealtime(basePrice) {
         // Update base price data from realtime data
         this.basePriceData = basePrice;
-        console.log('[Trading] ✅ Updated base price from realtime:', this.basePriceData);
+        console.log('[TradingRealtime] Updated market data from live.pricing, basePrice:', basePrice?.basePrice || 0);
 
         // Update the base price display if visible
         this.renderBasePriceDisplay();

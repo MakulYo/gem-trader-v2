@@ -60,7 +60,7 @@ class DashboardGame extends TSDGEMSGame {
             this.showNotification('Welcome to TSDGEMS! Please connect your wallet to start.', 'info');
         }
         
-        console.log('[Dashboard] Init complete');
+        console.log('[Dashboard] Init complete, waiting for realtime...');
     }
 
     setupWalletEventListeners() {
@@ -322,10 +322,9 @@ class DashboardGame extends TSDGEMSGame {
         const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
             ? previousCurrency
             : sanitizedCurrency;
+        // Realtime: Get mining slots unlocked from live.profile.miningSlotsUnlocked only
         const balances = profile.balances || {};
-        const unlockedFromProfile = Number(profile.miningSlotsUnlocked ?? profile.mining_slots_unlocked ?? 0);
-        const unlockedFromSlots = Array.isArray(this.realtimeData.miningSlots) ? this.realtimeData.miningSlots.length : 0;
-        const unlocked = Math.max(unlockedFromProfile, unlockedFromSlots);
+        const unlocked = Number(profile.miningSlotsUnlocked ?? profile.mining_slots_unlocked ?? 0);
 
         this.updateGameDollars(effectiveCurrency, false);
         const displayCurrency = this.currentGameDollars ?? effectiveCurrency;
@@ -363,6 +362,7 @@ class DashboardGame extends TSDGEMSGame {
     }
 
     // Realtime: Get gem counts from live.gems only (consistent with polishing/trading)
+    // Structure: live.gems.rough (object) and live.gems.polished (object)
     updateGemCountsFromRealtime(gemsData = {}) {
         const roughGemsCount = document.getElementById('rough-gems-count');
         const polishedGemsCount = document.getElementById('polished-gems-count');
@@ -372,18 +372,41 @@ class DashboardGame extends TSDGEMSGame {
         }
 
         // Realtime: Use live.gems as single source of truth
-        // Count rough gems (key: rough_gems)
-        const totalRough = Number(gemsData.rough_gems ?? 0);
-        
-        // Count polished gems (keys: polished_*)
+        // Handle both nested (live.gems.rough, live.gems.polished) and flat (rough_gems, polished_*) structures
+        let totalRough = 0;
         let totalPolished = 0;
-        Object.entries(gemsData).forEach(([key, value]) => {
-            if (key.startsWith('polished_')) {
-                totalPolished += Number(value ?? 0);
-            }
-        });
 
-        console.log('[DashboardRealtime] Updated gem counts from live.gems - rough:', totalRough, 'polished:', totalPolished);
+        if (gemsData.rough && typeof gemsData.rough === 'object') {
+            // Nested structure: live.gems.rough = { rough_diamond: X, rough_ruby: Y, ... }
+            totalRough = Object.values(gemsData.rough).reduce((sum, val) => sum + Number(val || 0), 0);
+        } else if (gemsData.rough_gems !== undefined) {
+            // Flat structure: live.gems.rough_gems = number
+            totalRough = Number(gemsData.rough_gems || 0);
+        } else {
+            // Fallback: sum all rough_* keys
+            Object.entries(gemsData).forEach(([key, value]) => {
+                if (key.startsWith('rough_') || key === 'rough') {
+                    totalRough += Number(value || 0);
+                }
+            });
+        }
+
+        if (gemsData.polished && typeof gemsData.polished === 'object') {
+            // Nested structure: live.gems.polished = { polished_diamond: X, polished_ruby: Y, ... }
+            totalPolished = Object.values(gemsData.polished).reduce((sum, val) => sum + Number(val || 0), 0);
+        } else {
+            // Flat structure: sum all polished_* keys
+            Object.entries(gemsData).forEach(([key, value]) => {
+                if (key.startsWith('polished_')) {
+                    totalPolished += Number(value || 0);
+                }
+            });
+        }
+
+        const gameCurrency = this.realtimeData.profile?.ingameCurrency ?? this.realtimeData.profile?.ingame_currency ?? 0;
+        const tsdm = this.realtimeData.profile?.balances?.TSDM ?? this.realtimeData.profile?.balances?.tsdm ?? 0;
+
+        console.log('[DashboardRealtime] Updated from live: rough=' + totalRough + ', polished=' + totalPolished + ', game$=' + gameCurrency + ', TSDM=' + tsdm);
 
         if (roughGemsCount) {
             roughGemsCount.textContent = Number.isFinite(totalRough) ? totalRough : 0;
