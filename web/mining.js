@@ -300,8 +300,21 @@ class MiningGame extends TSDGEMSGame {
             return Promise.resolve();
         }
 
+        // Realtime: Check if global realtime is already running for this actor
         const sameActor = this.currentActor === actor;
-        if (sameActor && !this.awaitingInitialRealtime && this.realtimeData.miningSlots.length > 0) {
+        const globalRealtimeActive = window.TSDRealtime && window.TSDRealtime._actor === actor;
+        
+        // Realtime: If global realtime is active, use cached data for instant load
+        if (globalRealtimeActive && window.TSDRealtime._last && window.TSDRealtime._last.live) {
+            console.log('[MiningInit] TSDRealtime ready for actor:', actor, '- using cached live data');
+            const cachedLive = window.TSDRealtime._last.live;
+            this.mergeLiveData(cachedLive);
+            // Mark as initialized immediately if we have data (even if empty)
+            this.markRealtimeInitialized();
+            return Promise.resolve();
+        }
+        
+        if (sameActor && !this.awaitingInitialRealtime) {
             console.log('[Mining] Realtime mining data already active');
             return Promise.resolve();
         }
@@ -309,6 +322,8 @@ class MiningGame extends TSDGEMSGame {
         this.currentActor = actor;
         this.isLoggedIn = true;
 
+        // Realtime: Don't start TSDRealtime here - it's started globally in wallet.js
+        // Just wait for the global realtime to emit events
         this.cleanupRealtimeSession();
         this.prepareMiningForRealtime();
 
@@ -318,49 +333,30 @@ class MiningGame extends TSDGEMSGame {
             this.initialRealtimeReject = reject;
         });
 
-        // Wait for TSDRealtime to be available (with timeout)
-        const waitForTSDRealtime = () => {
-            return new Promise((resolve, reject) => {
-                const start = Date.now();
-                const timeout = 5000; // 5 second timeout
-                
-                const check = () => {
-                    if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
-                        resolve();
-                        return;
-                    }
-                    
-                    if (Date.now() - start > timeout) {
-                        reject(new Error('TSDRealtime not available after 5 seconds. Check console for [Realtime] logs.'));
-                        return;
-                    }
-                    
-                    setTimeout(check, 100);
-                };
-                
-                check();
-            });
-        };
-
-        waitForTSDRealtime()
-            .then(() => {
-                try {
-                    window.TSDRealtime.start(actor);
-                } catch (error) {
-                    this.handleRealtimeStartFailure(error);
-                    throw error;
-                }
-            })
-            .catch((error) => {
-                this.handleRealtimeStartFailure(error);
-                throw error;
-            });
-
+        // Realtime: Timeout fallback - initialize with empty state after 5 seconds
         this.initialRealtimeTimer = setTimeout(() => {
             if (this.awaitingInitialRealtime) {
-                this.showNotification('Waiting for realtime mining data...', 'info');
+                console.warn('[MiningInit] Timeout - starting with empty state (no realtime data received)');
+                // Initialize with empty state for new accounts
+                this.effectiveSlots = 0;
+                this.realtimeData.miningSlots = [];
+                this.realtimeData.profile = { miningSlotsUnlocked: 0, balances: { TSDM: 0 } };
+                this.markRealtimeInitialized();
+                this.showNotification('Mining initialized. Waiting for data...', 'info');
             }
-        }, 4000);
+        }, 5000);
+
+        // Realtime: Check if global realtime is already running and has data
+        if (window.TSDRealtime && window.TSDRealtime._actor === actor) {
+            console.log('[MiningInit] TSDRealtime already running globally for actor:', actor);
+            // If we have cached data, use it immediately
+            if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+                console.log('[MiningInit] Using cached live data for instant load');
+                this.mergeLiveData(window.TSDRealtime._last.live);
+            }
+        } else {
+            console.log('[MiningInit] Waiting for global TSDRealtime to start (should be started by wallet.js)');
+        }
 
         return this.initialRealtimePromise;
     }
@@ -369,6 +365,7 @@ class MiningGame extends TSDGEMSGame {
         if (!this.awaitingInitialRealtime) {
             return;
         }
+        console.log('[MiningInit] Clearing loading state');
         this.awaitingInitialRealtime = false;
         this.clearInitialRealtimeTimer();
         this.showLoadingState(false);
@@ -377,17 +374,37 @@ class MiningGame extends TSDGEMSGame {
 
     mergeLiveData(live) {
         if (!live || typeof live !== 'object') {
+            console.log('[MiningInit] mergeLiveData: live data is empty or invalid');
+            // Realtime: For new accounts, initialize with empty state
+            this.effectiveSlots = 0;
+            this.realtimeData.miningSlots = [];
+            this.markRealtimeInitialized();
             return;
         }
 
+        console.log('[MiningInit] live.miningSlots =', live.miningSlots?.length ?? 0, ', miningSlotsUnlocked =', live.profile?.miningSlotsUnlocked ?? 0);
         this.realtimeData.live = live;
 
+        // Realtime: Always apply profile (even if empty) to set miningSlotsUnlocked
         if (live.profile) {
             this.applyProfileFromRealtime(live.profile);
+        } else {
+            // New account - no profile yet, initialize with defaults
+            console.log('[MiningInit] No profile in live data, initializing with defaults');
+            this.effectiveSlots = 0;
+            this.realtimeData.profile = { miningSlotsUnlocked: 0, balances: { TSDM: 0 } };
+            this.markRealtimeInitialized();
         }
+        
+        // Realtime: Handle miningSlots - treat undefined as empty array
         if (live.miningSlots) {
             this.applyMiningSlotsFromRealtime(live.miningSlots);
+        } else {
+            // New account - no mining slots yet
+            console.log('[MiningInit] No miningSlots in live data, using empty array');
+            this.applyMiningSlotsFromRealtime([]);
         }
+        
         if (live.inventory) {
             this.applyInventoryFromRealtime(live.inventory);
         } else if (live.inventorySummary) {
@@ -403,8 +420,10 @@ class MiningGame extends TSDGEMSGame {
 
     // Realtime: Update profile data from realtime events
     applyProfileFromRealtime(profile) {
+        // Realtime: Handle undefined/null profile for new accounts
         if (!profile || typeof profile !== 'object') {
-            return;
+            console.log('[MiningInit] applyProfileFromRealtime: profile is empty, using defaults');
+            profile = { miningSlotsUnlocked: 0, balances: { TSDM: 0 } };
         }
 
         this.realtimeData.profile = profile;
@@ -430,31 +449,35 @@ class MiningGame extends TSDGEMSGame {
 
         // Realtime: Get mining slots unlocked count from live.profile only - NO FALLBACKS
         // Must use only live.profile.miningSlotsUnlocked, no assumptions about MAX_SLOTS
+        // Realtime: Treat undefined as 0 for new accounts
         const unlocked = Number(profile.miningSlotsUnlocked ?? 0);
         const previousSlots = this.effectiveSlots;
         // Realtime: Use unlocked count directly from profile, don't cap at MAX_SLOTS
         this.effectiveSlots = Math.max(0, unlocked); // Ensure non-negative
-        console.log('[MiningRealtime] Rendering mining slots from live.profile.miningSlotsUnlocked=' + unlocked + ', effectiveSlots=' + this.effectiveSlots);
+        console.log('[MiningInit] miningSlotsUnlocked =', unlocked, ', effectiveSlots =', this.effectiveSlots);
         if (unlocked !== previousSlots) {
             this.renderMiningSlots();
         }
 
+        // Realtime: Always mark as initialized after receiving profile (even if empty)
         this.markRealtimeInitialized();
     }
 
     // Realtime: render mining slots from live.miningSlots only
     applyMiningSlotsFromRealtime(slots) {
+        // Realtime: Handle undefined/null slots for new accounts - treat as empty array
         if (!Array.isArray(slots)) {
-            console.warn('[MiningRealtime] applyMiningSlotsFromRealtime: slots is not an array:', slots);
-            // Use empty array as safe default
+            console.log('[MiningInit] applyMiningSlotsFromRealtime: slots is not an array, using empty array:', slots);
             slots = [];
         }
+        console.log('[MiningInit] Clearing loading state - mining slots count:', slots.length);
         console.log('[MiningRealtime] Applying mining slots from realtime, count:', slots.length);
         this.realtimeData.miningSlots = slots;
         this.updateMiningSlotsFromLive(slots);
         this.updateStakedAssetsFromLive(slots);
         this.updateMiningStats();
         this.startTimerUpdates();
+        // Realtime: Mark as initialized even if slots array is empty (for new accounts)
         this.markRealtimeInitialized();
     }
 
@@ -1815,14 +1838,9 @@ class MiningGame extends TSDGEMSGame {
                 estimatedAmount = expectedGems;
             }
 
-            // Show reward popup immediately with estimated values
-            this.showRewardPopup(estimatedAmount, 'Rough Gems', estimatedMP);
-
-            // Optimistic UI: remove the completed job locally and update UI immediately
-            this.activeJobs = this.activeJobs.filter(j => j.jobId !== jobId);
+            // Realtime: Don't update UI optimistically - wait for realtime confirmation
+            // Show loading state on button only
             this.pendingCompletionJobs.add(jobId);
-            this.renderMiningSlots();
-            this.updateMiningStats();
             
             const response = await fetch(`${this.backendService.apiBase}/completeMining`, {
                 method: 'POST',
@@ -1857,8 +1875,7 @@ class MiningGame extends TSDGEMSGame {
             console.log('[MiningAction] completeMining slot=..., result=success');
             
             const result = data.result;
-            const gemKey = result.roughKey || 'rough_gems';
-            const amount = result.yieldAmt;
+            const amount = result.yieldAmt || 0;
             const slotMP = result.slotMiningPower || 0;
             const effectiveMP = result.effectiveMiningPower || 0;
 
@@ -1883,21 +1900,17 @@ class MiningGame extends TSDGEMSGame {
                 this.showNotification(notificationMessage, 'warning');
             }
 
-            // Realtime: Wait for realtime update to remove job from UI
-            this.showNotification('Awaiting realtime confirmation for rewards...', 'info');
+            // Realtime: Show reward popup with actual values, then wait for realtime update
+            this.showRewardPopup(amount, 'Rough Gems', effectiveMP);
+            this.showNotification('Awaiting realtime confirmation...', 'info');
             
-            // Don't re-render here - let realtime update handle it
+            // Realtime: Don't update UI here - wait for realtime:live event to remove job
             
         } catch (error) {
             console.error('[Mining] Failed to complete mining:', error);
-            // Realtime: On error, revert optimistic UI changes
+            // Realtime: On error, just remove from pending and show error
             this.pendingCompletionJobs.delete(jobId);
-            // Restore job to activeJobs if it was removed optimistically
-            if (job && !this.activeJobs.find(j => j.jobId === jobId)) {
-                this.activeJobs.push(job);
-            }
-            this.renderMiningSlots();
-            this.updateMiningStats();
+            // Realtime: Don't modify activeJobs - let realtime update handle it
             this.showNotification('❌ Failed to claim rewards: ' + error.message, 'error');
         } finally {
             // Re-enable the button

@@ -124,8 +124,18 @@
           const liveData = snap.exists() ? snap.data() : null
           this._last.live = liveData
 
+          // Realtime: Emit even if data is empty/null (for new accounts)
+          // Pages need to receive events to initialize with empty state
           if (!liveData) {
-            console.log('[Realtime] ⚠️ Live data document not found or empty')
+            console.log('[Realtime] ⚠️ Live data document not found or empty - emitting empty state for initialization')
+            // Emit empty structure so pages can initialize
+            const emptyLive = {
+              profile: { miningSlotsUnlocked: 0, balances: { TSDM: 0 } },
+              gems: {},
+              miningSlots: [],
+              polishingSlots: []
+            }
+            emit('realtime:live', { actor, live: emptyLive })
             return
           }
 

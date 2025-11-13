@@ -268,44 +268,18 @@ class DashboardGame extends TSDGEMSGame {
             this.initialRealtimeReject = reject;
         });
 
-        // Wait for TSDRealtime to be available (with timeout)
-        const waitForTSDRealtime = () => {
-            return new Promise((resolve, reject) => {
-                const start = Date.now();
-                const timeout = 5000; // 5 second timeout
-                
-                const check = () => {
-                    if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
-                        resolve();
-                        return;
-                    }
-                    
-                    if (Date.now() - start > timeout) {
-                        reject(new Error('TSDRealtime not available after 5 seconds. Check console for [Realtime] logs.'));
-                        return;
-                    }
-                    
-                    setTimeout(check, 100);
-                };
-                
-                check();
-            });
-        };
-
-        waitForTSDRealtime()
-            .then(() => {
-                try {
-                    console.log('[Dashboard] Starting TSDRealtime for actor:', actor);
-                    window.TSDRealtime.start(actor);
-                } catch (error) {
-                    this.handleRealtimeStartFailure(error);
-                    throw error;
-                }
-            })
-            .catch((error) => {
-                this.handleRealtimeStartFailure(error);
-                throw error;
-            });
+        // Realtime: Don't start TSDRealtime here - it's started globally in wallet.js
+        // Check if global realtime is already running and has cached data
+        if (window.TSDRealtime && window.TSDRealtime._actor === actor) {
+            console.log('[Dashboard] TSDRealtime already running globally for actor:', actor);
+            // If we have cached data, use it immediately for instant load
+            if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+                console.log('[Dashboard] Using cached live data for instant load');
+                this.mergeLiveData(window.TSDRealtime._last.live);
+            }
+        } else {
+            console.log('[Dashboard] Waiting for global TSDRealtime to start (should be started by wallet.js)');
+        }
 
         return this.initialRealtimePromise;
     }
@@ -553,11 +527,17 @@ class DashboardGame extends TSDGEMSGame {
 
         this.showLoadingState(true);
 
+        // Realtime: Timeout fallback - initialize with empty state after 5 seconds
         this.initialRealtimeTimer = setTimeout(() => {
             if (this.awaitingInitialRealtime) {
-                this.showNotification('Waiting for realtime data...', 'info');
+                console.warn('[DashboardInit] Timeout - starting with empty state (no realtime data received)');
+                // Initialize with empty state for new accounts
+                this.realtimeData.profile = { miningSlotsUnlocked: 0, balances: { TSDM: 0 } };
+                this.realtimeData.gems = {};
+                this.markRealtimeInitialized();
+                this.showNotification('Dashboard initialized. Waiting for data...', 'info');
             }
-        }, 4000);
+        }, 5000);
     }
 
     clearInitialRealtimeTimer() {

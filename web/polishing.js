@@ -267,7 +267,20 @@ class PolishingGame extends TSDGEMSGame {
         }
 
         const sameActor = this.currentActor === actor;
-        if (sameActor && !this.awaitingInitialRealtime && this.realtimeData.polishingSlots.length > 0) {
+        // Realtime: Check if global realtime is already running for this actor
+        const globalRealtimeActive = window.TSDRealtime && window.TSDRealtime._actor === actor;
+        
+        // Realtime: If global realtime is active, use cached data for instant load
+        if (globalRealtimeActive && window.TSDRealtime._last && window.TSDRealtime._last.live) {
+            console.log('[Polishing] TSDRealtime ready for actor:', actor, '- using cached live data');
+            const cachedLive = window.TSDRealtime._last.live;
+            this.mergeLiveData(cachedLive);
+            // Mark as initialized immediately if we have data (even if empty)
+            this.markRealtimeInitialized();
+            return Promise.resolve();
+        }
+        
+        if (sameActor && !this.awaitingInitialRealtime) {
             console.log('[Polishing] Realtime polishing data already active');
             return Promise.resolve();
         }
@@ -284,49 +297,31 @@ class PolishingGame extends TSDGEMSGame {
             this.initialRealtimeReject = reject;
         });
 
-        // Wait for TSDRealtime to be available (with timeout)
-        const waitForTSDRealtime = () => {
-            return new Promise((resolve, reject) => {
-                const start = Date.now();
-                const timeout = 5000; // 5 second timeout
-                
-                const check = () => {
-                    if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
-                        resolve();
-                        return;
-                    }
-                    
-                    if (Date.now() - start > timeout) {
-                        reject(new Error('TSDRealtime not available after 5 seconds. Check console for [Realtime] logs.'));
-                        return;
-                    }
-                    
-                    setTimeout(check, 100);
-                };
-                
-                check();
-            });
-        };
+        // Realtime: Don't start TSDRealtime here - it's started globally in wallet.js
+        // Check if global realtime is already running and has cached data
+        if (window.TSDRealtime && window.TSDRealtime._actor === actor) {
+            console.log('[Polishing] TSDRealtime already running globally for actor:', actor);
+            // If we have cached data, use it immediately for instant load
+            if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+                console.log('[Polishing] Using cached live data for instant load');
+                this.mergeLiveData(window.TSDRealtime._last.live);
+            }
+        } else {
+            console.log('[Polishing] Waiting for global TSDRealtime to start (should be started by wallet.js)');
+        }
 
-        waitForTSDRealtime()
-            .then(() => {
-                try {
-                    window.TSDRealtime.start(actor);
-                } catch (error) {
-                    this.handleRealtimeStartFailure(error);
-                    throw error;
-                }
-            })
-            .catch((error) => {
-                this.handleRealtimeStartFailure(error);
-                throw error;
-            });
-
+        // Realtime: Timeout fallback - initialize with empty state after 5 seconds
         this.initialRealtimeTimer = setTimeout(() => {
             if (this.awaitingInitialRealtime) {
-                this.showNotification('Waiting for realtime polishing data...', 'info');
+                console.warn('[PolishingInit] Timeout - starting with empty state (no realtime data received)');
+                // Initialize with empty state for new accounts
+                this.effectiveSlots = 0;
+                this.realtimeData.polishingSlots = [];
+                this.realtimeData.profile = { polishingStationsUnlocked: 0, balances: { TSDM: 0 } };
+                this.markRealtimeInitialized();
+                this.showNotification('Polishing initialized. Waiting for data...', 'info');
             }
-        }, 4000);
+        }, 5000);
 
         return this.initialRealtimePromise;
     }
@@ -335,6 +330,7 @@ class PolishingGame extends TSDGEMSGame {
         if (!this.awaitingInitialRealtime) {
             return;
         }
+        console.log('[PolishingInit] Clearing loading state');
         this.awaitingInitialRealtime = false;
         this.clearInitialRealtimeTimer();
         this.showLoadingState(false);
@@ -366,6 +362,12 @@ class PolishingGame extends TSDGEMSGame {
 
     // Realtime: Update profile data from realtime events
     applyProfileFromRealtime(profile) {
+        // Realtime: Handle undefined/null profile for new accounts
+        if (!profile || typeof profile !== 'object') {
+            console.log('[PolishingInit] applyProfileFromRealtime: profile is empty, using defaults');
+            profile = { polishingStationsUnlocked: 0, balances: { TSDM: 0 } };
+        }
+        
         // Realtime: Get currency from live.profile only
         const rawCurrency = Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0);
         const previousCurrency = Number(this.currentGameDollars ?? 0);
@@ -377,27 +379,32 @@ class PolishingGame extends TSDGEMSGame {
         console.log('[PolishingRealtime] Updated Game $ from live.profile:', effectiveCurrency);
 
         // Realtime: Get polishing slots unlocked from live.profile.polishingStationsUnlocked only
-        if (typeof profile.polishingStationsUnlocked === 'number' || typeof profile.polishingSlotsUnlocked === 'number') {
-            const unlocked = Math.max(0, Math.min(profile.polishingStationsUnlocked ?? profile.polishingSlotsUnlocked ?? 0, MAX_POLISHING_SLOTS));
-            if (unlocked !== this.effectiveSlots) {
-                this.effectiveSlots = unlocked;
-                console.log('[PolishingRealtime] Updated polishing slots unlocked from profile:', unlocked);
-                this.renderPolishingSlots();
-            }
+        // Realtime: Treat undefined as 0 for new accounts
+        const unlocked = Math.max(0, Math.min(profile.polishingStationsUnlocked ?? profile.polishingSlotsUnlocked ?? 0, MAX_POLISHING_SLOTS));
+        if (unlocked !== this.effectiveSlots) {
+            this.effectiveSlots = unlocked;
+            console.log('[PolishingInit] polishingStationsUnlocked =', unlocked);
+            this.renderPolishingSlots();
         }
+        
+        // Realtime: Always mark as initialized after receiving profile (even if empty)
+        this.markRealtimeInitialized();
     }
 
     // Realtime: Update polishing slots from live.polishingSlots only
     applyPolishingSlotsFromRealtime(slots) {
+        // Realtime: Handle undefined/null slots for new accounts - treat as empty array
         if (!Array.isArray(slots)) {
-            console.warn('[PolishingRealtime] applyPolishingSlotsFromRealtime: slots is not an array:', slots);
+            console.log('[PolishingInit] applyPolishingSlotsFromRealtime: slots is not an array, using empty array:', slots);
             slots = [];
         }
+        console.log('[PolishingInit] Clearing loading state - polishing slots count:', slots.length);
         console.log('[PolishingRealtime] Updated polishing slots from live, count=' + slots.length);
         this.realtimeData.polishingSlots = slots;
         this.updatePolishingSlotsFromLive(slots);
         this.updatePolishingStats();
         this.startTimerUpdates();
+        // Realtime: Mark as initialized even if slots array is empty (for new accounts)
         this.markRealtimeInitialized();
     }
 
@@ -1313,13 +1320,12 @@ class PolishingGame extends TSDGEMSGame {
                 throw new Error('Job ID is required to complete polishing');
             }
             
-            // Find the job before making changes
+            // Find the job for reward estimation
             const job = this.activeJobs.find(j => j.jobId === jobId);
             
-            // Optimistic UI: remove job locally so the slot returns to normal instantly
-            this.activeJobs = this.activeJobs.filter(j => j.jobId !== jobId);
+            // Realtime: Don't update UI optimistically - wait for realtime confirmation
+            // Show loading state on button only
             this.pendingCompletionJobs.add(jobId);
-            this.renderPolishingSlots();
 
             const response = await fetch(`${this.backendService.apiBase}/completePolishing`, {
                 method: 'POST',
@@ -1361,23 +1367,16 @@ class PolishingGame extends TSDGEMSGame {
             const totalOut = result.totalOut || 0;
             const results = result.results || {};
             
-            // Show reward popup with actual results
+            // Realtime: Show reward popup with actual results, then wait for realtime update
             this.showRewardPopup(totalOut, 'Polished Gems', results);
+            this.showNotification('Awaiting realtime confirmation...', 'info');
             
-            // Realtime: Wait for realtime update to remove job from UI
-            this.showNotification('Realtime update pending...', 'info');
-            
-            // Don't re-render here - let realtime update handle it
+            // Realtime: Don't update UI here - wait for realtime:live event to remove job
         } catch (error) {
             console.error('[Polishing] Failed to complete polishing:', error);
-            // Realtime: On error, revert optimistic UI changes
+            // Realtime: On error, just remove from pending and show error
             this.pendingCompletionJobs.delete(jobId);
-            // Restore job if it was removed optimistically
-            if (job && !this.activeJobs.find(j => j.jobId === jobId)) {
-                this.activeJobs.push(job);
-            }
-            this.renderPolishingSlots();
-            this.updatePolishingStats();
+            // Realtime: Don't modify activeJobs - let realtime update handle it
             this.showNotification('❌ Failed to claim rewards: ' + error.message, 'error');
         } finally {
             // Re-enable the button
@@ -1856,9 +1855,10 @@ class PolishingGame extends TSDGEMSGame {
         if (window.TSDRealtime) {
             try {
                 console.log('[Polishing] 🎯 Ensuring TSDRealtime is running for polishing data...');
-                window.TSDRealtime.start(this.currentActor);
+                // Realtime: Don't start TSDRealtime here - it's started globally in wallet.js
+                console.log('[Polishing] Realtime is managed globally, not starting here');
             } catch (error) {
-                console.warn('[Polishing] TSDRealtime start failed:', error);
+                console.warn('[Polishing] Error:', error);
             }
         }
     }

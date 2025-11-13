@@ -143,9 +143,14 @@ class InventoryPage extends TSDGEMSGame {
             if (!this.isEventForCurrentActor(actor)) {
                 return;
             }
+            // Realtime: Only update staked asset IDs, don't re-render NFT grid
             this.realtimeData.miningSlots = Array.isArray(slots) ? slots : [];
+            const previousStakedCount = this.stakedAssetIds.size;
             this.rebuildStakedAssetIds();
-            if (this.inventoryData) {
+            const newStakedCount = this.stakedAssetIds.size;
+            // Only re-render if staked status actually changed
+            if (this.inventoryData && this.allNFTs.length > 0 && previousStakedCount !== newStakedCount) {
+                console.log('[InventoryRealtime] Mining slots staked status changed, updating badges');
                 this.renderNFTs();
             }
         };
@@ -276,49 +281,30 @@ class InventoryPage extends TSDGEMSGame {
             this.initialRealtimeReject = reject;
         });
 
-        // Wait for TSDRealtime to be available (with timeout)
-        const waitForTSDRealtime = () => {
-            return new Promise((resolve, reject) => {
-                const start = Date.now();
-                const timeout = 5000; // 5 second timeout
-                
-                const check = () => {
-                    if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
-                        resolve();
-                        return;
-                    }
-                    
-                    if (Date.now() - start > timeout) {
-                        reject(new Error('TSDRealtime not available after 5 seconds. Check console for [Realtime] logs.'));
-                        return;
-                    }
-                    
-                    setTimeout(check, 100);
-                };
-                
-                check();
-            });
-        };
+        // Realtime: Don't start TSDRealtime here - it's started globally in wallet.js
+        // Check if global realtime is already running and has cached data
+        if (window.TSDRealtime && window.TSDRealtime._actor === actor) {
+            console.log('[Inventory] TSDRealtime already running globally for actor:', actor);
+            // If we have cached data, use it immediately for instant load
+            if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+                console.log('[Inventory] Using cached live data for instant load');
+                this.mergeLiveData(window.TSDRealtime._last.live);
+            }
+        } else {
+            console.log('[Inventory] Waiting for global TSDRealtime to start (should be started by wallet.js)');
+        }
 
-        waitForTSDRealtime()
-            .then(() => {
-                try {
-                    window.TSDRealtime.start(actor);
-                } catch (error) {
-                    this.handleRealtimeStartFailure(error);
-                    throw error;
-                }
-            })
-            .catch((error) => {
-                this.handleRealtimeStartFailure(error);
-                throw error;
-            });
-
+        // Realtime: Timeout fallback - initialize with empty state after 5 seconds
         this.initialRealtimeTimer = setTimeout(() => {
             if (this.awaitingInitialRealtime) {
-                this.showNotification('Waiting for realtime inventory data...', 'info');
+                console.warn('[InventoryInit] Timeout - starting with empty state (no realtime data received)');
+                // Initialize with empty state for new accounts
+                this.realtimeData.summary = {};
+                this.realtimeData.gems = {};
+                this.markRealtimeInitialized();
+                this.showNotification('Inventory initialized. Waiting for data...', 'info');
             }
-        }, 4000);
+        }, 5000);
 
         return this.initialRealtimePromise;
     }
@@ -384,13 +370,17 @@ class InventoryPage extends TSDGEMSGame {
         }
 
         // Rebuild staked asset IDs (for showing staked badges)
+        const previousStakedCount = this.stakedAssetIds.size;
         this.rebuildStakedAssetIds();
+        const newStakedCount = this.stakedAssetIds.size;
         
-        // Update stats display only
+        // Update stats display only (polished, rough, equipment counts)
         this.updateStats();
         
-        // Re-render NFTs only if staked status changed (to update badges)
-        if (this.allNFTs.length > 0) {
+        // Realtime: Only re-render NFTs if staked status actually changed (to update badges)
+        // Do NOT re-render on every realtime update - this causes shuffling
+        if (this.allNFTs.length > 0 && previousStakedCount !== newStakedCount) {
+            console.log('[InventoryRealtime] Staked status changed, updating badges only');
             this.renderNFTs();
         }
     }
@@ -534,9 +524,8 @@ class InventoryPage extends TSDGEMSGame {
     handleWalletDisconnected() {
         console.log('[Inventory] Wallet disconnected event received');
 
-        if (window.TSDRealtime && typeof window.TSDRealtime.stop === 'function') {
-            window.TSDRealtime.stop();
-        }
+        // Realtime: Don't stop global realtime here - it's managed globally in wallet.js
+        // Just clear local state
 
         this.currentActor = null;
         this.isLoggedIn = false;

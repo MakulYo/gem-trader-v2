@@ -124,8 +124,48 @@ window.walletConnect = async function walletConnect() {
   }
   setStatus(session.walletPlugin?.metadata?.name || session.walletPlugin?.id || '')
 
-  // 🔴 Start realtime listeners for this actor
-  try { window.TSDRealtime?.start(actor) } catch (e) { console.warn('[Wallet] Realtime start failed', e) }
+  // 🔴 GLOBAL: Start realtime listeners for this actor (ONCE, not per-page)
+  // All pages will reuse this global realtime stream
+  const startGlobalRealtime = () => {
+    if (!window.TSDRealtime) {
+      // Wait for realtime.js to load
+      const checkInterval = setInterval(() => {
+        if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
+          clearInterval(checkInterval);
+          try {
+            console.log('[Wallet] 🚀 Starting GLOBAL TSDRealtime for actor:', actor);
+            window.TSDRealtime.start(actor);
+            // Emit cached data immediately if available
+            if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+              console.log('[Wallet] 📦 Emitting cached live data for instant page load');
+              window.dispatchEvent(new CustomEvent('realtime:live', {
+                detail: { actor, live: window.TSDRealtime._last.live }
+              }));
+            }
+          } catch (e) {
+            console.warn('[Wallet] Realtime start failed', e);
+          }
+        }
+      }, 100);
+      // Timeout after 5 seconds
+      setTimeout(() => clearInterval(checkInterval), 5000);
+    } else {
+      try {
+        console.log('[Wallet] 🚀 Starting GLOBAL TSDRealtime for actor:', actor);
+        window.TSDRealtime.start(actor);
+        // Emit cached data immediately if available
+        if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+          console.log('[Wallet] 📦 Emitting cached live data for instant page load');
+          window.dispatchEvent(new CustomEvent('realtime:live', {
+            detail: { actor, live: window.TSDRealtime._last.live }
+          }));
+        }
+      } catch (e) {
+        console.warn('[Wallet] Realtime start failed', e);
+      }
+    }
+  };
+  startGlobalRealtime();
 
   window.dispatchEvent(new CustomEvent('wallet-connected', { detail: { actor, session } }))
   return actor
@@ -210,8 +250,43 @@ document.addEventListener('DOMContentLoaded', async () => {
           setStatus(walletName)
           await updateUI(true)
 
-          // 🔴 Start realtime for restored session
-          try { window.TSDRealtime?.start(actor) } catch (e) { console.warn('[Wallet] Realtime start failed', e) }
+          // 🔴 GLOBAL: Start realtime for restored session (same as walletConnect)
+          const startGlobalRealtime = () => {
+            if (!window.TSDRealtime) {
+              const checkInterval = setInterval(() => {
+                if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
+                  clearInterval(checkInterval);
+                  try {
+                    console.log('[Wallet] 🚀 Starting GLOBAL TSDRealtime for restored session:', actor);
+                    window.TSDRealtime.start(actor);
+                    if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+                      console.log('[Wallet] 📦 Emitting cached live data for instant page load');
+                      window.dispatchEvent(new CustomEvent('realtime:live', {
+                        detail: { actor, live: window.TSDRealtime._last.live }
+                      }));
+                    }
+                  } catch (e) {
+                    console.warn('[Wallet] Realtime start failed', e);
+                  }
+                }
+              }, 100);
+              setTimeout(() => clearInterval(checkInterval), 5000);
+            } else {
+              try {
+                console.log('[Wallet] 🚀 Starting GLOBAL TSDRealtime for restored session:', actor);
+                window.TSDRealtime.start(actor);
+                if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+                  console.log('[Wallet] 📦 Emitting cached live data for instant page load');
+                  window.dispatchEvent(new CustomEvent('realtime:live', {
+                    detail: { actor, live: window.TSDRealtime._last.live }
+                  }));
+                }
+              } catch (e) {
+                console.warn('[Wallet] Realtime start failed', e);
+              }
+            }
+          };
+          startGlobalRealtime();
 
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('wallet-session-restored', { detail: { actor, session } }))

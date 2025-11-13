@@ -92,10 +92,28 @@ class TradingGame extends TSDGEMSGame {
         this.showNotification('Waiting for realtime trading data...', 'info');
         console.log('[Trading] Init complete, waiting for realtime data...');
         
-        // Check if actor is already available after a short delay
+        // Realtime: Check if global realtime is already running and has cached data
         setTimeout(() => {
             if (this.currentActor) {
                 console.log('[Trading] Actor detected during init:', this.currentActor);
+                if (window.TSDRealtime && window.TSDRealtime._actor === this.currentActor) {
+                    console.log('[Trading] TSDRealtime already running globally, using cached data');
+                    if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
+                        const cachedLive = window.TSDRealtime._last.live;
+                        // Update gem counts from cached data
+                        if (cachedLive.gems) {
+                            this.updatePolishedGemsFromRealtime(cachedLive.gems);
+                        }
+                        // Update city boosts if available
+                        if (cachedLive.boosts) {
+                            this.updateCityBoostsFromRealtime(cachedLive.boosts);
+                        }
+                        // Update base price if available
+                        if (cachedLive.pricing) {
+                            this.updateBasePriceFromRealtime(cachedLive.pricing);
+                        }
+                    }
+                }
                 this.updateStakingGrid();
             }
         }, 1000);
@@ -1794,7 +1812,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const { actor, live } = event.detail || {};
         if (!game || !live) return;
         if (game.currentActor && actor && actor !== game.currentActor) return;
-        console.log('[TradingRealtime] live aggregate received, hasStaking:', !!live?.staking?.gems, 'hasInventory:', !!live?.inventorySummary);
+        console.log('[TradingRealtime] live aggregate received, hasGems:', !!live?.gems, 'hasStaking:', !!live?.staking?.gems, 'hasInventory:', !!live?.inventorySummary);
+        // Realtime: Update gem counts from live.gems (for city matrix availability)
+        if (live.gems) {
+            game.updatePolishedGemsFromRealtime(live.gems);
+        }
         game.updateStakedGemsFromRealtime(live);
         if (live.inventorySummary || live.inventoryAssets || live.inventory) {
             game.updateInventorySummaryFromRealtime(live.inventorySummary || null, live);
