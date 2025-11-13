@@ -16,4 +16,5 @@ const db = getFirestore(app);
 
 window.firebaseApp = app;
 window.db = db;
-console.log("[Firebase] PROD loaded:", cfg.projectId);
+window.firestoreDb = db; // Also set firestoreDb for realtime.js compatibility
+console.log("[Firebase] PROD loaded:", cfg.projectId, "| firebaseApp and firestoreDb set");

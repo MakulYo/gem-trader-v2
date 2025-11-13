@@ -275,18 +275,43 @@ class InventoryPage extends TSDGEMSGame {
             this.initialRealtimeReject = reject;
         });
 
-        if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
-            try {
-                window.TSDRealtime.start(actor);
-            } catch (error) {
+        // Wait for TSDRealtime to be available (with timeout)
+        const waitForTSDRealtime = () => {
+            return new Promise((resolve, reject) => {
+                const start = Date.now();
+                const timeout = 5000; // 5 second timeout
+                
+                const check = () => {
+                    if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
+                        resolve();
+                        return;
+                    }
+                    
+                    if (Date.now() - start > timeout) {
+                        reject(new Error('TSDRealtime not available after 5 seconds. Check console for [Realtime] logs.'));
+                        return;
+                    }
+                    
+                    setTimeout(check, 100);
+                };
+                
+                check();
+            });
+        };
+
+        waitForTSDRealtime()
+            .then(() => {
+                try {
+                    window.TSDRealtime.start(actor);
+                } catch (error) {
+                    this.handleRealtimeStartFailure(error);
+                    throw error;
+                }
+            })
+            .catch((error) => {
                 this.handleRealtimeStartFailure(error);
                 throw error;
-            }
-        } else {
-            const error = new Error('TSDRealtime is not available');
-            this.handleRealtimeStartFailure(error);
-            throw error;
-        }
+            });
 
         this.initialRealtimeTimer = setTimeout(() => {
             if (this.awaitingInitialRealtime) {

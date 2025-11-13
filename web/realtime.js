@@ -1,6 +1,8 @@
 // web/realtime.js
 // Realtime listeners central hub (singleton)
 (() => {
+  console.log('[Realtime] realtime.js script loading...');
+  
   // --- 1) Load Firestore helpers (doc, collection, onSnapshot, getFirestore) ---
   const firebasePromise = import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js')
     .then(mod => {
@@ -12,7 +14,12 @@
         collection: mod.collection,
         getFirestore: mod.getFirestore,
       }
+      console.log('[Realtime] Firestore module loaded, exports attached to window.firebaseFirestoreExports');
       return window.firebaseFirestoreExports
+    })
+    .catch(e => {
+      console.error('[Realtime] Failed to import Firestore module:', e);
+      return null;
     })
 
   // --- 2) Wait for Firebase / Firestore to exist ---
@@ -22,9 +29,14 @@
       const timeout = 10000   // 10s instead of 1s, to be safe
 
       const tick = () => {
-        // Case A: firebase-config already created db
+        // Case A: firebase-config already created db (check both window.db and window.firestoreDb)
         if (window.firestoreDb) {
-          // console.log('[Realtime] using existing firestoreDb')
+          console.log('[Realtime] using existing window.firestoreDb')
+          return resolve(window.firestoreDb)
+        }
+        if (window.db) {
+          console.log('[Realtime] found window.db, assigning to window.firestoreDb')
+          window.firestoreDb = window.db
           return resolve(window.firestoreDb)
         }
 
@@ -35,7 +47,11 @@
           try {
             const db = getFirestore(app)
             window.firestoreDb = db
-            console.log('[Realtime] created Firestore DB from firebaseApp')
+            // Also set window.db for backward compatibility
+            if (!window.db) {
+              window.db = db
+            }
+            console.log('[Realtime] created Firestore DB from firebaseApp using getFirestore()')
             return resolve(db)
           } catch (e) {
             console.error('[Realtime] getFirestore failed:', e)
@@ -45,6 +61,13 @@
         // Timeout guard
         if (Date.now() - start > timeout) {
           console.error('[Realtime] Gave up waiting for Firestore init (timeout)')
+          console.error('[Realtime] Debug info:', {
+            hasFirebaseApp: !!window.firebaseApp,
+            hasFirestoreDb: !!window.firestoreDb,
+            hasDb: !!window.db,
+            hasFirestoreExports: !!window.firebaseFirestoreExports,
+            hasGetFirestore: !!(window.firebaseFirestoreExports?.getFirestore)
+          })
           return resolve(null)
         }
 
@@ -58,13 +81,18 @@
 
   // --- 3) Initialise Realtime once Firestore + helpers are ready ---
   Promise.all([firebasePromise, waitForFirebase()]).then(([ffx, db]) => {
+    if (!ffx) {
+      console.error('[Realtime] Firestore module exports not available')
+      return
+    }
+    
     if (!db) {
       console.error('[Realtime] Firestore not initialized after waiting')
       return
     }
 
     const { onSnapshot, doc, collection } = ffx
-    console.log('[Realtime] ready, Firestore instance acquired')
+    console.log('[Realtime] ✅ Ready! Firestore instance acquired, setting window.TSDRealtime')
 
     // Safe event emitter
     const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, { detail }))
@@ -221,8 +249,11 @@
 
     // Expose globally
     window.TSDRealtime = Realtime
+    console.log('[Realtime] ✅ window.TSDRealtime is now available')
 
     // Auto-stop on unload
     window.addEventListener('beforeunload', () => Realtime.stop())
+  }).catch(e => {
+    console.error('[Realtime] Failed to initialize:', e)
   })
 })()
