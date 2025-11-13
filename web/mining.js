@@ -211,6 +211,23 @@ class MiningGame extends TSDGEMSGame {
         window.addEventListener('realtime:inventory-speedboost', this.onRealtimeInventorySpeedboost);
     }
 
+    cleanupRealtimeListeners() {
+        if (!this.realtimeHandlersRegistered) {
+            return;
+        }
+
+        console.log('[Mining] Cleaning up realtime event listeners');
+        
+        window.removeEventListener('realtime:live', this.onRealtimeLive);
+        window.removeEventListener('realtime:profile', this.onRealtimeProfile);
+        window.removeEventListener('realtime:mining-slots', this.onRealtimeMiningSlots);
+        window.removeEventListener('realtime:inventory-summary', this.onRealtimeInventorySummary);
+        window.removeEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
+        window.removeEventListener('realtime:inventory-speedboost', this.onRealtimeInventorySpeedboost);
+        
+        this.realtimeHandlersRegistered = false;
+    }
+
     getEmptyRealtimeState() {
         return {
             live: null,
@@ -270,6 +287,7 @@ class MiningGame extends TSDGEMSGame {
     }
 
     cleanupRealtimeSession() {
+        this.cleanupRealtimeListeners();
         this.clearInitialRealtimeTimer();
         this.awaitingInitialRealtime = false;
         this.resetInitialRealtimePromise();
@@ -3333,9 +3351,9 @@ class MiningGame extends TSDGEMSGame {
         console.log('[Mining] Disconnecting wallet...');
         
         try {
-            if (window.TSDRealtime && typeof window.TSDRealtime.stop === 'function') {
-                window.TSDRealtime.stop();
-            }
+            // Realtime: Cleanup listeners but don't stop global realtime stream
+            // Global realtime is managed by wallet.js, not individual pages
+            this.cleanupRealtimeListeners();
 
             // Stop intervals
             if (this.timerInterval) {

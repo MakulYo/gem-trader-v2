@@ -175,6 +175,23 @@ class InventoryPage extends TSDGEMSGame {
         window.addEventListener('realtime:polishing-slots', this.onRealtimePolishingSlots);
     }
 
+    cleanupRealtimeListeners() {
+        if (!this.realtimeHandlersRegistered) {
+            return;
+        }
+
+        console.log('[Inventory] Cleaning up realtime event listeners');
+        
+        window.removeEventListener('realtime:live', this.onRealtimeLive);
+        window.removeEventListener('realtime:inventory-summary', this.onRealtimeInventorySummary);
+        window.removeEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
+        window.removeEventListener('realtime:inventory-speedboost', this.onRealtimeInventorySpeedboost);
+        window.removeEventListener('realtime:mining-slots', this.onRealtimeMiningSlots);
+        window.removeEventListener('realtime:polishing-slots', this.onRealtimePolishingSlots);
+        
+        this.realtimeHandlersRegistered = false;
+    }
+
     prepareInventoryForRealtime() {
         this.clearInitialRealtimeTimer();
 
@@ -239,6 +256,7 @@ class InventoryPage extends TSDGEMSGame {
     }
 
     cleanupRealtimeSession() {
+        this.cleanupRealtimeListeners();
         this.clearInitialRealtimeTimer();
         this.awaitingInitialRealtime = false;
         this.resetInitialRealtimePromise();
@@ -524,8 +542,9 @@ class InventoryPage extends TSDGEMSGame {
     handleWalletDisconnected() {
         console.log('[Inventory] Wallet disconnected event received');
 
-        // Realtime: Don't stop global realtime here - it's managed globally in wallet.js
-        // Just clear local state
+        // Realtime: Cleanup listeners but don't stop global realtime stream
+        // Global realtime is managed by wallet.js, not individual pages
+        this.cleanupRealtimeListeners();
 
         this.currentActor = null;
         this.isLoggedIn = false;

@@ -14,6 +14,7 @@ class TradingGame extends TSDGEMSGame {
         this.stakedGems = {};
         this.inventoryData = null;
         this.polishedGemsCount = {}; // Track polished gems available for trading
+        this.realtimeHandlersRegistered = false;
 
         // Mobile optimization: detect mobile and apply optimizations
         this.isMobile = this.detectMobile();
@@ -31,6 +32,76 @@ class TradingGame extends TSDGEMSGame {
         }
 
         this.init();
+    }
+
+    setupRealtimeEventHandlers() {
+        if (this.realtimeHandlersRegistered) {
+            return;
+        }
+
+        this.realtimeHandlersRegistered = true;
+
+        this.onRealtimeInventoryGems = (event) => {
+            const { actor, gems } = event.detail || {};
+            if (!this.currentActor || actor !== this.currentActor) return;
+            console.log('[TradingRealtime] inventory-gems update, polishedTypes:', Object.keys(gems || {}).filter(k => k.startsWith('polished_')).length);
+            this.updatePolishedGemsFromRealtime(gems || {});
+        };
+
+        this.onRealtimeInventorySummary = (event) => {
+            const { actor, summary } = event.detail || {};
+            if (!this.currentActor || actor !== this.currentActor) return;
+            console.log('[TradingRealtime] inventory-summary update, hasAssets:', !!summary?.assets);
+            this.updateInventorySummaryFromRealtime(summary || null);
+        };
+
+        this.onRealtimeLive = (event) => {
+            const { actor, live } = event.detail || {};
+            if (!this.currentActor || !live || actor !== this.currentActor) return;
+            console.log('[TradingRealtime] live aggregate received, hasGems:', !!live?.gems, 'hasStaking:', !!live?.staking?.gems, 'hasInventory:', !!live?.inventorySummary);
+            // Realtime: Update gem counts from live.gems (for city matrix availability)
+            if (live.gems) {
+                this.updatePolishedGemsFromRealtime(live.gems);
+            }
+            this.updateStakedGemsFromRealtime(live);
+            if (live.inventorySummary || live.inventoryAssets || live.inventory) {
+                this.updateInventorySummaryFromRealtime(live.inventorySummary || null, live);
+            }
+        };
+
+        this.onRealtimeCityBoosts = (event) => {
+            const { boosts } = event.detail;
+            console.log('[TradingRealtime] city-boosts update, cities:', Array.isArray(boosts) ? boosts.length : Object.keys(boosts || {}).length);
+            this.updateCityBoostsFromRealtime(boosts);
+        };
+
+        this.onRealtimeBasePrice = (event) => {
+            const { basePrice } = event.detail;
+            console.log('[TradingRealtime] base-price update, price:', basePrice?.basePrice || 0);
+            this.updateBasePriceFromRealtime(basePrice);
+        };
+
+        window.addEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
+        window.addEventListener('realtime:inventory-summary', this.onRealtimeInventorySummary);
+        window.addEventListener('realtime:live', this.onRealtimeLive);
+        window.addEventListener('realtime:city-boosts', this.onRealtimeCityBoosts);
+        window.addEventListener('realtime:base-price', this.onRealtimeBasePrice);
+    }
+
+    cleanupRealtimeListeners() {
+        if (!this.realtimeHandlersRegistered) {
+            return;
+        }
+
+        console.log('[Trading] Cleaning up realtime event listeners');
+        
+        window.removeEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
+        window.removeEventListener('realtime:inventory-summary', this.onRealtimeInventorySummary);
+        window.removeEventListener('realtime:live', this.onRealtimeLive);
+        window.removeEventListener('realtime:city-boosts', this.onRealtimeCityBoosts);
+        window.removeEventListener('realtime:base-price', this.onRealtimeBasePrice);
+        
+        this.realtimeHandlersRegistered = false;
     }
 
     prepareTradingForRealtime() {
@@ -88,6 +159,7 @@ class TradingGame extends TSDGEMSGame {
         this.setupTradingSubpages();
         this.setupChartControls();
         this.setupActorListener();
+        this.setupRealtimeEventHandlers();
         this.prepareTradingForRealtime();
         this.showNotification('Waiting for realtime trading data...', 'info');
         console.log('[Trading] Init complete, waiting for realtime data...');
@@ -134,6 +206,10 @@ class TradingGame extends TSDGEMSGame {
         });
 
         window.addEventListener('walletDisconnected', (e) => {
+            // Realtime: Cleanup listeners but don't stop global realtime stream
+            // Global realtime is managed by wallet.js, not individual pages
+            this.cleanupRealtimeListeners();
+            
             this.currentActor = null;
             console.log('[Trading] Actor disconnected');
             this.stakedGems = {};
@@ -1791,55 +1867,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.tsdgemsGame = game;
     window.game = game; // Make globally accessible for onclick handlers
 
-    // Setup realtime inventory listeners
-    window.addEventListener('realtime:inventory-gems', (event) => {
-        const { actor, gems } = event.detail || {};
-        if (!game) return;
-        if (game.currentActor && actor && actor !== game.currentActor) return;
-        console.log('[TradingRealtime] inventory-gems update, polishedTypes:', Object.keys(gems || {}).filter(k => k.startsWith('polished_')).length);
-        game.updatePolishedGemsFromRealtime(gems || {});
-    });
-
-    window.addEventListener('realtime:inventory-summary', (event) => {
-        const { actor, summary } = event.detail || {};
-        if (!game) return;
-        if (game.currentActor && actor && actor !== game.currentActor) return;
-        console.log('[TradingRealtime] inventory-summary update, hasAssets:', !!summary?.assets);
-        game.updateInventorySummaryFromRealtime(summary || null);
-    });
-
-    window.addEventListener('realtime:live', (event) => {
-        const { actor, live } = event.detail || {};
-        if (!game || !live) return;
-        if (game.currentActor && actor && actor !== game.currentActor) return;
-        console.log('[TradingRealtime] live aggregate received, hasGems:', !!live?.gems, 'hasStaking:', !!live?.staking?.gems, 'hasInventory:', !!live?.inventorySummary);
-        // Realtime: Update gem counts from live.gems (for city matrix availability)
-        if (live.gems) {
-            game.updatePolishedGemsFromRealtime(live.gems);
-        }
-        game.updateStakedGemsFromRealtime(live);
-        if (live.inventorySummary || live.inventoryAssets || live.inventory) {
-            game.updateInventorySummaryFromRealtime(live.inventorySummary || null, live);
-        }
-    });
-
-    // Setup realtime city boost listeners
-    window.addEventListener('realtime:city-boosts', (event) => {
-        const { boosts } = event.detail;
-        console.log('[TradingRealtime] city-boosts update, cities:', Array.isArray(boosts) ? boosts.length : Object.keys(boosts || {}).length);
-
-        if (game) {
-            game.updateCityBoostsFromRealtime(boosts);
-        }
-    });
-
-    // Setup realtime base price listeners
-    window.addEventListener('realtime:base-price', (event) => {
-        const { basePrice } = event.detail;
-        console.log('[TradingRealtime] base-price update, price:', basePrice?.basePrice || 0);
-
-        if (game) {
-            game.updateBasePriceFromRealtime(basePrice);
-        }
-    });
+    // Realtime: Event listeners are now set up in TradingGame.setupRealtimeEventHandlers()
+    // This is called in game.init() to ensure proper cleanup and management
 });

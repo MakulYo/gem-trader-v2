@@ -182,6 +182,22 @@ class PolishingGame extends TSDGEMSGame {
         window.addEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
     }
 
+    cleanupRealtimeListeners() {
+        if (!this.realtimeHandlersRegistered) {
+            return;
+        }
+
+        console.log('[Polishing] Cleaning up realtime event listeners');
+        
+        window.removeEventListener('realtime:live', this.onRealtimeLive);
+        window.removeEventListener('realtime:profile', this.onRealtimeProfile);
+        window.removeEventListener('realtime:polishing-slots', this.onRealtimePolishingSlots);
+        window.removeEventListener('realtime:inventory-summary', this.onRealtimeInventorySummary);
+        window.removeEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
+        
+        this.realtimeHandlersRegistered = false;
+    }
+
     getEmptyRealtimeState() {
         return {
             live: null,
@@ -240,6 +256,7 @@ class PolishingGame extends TSDGEMSGame {
     }
 
     cleanupRealtimeSession() {
+        this.cleanupRealtimeListeners();
         this.clearInitialRealtimeTimer();
         this.awaitingInitialRealtime = false;
         this.resetInitialRealtimePromise();
@@ -1937,6 +1954,10 @@ class PolishingGame extends TSDGEMSGame {
         console.log('[Polishing] Disconnecting wallet...');
         
         try {
+            // Realtime: Cleanup listeners but don't stop global realtime stream
+            // Global realtime is managed by wallet.js, not individual pages
+            this.cleanupRealtimeListeners();
+            
             if (this.timerInterval) {
                 clearInterval(this.timerInterval);
                 this.timerInterval = null;
