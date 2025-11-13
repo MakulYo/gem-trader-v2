@@ -631,20 +631,21 @@ class InventoryPage extends TSDGEMSGame {
             console.log('[Inventory] Loading NFT list from backend...');
             const inventoryData = await backendService.getInventory(this.currentActor, forceRefresh);
             
+            // Realtime: Clear loading spinner on success or error
             if (inventoryData && inventoryData.assets) {
                 this.inventoryData = inventoryData;
                 this.processInventoryData();
                 this.updateStats();
-                this.renderNFTs();
+                this.renderNFTs(); // This replaces content, clearing spinner
                 console.log('[InventoryRealtime] NFT list loaded from backend, count:', this.allNFTs.length);
             } else {
                 console.warn('[Inventory] No assets in backend response');
-                this.showEmptyState('no-results');
+                this.showEmptyState('no-results'); // This replaces content, clearing spinner
             }
         } catch (error) {
             console.error('[Inventory] Failed to load NFT list from backend:', error);
             this.showNotification('Failed to load inventory: ' + error.message, 'error');
-            this.showEmptyState('error');
+            this.showEmptyState('error'); // This replaces content, clearing spinner
         }
     }
 

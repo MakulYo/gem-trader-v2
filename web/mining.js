@@ -428,11 +428,13 @@ class MiningGame extends TSDGEMSGame {
             });
         }
 
-        // Realtime: Get mining slots unlocked count from live.profile only
-        const unlocked = Math.min(profile.miningSlotsUnlocked ?? 0, MAX_SLOTS);
+        // Realtime: Get mining slots unlocked count from live.profile only - NO FALLBACKS
+        // Must use only live.profile.miningSlotsUnlocked, no assumptions about MAX_SLOTS
+        const unlocked = Number(profile.miningSlotsUnlocked ?? 0);
         const previousSlots = this.effectiveSlots;
-        this.effectiveSlots = unlocked;
-        console.log('[MiningRealtime] Updated mining slots unlocked from profile:', unlocked);
+        // Realtime: Use unlocked count directly from profile, don't cap at MAX_SLOTS
+        this.effectiveSlots = Math.max(0, unlocked); // Ensure non-negative
+        console.log('[MiningRealtime] Rendering mining slots from live.profile.miningSlotsUnlocked=' + unlocked + ', effectiveSlots=' + this.effectiveSlots);
         if (unlocked !== previousSlots) {
             this.renderMiningSlots();
         }
@@ -512,6 +514,7 @@ class MiningGame extends TSDGEMSGame {
 
         // Convert live slots format to activeJobs format (timing/state only)
         // Guard: filter out invalid slots and ensure slot.id exists
+        // Realtime: Use actual jobId from live.miningSlots (set by live-aggregator)
         const activeJobs = slots
             .filter(slot => {
                 if (!slot || typeof slot !== 'object') return false;
@@ -519,12 +522,14 @@ class MiningGame extends TSDGEMSGame {
                 return slot.state === 'active' || slot.state === 'running';
             })
             .map(slot => ({
-                jobId: `job_slot_${slot.id}`,
+                jobId: slot.jobId || null, // Use real jobId from live doc, not fake one
                 slotId: `slot_${slot.id}`,
+                slotNum: slot.id,
                 startedAt: slot.startedAt || null,
                 finishAt: slot.finishAt || null,
                 power: slot.power || 0,
-                state: slot.state || 'idle'
+                state: slot.state || 'idle',
+                slotMiningPower: slot.power || 0 // For reward estimation
             }));
 
         this.activeJobs = activeJobs;
@@ -1105,16 +1110,18 @@ class MiningGame extends TSDGEMSGame {
         }
 
         // Realtime: Rendering mining slots from live.profile.miningSlotsUnlocked only
-        console.log('[MiningRealtime] Rendering mining slots: unlockedCount =', this.effectiveSlots, ', totalSlots =', MAX_SLOTS);
+        // NO FALLBACK to MAX_SLOTS - only render what's actually unlocked
+        console.log('[MiningRealtime] Rendering mining slots: unlockedCount =', this.effectiveSlots, 'from live.profile.miningSlotsUnlocked');
         console.log('[Mining] - Active jobs:', this.activeJobs.length);
         console.log('[Mining] - Preserving open dropdowns:', openDropdowns);
         
         const slots = [];
         
-        // Create slot objects for each effective slot
-        for (let i = 0; i < MAX_SLOTS; i++) {
+        // Realtime: Only create slots up to effectiveSlots (from live.profile), not MAX_SLOTS
+        // If effectiveSlots is 0, show no unlocked slots. If it's 5, show 5 slots.
+        for (let i = 0; i < this.effectiveSlots; i++) {
             const slotNum = i + 1;
-            const isUnlocked = i < this.effectiveSlots;
+            const isUnlocked = true; // All slots in this loop are unlocked
             const activeJob = this.activeJobs.find(job => job.slotId === `slot_${slotNum}`);
             
             slots.push({
@@ -1122,6 +1129,19 @@ class MiningGame extends TSDGEMSGame {
                 isUnlocked,
                 activeJob
             });
+        }
+        
+        // Realtime: Also show locked slots beyond effectiveSlots (up to MAX_SLOTS for UI)
+        // But only if we have some unlocked slots, otherwise show empty state
+        if (this.effectiveSlots > 0 && this.effectiveSlots < MAX_SLOTS) {
+            for (let i = this.effectiveSlots; i < MAX_SLOTS; i++) {
+                const slotNum = i + 1;
+                slots.push({
+                    slotNum,
+                    isUnlocked: false,
+                    activeJob: null
+                });
+            }
         }
 
         // Realtime: render mining slots from live.miningSlots only
@@ -1776,6 +1796,11 @@ class MiningGame extends TSDGEMSGame {
 
         try {
             console.log('[Mining] Completing mining job:', jobId);
+            
+            // Realtime: Guard against null/undefined jobId
+            if (!jobId) {
+                throw new Error('Job ID is required to complete mining');
+            }
 
             // Find the job to get estimated values
             const job = this.activeJobs.find(j => j.jobId === jobId);
@@ -1784,8 +1809,8 @@ class MiningGame extends TSDGEMSGame {
 
             if (job) {
                 // Calculate estimated yield based on mining power and duration
-                estimatedMP = job.slotMiningPower || 0;
-                const duration = Date.now() - job.startedAt;
+                estimatedMP = job.slotMiningPower || job.power || 0;
+                const duration = job.startedAt ? (Date.now() - job.startedAt) : 0;
                 const expectedGems = Math.floor(estimatedMP / 20);
                 estimatedAmount = expectedGems;
             }

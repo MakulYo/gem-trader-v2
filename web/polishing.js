@@ -458,7 +458,13 @@ class PolishingGame extends TSDGEMSGame {
             const state = String(slot?.state || slot?.status || '').toLowerCase();
             if (state === 'active' || state === 'complete' || state === 'ready') {
                 const previousJob = jobBySlot.get(slotNum) || {};
-                const jobId = slot.jobId || previousJob.jobId || `slot${slotNum}`;
+                // Realtime: Use actual jobId from live.polishingSlots (set by live-aggregator)
+                // Don't use fallback fake jobId - if no jobId, skip this job
+                const jobId = slot.jobId || previousJob.jobId;
+                if (!jobId) {
+                    console.warn('[PolishingRealtime] Slot', slotNum, 'has active state but no jobId, skipping');
+                    return;
+                }
                 if (this.pendingCompletionJobs.has(jobId)) {
                     updatedPending.add(jobId);
                     return;
@@ -1301,6 +1307,11 @@ class PolishingGame extends TSDGEMSGame {
 
         try {
             console.log('[Polishing] Completing polishing job:', jobId);
+            
+            // Realtime: Guard against null/undefined jobId
+            if (!jobId) {
+                throw new Error('Job ID is required to complete polishing');
+            }
             
             // Find the job before making changes
             const job = this.activeJobs.find(j => j.jobId === jobId);

@@ -69,8 +69,10 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
     miningActiveSnap.docs.forEach(doc => {
       const jobData = doc.data();
       const slotId = jobData.slotId ? parseInt(jobData.slotId.replace('slot_', ''), 10) : 1;
-      console.log(`[LiveAggregator] 📊 Mining job: slotId=${slotId}, power=${jobData.power}, startedAt=${jobData.startedAt}, boost=${jobData.slotSpeedBoostPct ?? 0}`);
+      const jobId = doc.id; // Use document ID as jobId
+      console.log(`[LiveAggregator] 📊 Mining job: jobId=${jobId}, slotId=${slotId}, power=${jobData.power}, startedAt=${jobData.startedAt}, boost=${jobData.slotSpeedBoostPct ?? 0}`);
       activeJobsBySlot.set(slotId, {
+        jobId: jobId, // Include jobId so frontend can complete jobs
         startedAt: jobData.startedAt || null,
         finishAt: jobData.finishAt || null,
         power: jobData.power || jobData.slotMiningPower || 0,
@@ -91,6 +93,7 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
           const activeJob = activeJobsBySlot.get(slotNum);
           miningSlots.push({
             id: slotNum,
+            jobId: activeJob?.jobId || null, // Include jobId for completing jobs
             state: activeJob ? 'active' : 'idle',
             startedAt: activeJob?.startedAt || null,
             finishAt: activeJob?.finishAt || null,
@@ -119,8 +122,10 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
     polishingActiveSnap.docs.forEach(doc => {
       const jobData = doc.data();
       const slotId = jobData.slotId ? parseInt(jobData.slotId.replace('slot_', ''), 10) : 1;
-      console.log(`[LiveAggregator] 📊 Polishing job: slotId=${slotId}, power=${jobData.power}, startedAt=${jobData.startedAt}`);
+      const jobId = doc.id; // Use document ID as jobId
+      console.log(`[LiveAggregator] 📊 Polishing job: jobId=${jobId}, slotId=${slotId}, power=${jobData.power}, startedAt=${jobData.startedAt}`);
       activePolishingJobsBySlot.set(slotId, {
+        jobId: jobId, // Include jobId so frontend can complete jobs
         startedAt: jobData.startedAt || null,
         finishAt: jobData.finishAt || null,
         power: jobData.power || 0
@@ -136,6 +141,7 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
           const activeJob = activePolishingJobsBySlot.get(slotNum);
           polishingSlots.push({
             id: slotNum,
+            jobId: activeJob?.jobId || null, // Include jobId for completing jobs
             state: activeJob ? 'active' : 'idle',
             startedAt: activeJob?.startedAt || null,
             finishAt: activeJob?.finishAt || null,
@@ -155,6 +161,7 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
         console.warn(`[LiveAggregator] ⚠️ Polishing slot ${slotNum} has an active job but no staking data. Creating fallback entry.`);
         polishingSlots.push({
           id: slotNum,
+          jobId: jobData.jobId || null, // Include jobId for completing jobs
           state: 'active',
           startedAt: jobData.startedAt || null,
           finishAt: jobData.finishAt || null,
@@ -390,10 +397,16 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
     const stakedMiningSlotCount = stakingData.mining ? Object.keys(stakingData.mining).length : 0;
     const stakedPolishingSlotCount = stakingData.polishing ? Object.keys(stakingData.polishing).length : 0;
 
+    // Realtime: Include balances in live profile for TSDM/WAX display
+    const balances = profile.balances || {};
     const liveProfile = {
       ingameCurrency: Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0) || 0,
       level: profile.level || 1,
       name: profile.account || actor,
+      balances: {
+        TSDM: Number(balances.TSDM ?? balances.tsdm ?? 0) || 0,
+        WAX: Number(balances.WAX ?? balances.wax ?? 0) || 0
+      },
       miningSlotsUnlocked: Math.max(1, miningSlotsUnlockedFromProfile, inventoryMiningSlots, stakedMiningSlotCount),
       polishingSlotsUnlocked: Math.max(0, polishingSlotsUnlockedFromProfile, inventoryPolishingSlots, stakedPolishingSlotCount)
     };

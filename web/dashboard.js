@@ -337,9 +337,11 @@ class DashboardGame extends TSDGEMSGame {
             });
         }
 
+        // Realtime: Display mining slots count from live.profile only
         const miningSlotsCount = document.getElementById('mining-slots-count');
         if (miningSlotsCount) {
-            miningSlotsCount.textContent = `${Math.min(unlocked, 10)}/10`;
+            // Realtime: Use unlocked count directly, don't assume 10 total
+            miningSlotsCount.textContent = `${unlocked}/10`;
         }
 
         // Realtime: Get TSDM balance from live.profile.balances only
