@@ -48,9 +48,12 @@ const initPlayer = onRequest(CORS, async (req, res) => {
 
   if (!snap.exists) {
     await ref.set({ ...base, createdAt: now, lastSeenAt: now });
-    // Return immediately for new players - sync will happen in background
+    // Create live doc synchronously for new players to ensure immediate availability
+    console.log(`[initPlayer] Creating live doc synchronously for new player ${actor}`);
+    await buildPlayerLiveData(actor, 'initPlayer');
+    // Return with profile data
     res.json({ ok: true, profile: { id: actor, ...base } });
-    // Sync in background (don't await)
+    // Sync inventory in background (don't await)
     syncNowInternal(actor).catch(e => console.error('[initPlayer] Background sync failed:', e));
     return;
   } else {

@@ -334,7 +334,7 @@ class PolishingGame extends TSDGEMSGame {
                 // Initialize with empty state for new accounts
                 this.effectiveSlots = 0;
                 this.realtimeData.polishingSlots = [];
-                this.realtimeData.profile = { polishingStationsUnlocked: 0, balances: { TSDM: 0 } };
+                this.realtimeData.profile = { polishingSlotsUnlocked: 0, balances: { TSDM: 0 } };
                 this.markRealtimeInitialized();
                 this.showNotification('Polishing initialized. Waiting for data...', 'info');
             }
@@ -382,7 +382,7 @@ class PolishingGame extends TSDGEMSGame {
         // Realtime: Handle undefined/null profile for new accounts
         if (!profile || typeof profile !== 'object') {
             console.log('[PolishingInit] applyProfileFromRealtime: profile is empty, using defaults');
-            profile = { polishingStationsUnlocked: 0, balances: { TSDM: 0 } };
+            profile = { polishingSlotsUnlocked: 0, balances: { TSDM: 0 } };
         }
         
         // Realtime: Get currency from live.profile only
@@ -395,12 +395,12 @@ class PolishingGame extends TSDGEMSGame {
         this.updateGameDollars(effectiveCurrency, false);
         console.log('[PolishingRealtime] Updated Game $ from live.profile:', effectiveCurrency);
 
-        // Realtime: Get polishing slots unlocked from live.profile.polishingStationsUnlocked only
+        // Realtime: Get polishing slots unlocked from live.profile.polishingSlotsUnlocked only
         // Realtime: Treat undefined as 0 for new accounts
-        const unlocked = Math.max(0, Math.min(profile.polishingStationsUnlocked ?? profile.polishingSlotsUnlocked ?? 0, MAX_POLISHING_SLOTS));
+        const unlocked = Math.max(0, Math.min(profile.polishingSlotsUnlocked ?? profile.polishingStationsUnlocked ?? 0, MAX_POLISHING_SLOTS));
         if (unlocked !== this.effectiveSlots) {
             this.effectiveSlots = unlocked;
-            console.log('[PolishingInit] polishingStationsUnlocked =', unlocked);
+            console.log('[PolishingInit] polishingSlotsUnlocked =', unlocked);
             this.renderPolishingSlots();
         }
         

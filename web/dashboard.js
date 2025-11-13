@@ -256,7 +256,9 @@ class DashboardGame extends TSDGEMSGame {
         this.currentActor = actor;
         this.isLoggedIn = true;
 
-        this.cleanupRealtimeSession();
+        // Realtime: Don't clean up session if we're about to prepare for realtime
+        // The cleanup should only happen on wallet disconnect, not on session restore
+        // this.cleanupRealtimeSession();
         this.prepareDashboardForRealtime();
 
         this.realtimeData = this.getEmptyRealtimeState();
@@ -550,7 +552,19 @@ class DashboardGame extends TSDGEMSGame {
                 // Initialize with empty state for new accounts
                 this.realtimeData.profile = { miningSlotsUnlocked: 0, balances: { TSDM: 0 } };
                 this.realtimeData.gems = {};
-                this.markRealtimeInitialized();
+                // Guard: ensure method exists before calling
+                if (typeof this.markRealtimeInitialized === 'function') {
+                    this.markRealtimeInitialized();
+                } else {
+                    console.error('[DashboardInit] markRealtimeInitialized is not a function!', typeof this.markRealtimeInitialized);
+                    // Fallback: manually clear loading state
+                    this.awaitingInitialRealtime = false;
+                    this.clearInitialRealtimeTimer();
+                    this.showLoadingState(false);
+                    if (this.initialRealtimeResolver) {
+                        this.initialRealtimeResolver();
+                    }
+                }
                 this.showNotification('Dashboard initialized. Waiting for data...', 'info');
             }
         }, 5000);
@@ -570,6 +584,17 @@ class DashboardGame extends TSDGEMSGame {
         this.showLoadingState(false);
         this.rejectInitialRealtime(error);
         this.showNotification('Failed to start realtime: ' + error.message, 'error');
+    }
+
+    markRealtimeInitialized() {
+        if (!this.awaitingInitialRealtime) {
+            return;
+        }
+
+        this.awaitingInitialRealtime = false;
+        this.clearInitialRealtimeTimer();
+        this.showLoadingState(false);
+        this.resolveInitialRealtime();
     }
 
     resolveInitialRealtime() {

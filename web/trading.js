@@ -458,12 +458,15 @@ class TradingGame extends TSDGEMSGame {
     }
 
     getAvailableGemCount(gemType) {
-        if (!this.polishedGemsCount) return 0;
+        if (!this.polishedGemsCount) {
+            return 0;
+        }
         
-        // Convert gem type to inventory key (e.g., "polished_diamond" -> "polished_diamond")
-        const gemKey = `polished_${gemType.replace(/polished_/, '')}`;
-        
-        return this.polishedGemsCount[gemKey] || 0;
+        // gemType comes from city matrix as "Diamond", "Ruby", etc. (capitalized)
+        // polishedGemsCount uses keys like "Diamond", "Ruby" (capitalized)
+        // Just use gemType directly since it's already in the right format
+        const count = this.polishedGemsCount[gemType] || 0;
+        return count;
     }
 
   getCurrentQuote(city, gem, amount) {
@@ -1796,8 +1799,9 @@ class TradingGame extends TSDGEMSGame {
             // Flat structure: sum all polished_* keys
             Object.entries(gemsData).forEach(([key, value]) => {
                 if (key.startsWith('polished_')) {
-                    const gemType = key.replace('polished_', '').charAt(0).toUpperCase() +
-                                   key.replace('polished_', '').slice(1).toLowerCase();
+                    // Convert "polished_diamond" -> "Diamond"
+                    const gemName = key.replace('polished_', '');
+                    const gemType = gemName.charAt(0).toUpperCase() + gemName.slice(1).toLowerCase();
                     newPolishedGemsCount[gemType] = Number(value || 0);
                 }
             });
@@ -1805,10 +1809,17 @@ class TradingGame extends TSDGEMSGame {
 
         this.polishedGemsCount = newPolishedGemsCount;
         const totalPolished = Object.values(newPolishedGemsCount).reduce((sum, val) => sum + (val || 0), 0);
-        console.log('[TradingRealtime] Updated polished gem counts from live.gems.polished total =', totalPolished);
+        console.log('[TradingRealtime] Updated polished gem counts from live.gems.polished total =', totalPolished, 'counts:', newPolishedGemsCount);
 
         // Refresh the trading interface if it's currently displayed
         this.updateSellControls();
+        
+        // Re-render city matrix to update gem counts in header
+        const matrixWrapper = document.getElementById('city-boost-matrix-wrapper');
+        if (matrixWrapper && matrixWrapper.innerHTML && !matrixWrapper.innerHTML.includes('Loading')) {
+            console.log('[TradingRealtime] Re-rendering city matrix with updated gem counts');
+            this.renderCityMatrix();
+        }
     }
 
     updateCityBoostsFromRealtime(boosts) {

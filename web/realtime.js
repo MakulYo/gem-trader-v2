@@ -127,53 +127,127 @@
           // Realtime: Emit even if data is empty/null (for new accounts)
           // Pages need to receive events to initialize with empty state
           if (!liveData) {
-            console.log('[Realtime] ⚠️ Live data document not found or empty - emitting empty state for initialization')
-            // Emit empty structure so pages can initialize
-            const emptyLive = {
-              profile: { miningSlotsUnlocked: 0, balances: { TSDM: 0 } },
-              gems: {},
-              miningSlots: [],
-              polishingSlots: []
+            console.log('[Realtime] ⚠️ Live data document not found - using default values (miningSlotsUnlocked: 1, polishingStationsUnlocked: 1)')
+            // Emit default structure for new players (1 slot unlocked)
+            const defaultLive = {
+              profile: { miningSlotsUnlocked: 1, polishingStationsUnlocked: 1, balances: { TSDM: 0, WAX: 0 }, ingameCurrency: 0 },
+              gems: { rough: {}, polished: {} },
+              miningSlots: [{
+                id: 1,
+                jobId: null,
+                state: 'idle',
+                startedAt: null,
+                finishAt: null,
+                power: 0,
+                effectiveDurationMs: null,
+                baseDurationMs: null,
+                slotSpeedBoostPct: 0,
+                slotSpeedBoostMultiplier: 1,
+                slotSpeedBoostAssetId: null,
+                staked: []
+              }],
+              polishingSlots: [{
+                id: 1,
+                jobId: null,
+                state: 'idle',
+                startedAt: null,
+                finishAt: null,
+                power: 0,
+                staked: []
+              }],
+              boosts: [],
+              pricing: {}
             }
-            emit('realtime:live', { actor, live: emptyLive })
+            // Store default live data in cache
+            this._last.live = defaultLive
+            emit('realtime:live', { actor, live: defaultLive })
             return
           }
 
+          // Fix: Ensure we never emit empty arrays - add defaults if arrays are empty
+          const fixedLiveData = { ...liveData }
+
+          // Fix empty miningSlots array
+          if (!fixedLiveData.miningSlots || !Array.isArray(fixedLiveData.miningSlots) || fixedLiveData.miningSlots.length === 0) {
+            const miningSlotsUnlocked = fixedLiveData.profile?.miningSlotsUnlocked || 1
+            if (miningSlotsUnlocked >= 1) {
+              fixedLiveData.miningSlots = [{
+                id: 1,
+                jobId: null,
+                state: 'idle',
+                startedAt: null,
+                finishAt: null,
+                power: 0,
+                effectiveDurationMs: null,
+                baseDurationMs: null,
+                slotSpeedBoostPct: 0,
+                slotSpeedBoostMultiplier: 1,
+                slotSpeedBoostAssetId: null,
+                staked: []
+              }]
+              console.log(`[Realtime] ⚠️ Fixed empty miningSlots array for ${actor} - created default slot 1 (unlocked: ${miningSlotsUnlocked})`)
+            }
+          }
+
+          // Fix empty polishingSlots array
+          if (!fixedLiveData.polishingSlots || !Array.isArray(fixedLiveData.polishingSlots) || fixedLiveData.polishingSlots.length === 0) {
+            const polishingStationsUnlocked = fixedLiveData.profile?.polishingSlotsUnlocked ?? fixedLiveData.profile?.polishingStationsUnlocked ?? 1
+            if (polishingStationsUnlocked >= 1) {
+              fixedLiveData.polishingSlots = [{
+                id: 1,
+                jobId: null,
+                state: 'idle',
+                startedAt: null,
+                finishAt: null,
+                power: 0,
+                staked: []
+              }]
+              console.log(`[Realtime] ⚠️ Fixed empty polishingSlots array for ${actor} - created default slot 1 (unlocked: ${polishingStationsUnlocked})`)
+            }
+          }
+
           console.log('[Realtime] 🔄 Live data update received:', {
-            hasProfile: !!liveData.profile,
-            hasGems: !!liveData.gems,
-            hasMiningSlots: !!liveData.miningSlots,
-            miningSlotsCount: liveData.miningSlots?.length || 0,
-            hasStaking: !!liveData.miningSlots?.some(slot => slot.staked && slot.staked.length > 0),
+            hasProfile: !!fixedLiveData.profile,
+            hasGems: !!fixedLiveData.gems,
+            hasMiningSlots: !!fixedLiveData.miningSlots,
+            miningSlotsCount: fixedLiveData.miningSlots?.length || 0,
+            hasStaking: !!fixedLiveData.miningSlots?.some(slot => slot.staked && slot.staked.length > 0),
           })
 
+          // Store in cache for instant page loads
+          this._last.live = fixedLiveData
+
           // Full event
-          emit('realtime:live', { actor, live: liveData })
+          emit('realtime:live', { actor, live: fixedLiveData })
 
           // Granular events
-          if (liveData.profile) {
-            emit('realtime:profile', { actor, profile: liveData.profile })
+          if (fixedLiveData.profile) {
+            emit('realtime:profile', { actor, profile: fixedLiveData.profile })
           }
-          if (liveData.gems) {
-            emit('realtime:inventory-gems', { actor, gems: liveData.gems })
+          if (fixedLiveData.gems) {
+            emit('realtime:inventory-gems', { actor, gems: fixedLiveData.gems })
           }
-          if (liveData.inventorySummary) {
-            emit('realtime:inventory-summary', { actor, summary: liveData.inventorySummary })
+          if (fixedLiveData.inventorySummary) {
+            emit('realtime:inventory-summary', { actor, summary: fixedLiveData.inventorySummary })
           }
-          if (liveData.speedboost) {
-            emit('realtime:inventory-speedboost', { actor, speedboost: liveData.speedboost })
+          if (fixedLiveData.speedboost) {
+            emit('realtime:inventory-speedboost', { actor, speedboost: fixedLiveData.speedboost })
           }
-          if (liveData.miningSlots) {
-            emit('realtime:mining-slots', { actor, slots: liveData.miningSlots })
+          if (fixedLiveData.miningSlots) {
+            // TEMP: Debug logging to verify no empty slot arrays for unlocked users
+            console.log(`[Realtime] 📊 Emitting mining-slots for ${actor}: ${fixedLiveData.miningSlots.length} slots (unlocked: ${fixedLiveData.profile?.miningSlotsUnlocked ?? 0})`);
+            emit('realtime:mining-slots', { actor, slots: fixedLiveData.miningSlots })
           }
-          if (liveData.polishingSlots) {
-            emit('realtime:polishing-slots', { actor, slots: liveData.polishingSlots })
+          if (fixedLiveData.polishingSlots) {
+            // TEMP: Debug logging to verify no empty slot arrays for unlocked users
+            console.log(`[Realtime] 📊 Emitting polishing-slots for ${actor}: ${fixedLiveData.polishingSlots.length} slots (unlocked: ${fixedLiveData.profile?.polishingSlotsUnlocked ?? 0})`);
+            emit('realtime:polishing-slots', { actor, slots: fixedLiveData.polishingSlots })
           }
-          if (liveData.pricing) {
-            emit('realtime:base-price', { basePrice: liveData.pricing })
+          if (fixedLiveData.pricing) {
+            emit('realtime:base-price', { basePrice: fixedLiveData.pricing })
           }
-          if (liveData.boosts) {
-            emit('realtime:city-boosts', { boosts: liveData.boosts })
+          if (fixedLiveData.boosts) {
+            emit('realtime:city-boosts', { boosts: fixedLiveData.boosts })
           }
         })
 

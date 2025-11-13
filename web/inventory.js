@@ -235,6 +235,18 @@ class InventoryPage extends TSDGEMSGame {
         this.initialRealtimeReject = null;
     }
 
+    markRealtimeInitialized() {
+        if (!this.awaitingInitialRealtime) {
+            return;
+        }
+
+        console.log('[InventoryInit] Clearing loading state');
+        this.awaitingInitialRealtime = false;
+        this.clearInitialRealtimeTimer();
+        this.showLoadingState(false);
+        this.resolveInitialRealtime();
+    }
+
     resolveInitialRealtime() {
         if (!this.initialRealtimePromise) {
             return;
@@ -319,7 +331,19 @@ class InventoryPage extends TSDGEMSGame {
                 // Initialize with empty state for new accounts
                 this.realtimeData.summary = {};
                 this.realtimeData.gems = {};
-                this.markRealtimeInitialized();
+                // Guard: ensure method exists before calling
+                if (typeof this.markRealtimeInitialized === 'function') {
+                    this.markRealtimeInitialized();
+                } else {
+                    console.error('[InventoryInit] markRealtimeInitialized is not a function!', typeof this.markRealtimeInitialized);
+                    // Fallback: manually clear loading state
+                    this.awaitingInitialRealtime = false;
+                    this.clearInitialRealtimeTimer();
+                    this.showLoadingState(false);
+                    if (this.initialRealtimeResolver) {
+                        this.initialRealtimeResolver();
+                    }
+                }
                 this.showNotification('Inventory initialized. Waiting for data...', 'info');
             }
         }, 5000);
@@ -376,8 +400,9 @@ class InventoryPage extends TSDGEMSGame {
             console.log('[InventoryRealtime] Initial realtime data received, clearing loading state');
         }
 
-        // Realtime: Only update stats from realtime data, don't rebuild NFT list
+        // Realtime: Update stats from realtime data, don't rebuild NFT list
         // NFT list should be loaded once from backend, not from realtime
+        // For new accounts, update stats even if inventoryData is not set yet
         if (this.inventoryData) {
             // Update stats from realtime summary/gems
             const summary = this.realtimeData.summary || {};
@@ -389,6 +414,18 @@ class InventoryPage extends TSDGEMSGame {
             // Update gems from realtime
             if (this.realtimeData.gems) {
                 this.inventoryData.gems = this.realtimeData.gems;
+            }
+        } else {
+            // New account: Initialize inventoryData with realtime summary if available
+            // This ensures stats can be displayed even before NFT list is loaded
+            if (this.realtimeData.summary) {
+                this.inventoryData = {
+                    total: this.realtimeData.summary.total || this.realtimeData.summary.totalNFTs || 0,
+                    polished: this.realtimeData.summary.polished || 0,
+                    rough: this.realtimeData.summary.rough || 0,
+                    equipment: this.realtimeData.summary.equipment || 0,
+                    gems: this.realtimeData.gems || {}
+                };
             }
         }
 
@@ -845,10 +882,38 @@ class InventoryPage extends TSDGEMSGame {
         const equipmentCount = document.getElementById('equipment-count');
         const uniqueTemplates = document.getElementById('unique-templates');
 
-        if (totalNFTs) totalNFTs.textContent = this.inventoryData?.total || this.allNFTs.length;
-        if (polishedGems) polishedGems.textContent = this.inventoryData?.polished || 0;
-        if (roughGems) roughGems.textContent = this.inventoryData?.rough || 0;
-        if (equipmentCount) equipmentCount.textContent = this.inventoryData?.equipment || 0;
+        // Realtime: Use realtimeData if inventoryData is not available (for new accounts)
+        const summary = this.realtimeData.summary || this.inventoryData;
+        const gems = this.realtimeData.gems || {};
+
+        if (totalNFTs) {
+            totalNFTs.textContent = summary?.total || summary?.totalNFTs || this.allNFTs.length || 0;
+        }
+        if (polishedGems) {
+            // Try summary first, then count from gems object
+            const polishedCount = summary?.polished;
+            if (polishedCount !== undefined) {
+                polishedGems.textContent = polishedCount;
+            } else if (gems.polished && typeof gems.polished === 'object') {
+                polishedGems.textContent = Object.values(gems.polished).reduce((sum, val) => sum + Number(val || 0), 0);
+            } else {
+                polishedGems.textContent = this.inventoryData?.polished || 0;
+            }
+        }
+        if (roughGems) {
+            // Try summary first, then count from gems object
+            const roughCount = summary?.rough;
+            if (roughCount !== undefined) {
+                roughGems.textContent = roughCount;
+            } else if (gems.rough && typeof gems.rough === 'object') {
+                roughGems.textContent = Object.values(gems.rough).reduce((sum, val) => sum + Number(val || 0), 0);
+            } else {
+                roughGems.textContent = this.inventoryData?.rough || 0;
+            }
+        }
+        if (equipmentCount) {
+            equipmentCount.textContent = summary?.equipment || this.inventoryData?.equipment || 0;
+        }
         if (uniqueTemplates) uniqueTemplates.textContent = this.inventoryData?.uniqueTemplates || Object.keys(this.inventoryData?.templateCounts || {}).length;
     }
 

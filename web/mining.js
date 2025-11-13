@@ -343,7 +343,9 @@ class MiningGame extends TSDGEMSGame {
 
         // Realtime: Don't start TSDRealtime here - it's started globally in wallet.js
         // Just wait for the global realtime to emit events
-        this.cleanupRealtimeSession();
+        // Realtime: Don't clean up session if we're about to prepare for realtime
+        // The cleanup should only happen on wallet disconnect, not on session restore
+        // this.cleanupRealtimeSession();
         this.prepareMiningForRealtime();
 
         this.awaitingInitialRealtime = true;
@@ -649,6 +651,11 @@ class MiningGame extends TSDGEMSGame {
         });
 
         console.log(`[Mining] ✅ Updated staked assets - mines: ${Object.keys(this.stakedMines).length}, workers: ${Object.keys(this.stakedWorkers).length}, speedboosts: ${Object.keys(this.stakedSpeedboosts).length}`);
+        console.log(`[Mining] 📊 Staked assets by slot:`, {
+            mines: Object.keys(this.stakedMines),
+            workers: Object.keys(this.stakedWorkers),
+            speedboosts: Object.keys(this.stakedSpeedboosts)
+        });
 
         // Re-render to show updated staked assets
         this.renderMiningSlots();
@@ -670,9 +677,10 @@ class MiningGame extends TSDGEMSGame {
             
             setTimeout(async () => {
                 try {
-                    this.currentActor = testActor;
-                    this.isLoggedIn = true;
-                    await this.loadMiningData(testActor);
+            this.currentActor = testActor;
+            this.isLoggedIn = true;
+            // Test mode: bypass realtime for manual testing
+            await this.loadMiningData(testActor);
                 } catch (error) {
                     console.error('[Mining] Test mode failed:', error);
                     this.showNotification('Test mode failed: ' + error.message, 'error');
@@ -1162,6 +1170,17 @@ class MiningGame extends TSDGEMSGame {
         console.log('[Mining] - Preserving open dropdowns:', openDropdowns);
         
         const slots = [];
+        
+        // Realtime: Create slots based on actual slot IDs from live.miningSlots
+        // This ensures staked assets match correctly (they use slot.id as key)
+        const liveSlotIds = new Set();
+        if (Array.isArray(this.realtimeData.miningSlots)) {
+            this.realtimeData.miningSlots.forEach(slot => {
+                if (slot && slot.id !== undefined && slot.id !== null) {
+                    liveSlotIds.add(Number(slot.id));
+                }
+            });
+        }
         
         // Realtime: Only create slots up to effectiveSlots (from live.profile), not MAX_SLOTS
         // If effectiveSlots is 0, show no unlocked slots. If it's 5, show 5 slots.
