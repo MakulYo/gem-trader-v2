@@ -327,6 +327,11 @@ class InventoryPage extends TSDGEMSGame {
         return this.initialRealtimePromise;
     }
 
+    mergeLiveData(live) {
+        // Alias for mergeLiveInventoryData for consistency with other pages
+        this.mergeLiveInventoryData(live);
+    }
+
     mergeLiveInventoryData(live) {
         if (!live || typeof live !== 'object') {
             return;

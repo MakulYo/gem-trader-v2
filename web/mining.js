@@ -71,6 +71,7 @@ class MiningGame extends TSDGEMSGame {
         this.selectedSlotForStaking = null;
         this.stakedMines = {}; // { slotNum: { template_id, name, mp } }
         this.stakedWorkers = {}; // { slotNum: [worker objects] }
+        this.stakedSpeedboosts = {}; // { slotNum: speedboost object or array }
         this.selectedWorkers = []; // For multi-selection when staking
         this.selectedWorkersForUnstake = new Set(); // For multi-selection when unstaking
         this.completedJobsRendered = new Set(); // Track jobs that already triggered a completion re-render
@@ -935,12 +936,15 @@ class MiningGame extends TSDGEMSGame {
         });
 
         // Add staked speedboosts
-        Object.values(this.stakedSpeedboosts).forEach(speedboostRaw => {
-            const speedboost = Array.isArray(speedboostRaw) ? speedboostRaw[0] : speedboostRaw;
-            if (speedboost && speedboost.asset_id) {
-                stakedAssetIds.add(String(speedboost.asset_id));
-            }
-        });
+        // Guard: ensure stakedSpeedboosts is initialized
+        if (this.stakedSpeedboosts) {
+            Object.values(this.stakedSpeedboosts).forEach(speedboostRaw => {
+                const speedboost = Array.isArray(speedboostRaw) ? speedboostRaw[0] : speedboostRaw;
+                if (speedboost && speedboost.asset_id) {
+                    stakedAssetIds.add(String(speedboost.asset_id));
+                }
+            });
+        }
         
         console.log('[Mining] Found', stakedAssetIds.size, 'staked asset IDs');
         return stakedAssetIds;
@@ -972,8 +976,9 @@ class MiningGame extends TSDGEMSGame {
         for (let i = 0; i < MAX_SLOTS; i++) {
             const slotNum = i + 1;
             const isMiningSlotUnlocked = i < this.effectiveSlots;
-            const rawSpeedboost = this.stakedSpeedboosts[slotNum];
-            const stakedSpeedboost = Array.isArray(rawSpeedboost) ? rawSpeedboost[0] : rawSpeedboost;
+            // Guard: ensure stakedSpeedboosts is initialized
+            const rawSpeedboost = (this.stakedSpeedboosts && this.stakedSpeedboosts[slotNum]) || null;
+            const stakedSpeedboost = rawSpeedboost ? (Array.isArray(rawSpeedboost) ? rawSpeedboost[0] : rawSpeedboost) : null;
             const stakedMine = this.stakedMines[slotNum];
 
             slots.push({
@@ -1228,8 +1233,9 @@ class MiningGame extends TSDGEMSGame {
 
                 if (!job.effectiveDurationMs) {
                     // Fallback: calculate client-side from staked speedboost
-                    const stakedSpeedboostRaw = this.stakedSpeedboosts[slot.slotNum];
-                    const stakedSpeedboost = Array.isArray(stakedSpeedboostRaw) ? stakedSpeedboostRaw[0] : stakedSpeedboostRaw;
+                    // Guard: ensure stakedSpeedboosts is initialized
+                    const stakedSpeedboostRaw = (this.stakedSpeedboosts && this.stakedSpeedboosts[slot.slotNum]) || null;
+                    const stakedSpeedboost = stakedSpeedboostRaw ? (Array.isArray(stakedSpeedboostRaw) ? stakedSpeedboostRaw[0] : stakedSpeedboostRaw) : null;
                     if (stakedSpeedboost) {
                         const fallbackBoost = typeof stakedSpeedboost.boost === 'number'
                             ? stakedSpeedboost.boost
@@ -1322,7 +1328,8 @@ class MiningGame extends TSDGEMSGame {
             // Available slot (unlocked but no job)
             const stakedMine = this.stakedMines[slot.slotNum];
             const stakedWorkers = this.stakedWorkers[slot.slotNum] || [];
-            const stakedSpeedboostRaw = this.stakedSpeedboosts[slot.slotNum];
+            // Guard: ensure stakedSpeedboosts is initialized
+            const stakedSpeedboostRaw = (this.stakedSpeedboosts && this.stakedSpeedboosts[slot.slotNum]) || null;
             // Guard: handle both single object and array (for backward compatibility)
             const stakedSpeedboost = stakedSpeedboostRaw ? (Array.isArray(stakedSpeedboostRaw) ? stakedSpeedboostRaw[0] : stakedSpeedboostRaw) : null;
 
@@ -2477,8 +2484,9 @@ class MiningGame extends TSDGEMSGame {
 
             // Get available speedboosts (not already staked)
             const stakedAssetIds = this.getStakedAssetIds();
+            // Guard: ensure stakedSpeedboosts is initialized
             const stakedSpeedboostIds = new Set(
-                Object.values(this.stakedSpeedboosts)
+                (this.stakedSpeedboosts ? Object.values(this.stakedSpeedboosts) : [])
                     .map(sb => Array.isArray(sb) ? sb[0] : sb)
                     .filter(sb => sb && sb.asset_id)
                     .map(sb => String(sb.asset_id))
@@ -2491,8 +2499,9 @@ class MiningGame extends TSDGEMSGame {
 
             console.log('[Mining] Available speedboosts:', availableSpeedboosts.length, 'of', this.speedboostNFTs.length);
 
-            const currentSpeedboostRaw = this.stakedSpeedboosts[slotNum];
-            const currentSpeedboost = Array.isArray(currentSpeedboostRaw) ? currentSpeedboostRaw[0] : currentSpeedboostRaw || null;
+            // Guard: ensure stakedSpeedboosts is initialized
+            const currentSpeedboostRaw = (this.stakedSpeedboosts && this.stakedSpeedboosts[slotNum]) || null;
+            const currentSpeedboost = currentSpeedboostRaw ? (Array.isArray(currentSpeedboostRaw) ? currentSpeedboostRaw[0] : currentSpeedboostRaw) : null;
 
             // Ensure overlay has time to render before modal injection
             await new Promise(resolve => requestAnimationFrame(resolve));
@@ -2709,8 +2718,8 @@ class MiningGame extends TSDGEMSGame {
     async unstakeSpeedboost(slotNum) {
         console.log('[Mining] Unstaking speedboost from slot:', slotNum);
 
-        // Guard: handle both single object and array
-        const stakedSpeedboostRaw = this.stakedSpeedboosts[slotNum];
+        // Guard: ensure stakedSpeedboosts is initialized and handle both single object and array
+        const stakedSpeedboostRaw = (this.stakedSpeedboosts && this.stakedSpeedboosts[slotNum]) || null;
         const stakedSpeedboost = stakedSpeedboostRaw ? (Array.isArray(stakedSpeedboostRaw) ? stakedSpeedboostRaw[0] : stakedSpeedboostRaw) : null;
 
         if (!stakedSpeedboost || !stakedSpeedboost.asset_id) {
