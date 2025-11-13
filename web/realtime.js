@@ -114,58 +114,11 @@
             }
           });
 
-          // --- Legacy individual listeners (will be phased out as pages migrate to live data) ---
-          // --- Player doc (ownership, balances, staked, etc.)
-          this._listenDoc(['players', actor], (snap) => {
-            const data = snap.exists() ? snap.data() : null;
-            this._last.player = data;
-            emit('realtime:player', { actor, player: data });
-            // ownership guard: broadcast a simple set of owned asset_ids for quick checks
-            const owned = new Set(Object.values(data?.assets || {}).map(a => String(a.asset_id)));
-            emit('realtime:owned-assets', { actor, owned });
-          });
-
-          // --- Global runtime data used by multiple pages
-          this._listenDoc(['runtime', 'pricing'], (snap) => {
-            const data = snap.exists() ? snap.data() : null;
-            this._last.basePrice = data;
-            emit('realtime:base-price', { basePrice: data });
-          });
-
           // optional: cities config if you render matrix locally
           this._listenDoc(['game_config', 'cities'], (snap) => {
             const data = snap.exists() ? snap.data() : null;
             this._last.cities = data?.list || [];
             emit('realtime:cities', { cities: this._last.cities });
-          });
-
-          // optional: city boosts as a collection (if used client-side)
-          this._listenCol(['city_boosts'], (col) => {
-            const boosts = col.docs.map(d => ({ id: d.id, ...d.data() }));
-            this._last.boosts = boosts;
-            emit('realtime:city-boosts', { boosts });
-          });
-
-          // --- Inventory realtime sync ---
-          // Gems inventory
-          this._listenDoc(['players', actor, 'inventory', 'gems'], (snap) => {
-            const data = snap.exists() ? snap.data() : {};
-            this._last.gems = data;
-            emit('realtime:inventory-gems', { actor, gems: data });
-          });
-
-          // Inventory summary
-          this._listenDoc(['players', actor, 'meta', 'inventory_summary'], (snap) => {
-            const data = snap.exists() ? snap.data() : null;
-            this._last.inventorySummary = data;
-            emit('realtime:inventory-summary', { actor, summary: data });
-          });
-
-          // Speedboost items
-          this._listenDoc(['players', actor, 'inventory', 'speedboost'], (snap) => {
-            const data = snap.exists() ? snap.data() : {};
-            this._last.speedboost = data;
-            emit('realtime:inventory-speedboost', { actor, speedboost: data });
           });
         },
 

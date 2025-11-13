@@ -63,7 +63,6 @@ class MiningGame extends TSDGEMSGame {
         this.currentActor = null;
         this.activeJobs = [];
         this.effectiveSlots = 0;
-        this.refreshInterval = null;
         this.timerInterval = null;
         this.inventoryData = null;
         this.mineNFTs = [];
@@ -77,6 +76,14 @@ class MiningGame extends TSDGEMSGame {
         this.completedJobsRendered = new Set(); // Track jobs that already triggered a completion re-render
         this.pendingCompletionJobs = new Set(); // Jobs we optimistically removed
         this.loadingOverlayDepth = 0;
+
+        this.awaitingInitialRealtime = false;
+        this.initialRealtimePromise = null;
+        this.initialRealtimeResolver = null;
+        this.initialRealtimeReject = null;
+        this.initialRealtimeTimer = null;
+        this.realtimeHandlersRegistered = false;
+        this.realtimeData = this.getEmptyRealtimeState();
 
         // Mobile optimization
         this.isMobile = this.detectMobile();
@@ -148,37 +155,330 @@ class MiningGame extends TSDGEMSGame {
 
     // 🔥 Setup listeners for live mining slots data
     setupLiveDataListeners() {
-        console.log('[Mining] Setting up live data listeners...');
+        if (this.realtimeHandlersRegistered) {
+            return;
+        }
 
-        // Listen for mining slots updates from live data
-        window.addEventListener('realtime:mining-slots', (event) => {
-            const { actor, slots } = event.detail;
-            if (actor === this.currentActor && slots) {
-                console.log('[Mining] 🔥 Realtime mining slots update:', slots.length, 'slots');
-                this.updateMiningSlotsFromLive(slots);
-                // Also update staked assets from live data
-                this.updateStakedAssetsFromLive(slots);
+        this.realtimeHandlersRegistered = true;
+
+        this.onRealtimeLive = (event) => {
+            const { actor, live } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
             }
+            console.log('[MiningRealtime] live aggregate received, miningSlots:', live?.miningSlots?.length || 0);
+            this.mergeLiveData(live);
+        };
+
+        this.onRealtimeProfile = (event) => {
+            const { actor, profile } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor) || !profile) {
+                return;
+            }
+            this.applyProfileFromRealtime(profile);
+        };
+
+        this.onRealtimeMiningSlots = (event) => {
+            const { actor, slots } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            console.log('[MiningRealtime] slots update, slots:', slots?.map(slot => ({
+                id: slot.id,
+                state: slot.state,
+                stakedCount: slot.staked?.length || 0
+            })));
+            this.applyMiningSlotsFromRealtime(slots);
+        };
+
+        this.onRealtimeInventorySummary = (event) => {
+            const { actor, summary } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.applyInventorySummaryFromRealtime(summary);
+        };
+
+        this.onRealtimeInventoryGems = (event) => {
+            const { actor, gems } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.applyGemsFromRealtime(gems);
+        };
+
+        this.onRealtimeInventorySpeedboost = (event) => {
+            const { actor, speedboost } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.speedboost = speedboost || null;
+            if (this.realtimeData.inventory) {
+                this.applyInventoryFromRealtime({ ...this.realtimeData.inventory, speedboostDetails: speedboost || this.realtimeData.inventory.speedboostDetails });
+            }
+        };
+
+        window.addEventListener('realtime:live', this.onRealtimeLive);
+        window.addEventListener('realtime:profile', this.onRealtimeProfile);
+        window.addEventListener('realtime:mining-slots', this.onRealtimeMiningSlots);
+        window.addEventListener('realtime:inventory-summary', this.onRealtimeInventorySummary);
+        window.addEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
+        window.addEventListener('realtime:inventory-speedboost', this.onRealtimeInventorySpeedboost);
+    }
+
+    getEmptyRealtimeState() {
+        return {
+            live: null,
+            profile: null,
+            miningSlots: [],
+            inventory: null,
+            inventorySummary: null,
+            gems: null,
+            speedboost: null
+        };
+    }
+
+    prepareMiningForRealtime() {
+        this.showLoadingState(true);
+    }
+
+    clearInitialRealtimeTimer() {
+        if (this.initialRealtimeTimer) {
+            clearTimeout(this.initialRealtimeTimer);
+            this.initialRealtimeTimer = null;
+        }
+    }
+
+    handleRealtimeStartFailure(error) {
+        console.error('[Mining] Failed to start realtime mining stream:', error);
+        this.clearInitialRealtimeTimer();
+        this.awaitingInitialRealtime = false;
+        this.showLoadingState(false);
+        this.rejectInitialRealtime(error);
+        this.showNotification('Failed to start realtime mining data: ' + error.message, 'error');
+    }
+
+    resetInitialRealtimePromise() {
+        this.initialRealtimePromise = null;
+        this.initialRealtimeResolver = null;
+        this.initialRealtimeReject = null;
+    }
+
+    resolveInitialRealtime() {
+        if (!this.initialRealtimePromise) {
+            return;
+        }
+        if (this.initialRealtimeResolver) {
+            this.initialRealtimeResolver();
+        }
+        this.resetInitialRealtimePromise();
+    }
+
+    rejectInitialRealtime(error) {
+        if (!this.initialRealtimePromise) {
+            return;
+        }
+        if (this.initialRealtimeReject) {
+            this.initialRealtimeReject(error);
+        }
+        this.resetInitialRealtimePromise();
+    }
+
+    cleanupRealtimeSession() {
+        this.clearInitialRealtimeTimer();
+        this.awaitingInitialRealtime = false;
+        this.resetInitialRealtimePromise();
+        this.realtimeData = this.getEmptyRealtimeState();
+        this.activeJobs = [];
+        this.stakedMines = {};
+        this.stakedWorkers = {};
+        this.inventoryData = null;
+        this.mineNFTs = [];
+        this.workerNFTs = [];
+        this.speedboostNFTs = [];
+        this.pendingCompletionJobs = new Set();
+        this.completedJobsRendered = new Set();
+        this.loadingOverlayDepth = 0;
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+
+    isEventForCurrentActor(actor) {
+        return Boolean(this.currentActor) && actor === this.currentActor;
+    }
+
+    startRealtimeForActor(actor) {
+        if (!actor) {
+            console.warn('[Mining] No actor provided, skipping realtime start');
+            return Promise.resolve();
+        }
+
+        const sameActor = this.currentActor === actor;
+        if (sameActor && !this.awaitingInitialRealtime && this.realtimeData.miningSlots.length > 0) {
+            console.log('[Mining] Realtime mining data already active');
+            return Promise.resolve();
+        }
+
+        this.currentActor = actor;
+        this.isLoggedIn = true;
+
+        this.cleanupRealtimeSession();
+        this.prepareMiningForRealtime();
+
+        this.awaitingInitialRealtime = true;
+        this.initialRealtimePromise = new Promise((resolve, reject) => {
+            this.initialRealtimeResolver = resolve;
+            this.initialRealtimeReject = reject;
         });
 
-        // Listen for profile updates (for Game $ and slot unlocks)
-        window.addEventListener('realtime:profile', (event) => {
-            const { actor, profile } = event.detail;
-            if (actor === this.currentActor && profile) {
-                console.log('[Mining] 🔥 Realtime profile update:', profile);
-
-                // Update effective slots
-                this.effectiveSlots = Math.min(profile.miningSlotsUnlocked || 0, MAX_SLOTS);
-
-                // Update Game $
-                if (profile.ingameCurrency !== undefined) {
-                    this.updateGameDollars(profile.ingameCurrency, false);
-                }
-
-                // Re-render slots if unlocks changed
-                this.renderMiningSlots();
+        if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
+            try {
+                window.TSDRealtime.start(actor);
+            } catch (error) {
+                this.handleRealtimeStartFailure(error);
+                throw error;
             }
-        });
+        } else {
+            const error = new Error('TSDRealtime is not available');
+            this.handleRealtimeStartFailure(error);
+            throw error;
+        }
+
+        this.initialRealtimeTimer = setTimeout(() => {
+            if (this.awaitingInitialRealtime) {
+                this.showNotification('Waiting for realtime mining data...', 'info');
+            }
+        }, 4000);
+
+        return this.initialRealtimePromise;
+    }
+
+    markRealtimeInitialized() {
+        if (!this.awaitingInitialRealtime) {
+            return;
+        }
+        this.awaitingInitialRealtime = false;
+        this.clearInitialRealtimeTimer();
+        this.showLoadingState(false);
+        this.resolveInitialRealtime();
+    }
+
+    mergeLiveData(live) {
+        if (!live || typeof live !== 'object') {
+            return;
+        }
+
+        this.realtimeData.live = live;
+
+        if (live.profile) {
+            this.applyProfileFromRealtime(live.profile);
+        }
+        if (live.miningSlots) {
+            this.applyMiningSlotsFromRealtime(live.miningSlots);
+        }
+        if (live.inventory) {
+            this.applyInventoryFromRealtime(live.inventory);
+        } else if (live.inventorySummary) {
+            this.applyInventorySummaryFromRealtime(live.inventorySummary);
+        }
+        if (live.speedboost) {
+            this.realtimeData.speedboost = live.speedboost;
+        }
+        if (live.gems) {
+            this.applyGemsFromRealtime(live.gems);
+        }
+    }
+
+    applyProfileFromRealtime(profile) {
+        if (!profile || typeof profile !== 'object') {
+            return;
+        }
+
+        this.realtimeData.profile = profile;
+
+        const rawCurrency = Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0);
+        const previousCurrency = Number(this.currentGameDollars ?? 0);
+        const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
+        const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
+            ? previousCurrency
+            : sanitizedCurrency;
+        this.updateGameDollars(effectiveCurrency, false);
+
+        const tsdmBalance = document.getElementById('tsdm-balance-mining');
+        if (tsdmBalance) {
+            const tsdm = Number(profile.balances?.TSDM ?? profile.balances?.tsdm ?? 0);
+            tsdmBalance.textContent = tsdm.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+
+        const unlocked = Math.min(profile.miningSlotsUnlocked ?? 0, MAX_SLOTS);
+        const previousSlots = this.effectiveSlots;
+        this.effectiveSlots = unlocked;
+        if (unlocked !== previousSlots) {
+            this.renderMiningSlots();
+        }
+
+        this.markRealtimeInitialized();
+    }
+
+    applyMiningSlotsFromRealtime(slots) {
+        if (!Array.isArray(slots)) {
+            return;
+        }
+        this.realtimeData.miningSlots = slots;
+        this.updateMiningSlotsFromLive(slots);
+        this.updateStakedAssetsFromLive(slots);
+        this.updateMiningStats();
+        this.startTimerUpdates();
+        this.markRealtimeInitialized();
+    }
+
+    applyInventoryFromRealtime(inventoryData) {
+        if (!inventoryData || typeof inventoryData !== 'object') {
+            return;
+        }
+
+        const merged = {
+            ...(this.realtimeData.inventory || {}),
+            ...inventoryData
+        };
+
+        if (!merged.speedboostDetails && this.realtimeData.speedboost) {
+            merged.speedboostDetails = this.realtimeData.speedboost;
+        }
+
+        this.realtimeData.inventory = merged;
+        this.inventoryData = merged;
+        this.updateInventoryStructures(merged);
+        this.renderMiningSlots();
+        this.updateMiningStats();
+    }
+
+    applyInventorySummaryFromRealtime(summary) {
+        if (!summary || typeof summary !== 'object') {
+            return;
+        }
+
+        this.realtimeData.inventorySummary = summary;
+
+        if (summary.inventory) {
+            this.applyInventoryFromRealtime(summary.inventory);
+        } else if (!this.realtimeData.inventory || Object.keys(this.realtimeData.inventory).length === 0) {
+            this.applyInventoryFromRealtime(summary);
+        } else {
+            this.applyInventoryFromRealtime({ ...this.realtimeData.inventory, ...summary });
+        }
+    }
+
+    applyGemsFromRealtime(gems) {
+        if (!gems || typeof gems !== 'object') {
+            return;
+        }
+        this.realtimeData.gems = gems;
     }
 
     // 🔥 Update mining slots from live data (timing/state only)
@@ -414,24 +714,7 @@ class MiningGame extends TSDGEMSGame {
             return;
         }
 
-        try {
-            console.log('[Mining] Refreshing inventory from blockchain...');
-            this.showNotification('Fetching fresh data from blockchain...', 'info');
-            
-            // Force refresh inventory data
-            this.inventoryData = await this.backendService.refreshInventory(this.currentActor);
-            
-            console.log('[Mining] Inventory refreshed:', this.inventoryData);
-            
-            // Reload mining data with fresh inventory
-            this.isInitialized = false;
-            await this.loadMiningData(this.currentActor);
-            
-            this.showNotification('Inventory refreshed from blockchain!', 'success');
-        } catch (error) {
-            console.error('[Mining] Failed to refresh inventory:', error);
-            this.showNotification('Failed to refresh inventory: ' + error.message, 'error');
-        }
+        this.showNotification('Inventory updates automatically via realtime stream.', 'info');
     }
 
     async connectWallet() {
@@ -477,301 +760,89 @@ class MiningGame extends TSDGEMSGame {
     }
 
     async loadMiningData(actor) {
-        // Check if already initialized - skip full reload
-        if (this.isInitialized && this.lastDataLoad && (Date.now() - this.lastDataLoad) < 300000) {
-            console.log('[Mining] Already initialized, skipping full reload');
-            // Just refresh active jobs (quick)
-            await this.fetchActiveMiningJobs(actor);
-            this.renderMiningSlots();
+        console.log('[MiningLegacyLoader] loadMiningData called - now just starts realtime for actor:', actor);
+        if (!actor) {
+            console.warn('[Mining] loadMiningData called without actor');
             return;
         }
-        
-        try {
-            console.log('[Mining] ========================================');
-            console.log('[Mining] Loading mining data for actor:', actor);
-            
-            // Show loading state
-            this.showLoadingState(true);
-            
-            this.showNotification('📊 Loading mining data...', 'info');
 
-            // Fetch all data in parallel for better performance
-            // Note: initPlayer is async in background for new players
-            console.log('[Mining] 📊 Fetching data from backend APIs...');
-            const results = await Promise.all([
-                this.backendService.getDashboard(actor),
-                this.fetchActiveMiningJobs(actor).catch(() => ({ jobs: [] })),
-                this.fetchInventoryData(actor).catch(() => null),
-                this.backendService.getStakedAssets(actor).catch(() => ({ stakingData: {} }))
-            ]);
-            console.log('[Mining] 📊 Backend data fetched - dashboard, activeJobs, inventory, stakedAssets');
-            
-            const [dashboard, activeJobs, inventoryData, stakedAssets] = results;
-
-            if (dashboard && dashboard.player) {
-                console.log('[Mining] 📊 Player data loaded from backend:', {
-                    ingameCurrency: dashboard.player.ingameCurrency,
-                    miningSlotsUnlocked: dashboard.player.miningSlotsUnlocked,
-                    fromCache: dashboard.cached || false
-                });
-                
-                // Get effective mining slots from player profile
-                this.effectiveSlots = Math.min(dashboard.player.miningSlotsUnlocked || 0, MAX_SLOTS);
-                console.log('[Mining] Mining slots unlocked:', dashboard.player.miningSlotsUnlocked);
-                console.log('[Mining] Effective slots:', this.effectiveSlots);
-                
-                const rawCurrency = Number(dashboard.player.ingameCurrency ?? dashboard.player.ingame_currency ?? 0);
-                const previousCurrency = Number(this.currentGameDollars ?? 0);
-                const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
-                const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
-                    ? previousCurrency
-                    : sanitizedCurrency;
-                this.updateGameDollars(effectiveCurrency, false);
-                
-                // Update TSDM balance in mining stats
-                const tsdmBalance = document.getElementById('tsdm-balance-mining');
-                if (tsdmBalance) {
-                    const tsdm = dashboard.player.balances?.TSDM || 0;
-                    tsdmBalance.textContent = tsdm.toLocaleString(undefined, { 
-                        minimumFractionDigits: 2, 
-                        maximumFractionDigits: 2 
-                    });
-                }
-            }
-            
-            // Process active mining jobs
-            if (activeJobs && activeJobs.jobs) {
-                this.activeJobs = activeJobs.jobs;
-            }
-            
-            // Process inventory data
-            this.updateInventoryStructures(inventoryData);
-            
-            // Process staked assets
-            await this.loadStakedAssets(actor, stakedAssets);
-                
-                 // Render UI
-                 this.renderMiningSlots();
-                 this.updateMiningStats();
-             
-             // Hide loading state
-             this.showLoadingState(false);
-             
-             // Mark as initialized and track load time
-            this.isInitialized = true;
-            this.lastDataLoad = Date.now();
-            
-            // Start auto-refresh
-                this.startAutoRefresh();
-                
-            // Start timer updates
-            this.startTimerUpdates();
-            
-            this.showNotification('✅ Mining data loaded!', 'success');
-            console.log('[Mining] ✅ Mining data loaded successfully');
-            console.log('[Mining] ========================================');
-            
-        } catch (error) {
-            console.error('[Mining] Failed to load mining data:', error);
-            
-            // Hide loading state on error
-            this.showLoadingState(false);
-            
-            this.showNotification('❌ Failed to load mining data: ' + error.message, 'error');
+        if (this.awaitingInitialRealtime && this.currentActor === actor && this.initialRealtimePromise) {
+            console.log('[Mining] Realtime load already in progress - waiting for next update');
+            return this.initialRealtimePromise;
         }
+
+        return this.startRealtimeForActor(actor);
     }
 
+    // LEGACY FUNCTIONS - NO LONGER USED
+    // Mining UI is now driven purely by TSDRealtime events (realtime:live / realtime:mining-slots)
+    // These functions were previously used for manual data fetching but are now redundant
+
+    /*
     async fetchActiveMiningJobs(actor) {
-        try {
-            console.log('[Mining] Fetching active mining jobs...');
-            
-            const url = `${this.backendService.apiBase}/getActiveMining?actor=${encodeURIComponent(actor)}`;
-            const response = await fetch(url);
-            
-            if (!response.ok) {
-                throw new Error(`getActiveMining failed: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            console.log('[Mining] Active mining jobs response:', data);
-            
-            const jobs = data.jobs || [];
-            // Filter out jobs that were just claimed optimistically
-            this.activeJobs = jobs.filter(j => !this.pendingCompletionJobs.has(j.jobId));
-            
-            console.log('[Mining] Active jobs:', this.activeJobs.length);
-            console.log('[Mining] Effective slots:', this.effectiveSlots);
-            
-            // Return data for Promise.all usage
-            return { jobs };
-            
-        } catch (error) {
-            console.error('[Mining] Failed to fetch active jobs:', error);
-            this.activeJobs = [];
+        console.log('[Mining] fetchActiveMiningJobs relying on realtime state');
+        if (actor && this.currentActor && actor !== this.currentActor) {
+            console.warn('[Mining] fetchActiveMiningJobs actor mismatch, returning empty jobs');
             return { jobs: [] };
         }
+        return { jobs: Array.isArray(this.activeJobs) ? this.activeJobs : [] };
     }
 
     async fetchInventoryData(actor) {
-        try {
-            console.log('[Mining] Fetching inventory data...');
-            
-            const inventoryData = await this.backendService.getInventory(actor, false);
-            console.log('[Mining] Inventory data received:', inventoryData);
-            
-            // Return data for Promise.all usage
-            return inventoryData;
-            
-        } catch (error) {
-            console.error('[Mining] Failed to fetch inventory:', error);
+        console.log('[Mining] fetchInventoryData relying on realtime inventory snapshot');
+        if (actor && this.currentActor && actor !== this.currentActor) {
             return null;
         }
+        return this.inventoryData;
     }
 
     async loadStakedAssets(actor, preloadedResponse = null) {
-        try {
-            console.log('[Mining] Loading staked assets...');
- 
-            const stakingResponse = preloadedResponse || await this.backendService.getStakedAssets(actor);
-            console.log('[Mining] 📊 Staking data received from backend:', {
-                hasData: !!stakingResponse?.stakingData,
-                miningSlots: stakingResponse?.stakingData?.mining ? Object.keys(stakingResponse.stakingData.mining) : [],
-                polishingSlots: stakingResponse?.stakingData?.polishing ? Object.keys(stakingResponse.stakingData.polishing) : [],
-                fromCache: stakingResponse?.cached || false
-            });
-            if (stakingResponse && stakingResponse.stakingData && stakingResponse.stakingData.mining) {
-                console.log('[Mining] 📊 Mining staking data details:', Object.entries(stakingResponse.stakingData.mining).map(([slot, data]) => ({
-                    slot,
-                    mine: data.mine?.asset_id,
-                    workers: data.workers?.length || 0
-                })));
-            }
- 
-            if (stakingResponse && stakingResponse.stakingData) {
-                const stakingData = stakingResponse.stakingData;
- 
-                // Initialize staking data
-                this.stakedMines = {};
-                this.stakedWorkers = {};
-                this.stakedSpeedboosts = {};
- 
-                // Process mining staking data
-                if (stakingData.mining) {
-                    // Collect all staked worker asset IDs for ownership validation
-                    const allStakedWorkerIds = [];
-                    Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
-                        if (slotData.workers && slotData.workers.length > 0) {
-                            slotData.workers.forEach(worker => {
-                                allStakedWorkerIds.push(worker.asset_id);
-                            });
-                        }
-                    });
- 
-                    // Validate ownership of staked workers
-                    let ownedWorkerIds = new Set(allStakedWorkerIds);
-                    if (allStakedWorkerIds.length > 0) {
-                        try {
-                            const ownershipResponse = await fetch(`${this.backendService.apiBase}/validateOwnershipEndpoint`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ actor: actor, assetIds: allStakedWorkerIds })
-                            });
- 
-                            if (ownershipResponse.ok) {
-                                const ownershipData = await ownershipResponse.json();
-                                if (ownershipData.valid && ownershipData.ownedAssets) {
-                                    ownedWorkerIds = new Set(ownershipData.ownedAssets.map(a => a.asset_id));
-                                } else if (ownershipData.apiError) {
-                                    console.warn('[Mining] Ownership validation API error, assuming all workers are owned');
-                                }
-                            } else {
-                                console.warn('[Mining] Failed to validate worker ownership, assuming all workers are owned');
-                            }
-                        } catch (error) {
-                            console.warn('[Mining] Error validating worker ownership:', error, 'assuming all workers are owned');
-                        }
-                    }
- 
-                    // Process each slot
-                    Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
-                        const slotNum = parseInt(slotKey.replace('slot', ''));
- 
-                        if (slotData.mine) {
-                            this.stakedMines[slotNum] = {
-                                template_id: slotData.mine.template_id,
-                                name: slotData.mine.name,
-                                mp: slotData.mine.mp,
-                                asset_id: slotData.mine.asset_id
-                            };
-                        }
- 
-                        // Filter workers to only include those still owned
-                        if (slotData.workers && slotData.workers.length > 0) {
-                            const ownedWorkers = slotData.workers.filter(worker =>
-                                ownedWorkerIds.has(worker.asset_id)
-                            );
- 
-                            // Auto-unstake workers that are no longer owned
-                            const unownedWorkers = slotData.workers.filter(worker =>
-                                !ownedWorkerIds.has(worker.asset_id)
-                            );
- 
-                            if (unownedWorkers.length > 0) {
-                                console.log(`[Mining] Auto-unstaking ${unownedWorkers.length} worker(s) from slot ${slotNum} that are no longer owned:`,
-                                    unownedWorkers.map(w => `${w.name} (${w.asset_id})`));
- 
-                                // Remove unowned workers from staking data (they will be unstaked server-side)
-                                unownedWorkers.forEach(async (worker) => {
-                                    try {
-                                        await this.backendService.unstakeAsset(actor, 'mining', slotNum, 'worker', worker.asset_id);
-                                        console.log(`[Mining] Auto-unstaked worker ${worker.name} from slot ${slotNum}`);
-                                    } catch (unstakeError) {
-                                        console.error(`[Mining] Failed to auto-unstake worker ${worker.name}:`, unstakeError);
-                                    }
-                                });
-                            }
- 
-                            this.stakedWorkers[slotNum] = ownedWorkers.map(worker => ({
-                                template_id: worker.template_id,
-                                name: worker.name,
-                                mp: worker.mp,
-                                asset_id: worker.asset_id
-                            }));
-                        } else {
-                            // Explicitly set to empty array if no workers (or workers property doesn't exist)
-                            this.stakedWorkers[slotNum] = [];
-                        }
- 
-                        if (slotData.speedboost) {
-                            const templateId = String(slotData.speedboost.template_id);
-                            const info = SPEEDBOOST_BY_TEMPLATE[templateId] || { boost: slotData.speedboost.boost || 0 };
-                            this.stakedSpeedboosts[slotNum] = {
-                                template_id: slotData.speedboost.template_id,
-                                name: slotData.speedboost.name || getSpeedboostName(templateId),
-                                asset_id: slotData.speedboost.asset_id,
-                                boost: slotData.speedboost.boost ?? info.boost ?? 0,
-                                imagePath: slotData.speedboost.imagePath || getSpeedboostImage(templateId)
-                            };
-                        }
-                    });
-                }
- 
-                console.log('[Mining] Loaded staked mines:', this.stakedMines);
-                console.log('[Mining] Loaded staked workers:', this.stakedWorkers);
-                console.log('[Mining] Loaded staked speedboosts:', this.stakedSpeedboosts);
-                return stakingResponse;
-            } else {
-                console.log('[Mining] No staking data found, initializing empty');
-                this.stakedMines = {};
-                this.stakedWorkers = {};
-                this.stakedSpeedboosts = {};
-                return stakingResponse;
-            }
- 
-        } catch (error) {
-            console.error('[Mining] Failed to load staked assets:', error);
-            throw error;
+        console.log('[Mining] loadStakedAssets relying on realtime slots');
+        if (actor && this.currentActor && actor !== this.currentActor) {
+            return {};
         }
+
+        if (preloadedResponse && preloadedResponse.stakingData && preloadedResponse.stakingData.mining) {
+            const slots = Object.entries(preloadedResponse.stakingData.mining).map(([slotKey, slotData]) => {
+                const slotNum = parseInt(slotKey.replace('slot', ''), 10);
+                return {
+                    id: slotNum,
+                    staked: this.normalizeStakedItems(slotData)
+                };
+            });
+            this.updateStakedAssetsFromLive(slots);
+            this.updateMiningStats();
+            return preloadedResponse.stakingData;
+        }
+
+        if (Array.isArray(this.realtimeData.miningSlots)) {
+            this.updateStakedAssetsFromLive(this.realtimeData.miningSlots);
+            this.updateMiningStats();
+        }
+
+        return {
+            mining: this.stakedMines,
+            workers: this.stakedWorkers
+        };
+    }
+    */
+
+    normalizeStakedItems(slotData) {
+        if (!slotData) {
+            return [];
+        }
+
+        const collected = [];
+        if (slotData.mine) {
+            collected.push({ type: 'mine', ...slotData.mine });
+        }
+        if (Array.isArray(slotData.workers)) {
+            slotData.workers.forEach(worker => collected.push({ type: 'worker', ...worker }));
+        }
+        if (Array.isArray(slotData.speedboost)) {
+            slotData.speedboost.forEach(boost => collected.push({ type: 'speedboost', ...boost }));
+        }
+        return collected;
     }
 
     /**
@@ -1549,11 +1620,7 @@ class MiningGame extends TSDGEMSGame {
                 : '';
             
             this.showNotification(`✅ Mining job started! Complete in ${this.formatTime(remainingTime)}${boostText}`, 'success');
-            
-            // Refresh mining data to show the active job with timer
-            await this.fetchActiveMiningJobs(this.currentActor);
-            this.renderMiningSlots();
-            this.updateMiningStats();
+            this.showNotification('Awaiting realtime confirmation for the new mining job...', 'info');
             
             // Start timer updates if not already running
             if (!this.timerInterval) {
@@ -1654,19 +1721,12 @@ class MiningGame extends TSDGEMSGame {
                 console.log(`[Mining] Auto-removed unowned worker ${assetId} from slot ${slotNum}`);
             }
 
-            // Reload staked assets to refresh UI
-            console.log('[Mining] Reloading staked assets after worker removal...');
-            await this.loadStakedAssets(this.currentActor);
-            console.log('[Mining] Staked assets reloaded. Current workers for slot', slotNum, ':', this.stakedWorkers[slotNum]);
-
-            // Re-render all slots to update the UI (with delay to ensure backend operations complete)
-            setTimeout(() => {
-                this.renderMiningSlots();
-            }, 1000);
-
+            // UI will update automatically via realtime:mining-slots event
+            console.log('[Mining] Waiting for realtime update after worker removal...');
+            
             // Show success notification
             const count = assetIdsToRemove.length;
-            this.showNotification(`✅ Removed ${count} unowned worker${count > 1 ? 's' : ''} from Slot ${slotNum}`, 'success');
+            this.showNotification(`✅ Removed ${count} unowned worker${count > 1 ? 's' : ''} from Slot ${slotNum}. Realtime update pending...`, 'success');
 
         } catch (error) {
             console.error('[Mining] Failed to remove unowned workers:', error);
@@ -1761,28 +1821,9 @@ class MiningGame extends TSDGEMSGame {
                 this.showNotification(notificationMessage, 'warning');
             }
 
-            // Delay server sync slightly to avoid state bouncing
-            await new Promise(r => setTimeout(r, 1500));
-            // Retry a few times until the job disappears server-side
-            for (let attempt = 0; attempt < 3; attempt++) {
-                await this.fetchActiveMiningJobs(this.currentActor);
-                if (!this.activeJobs.find(j => j.jobId === jobId)) break;
-                await new Promise(r => setTimeout(r, 1500));
-            }
-            
-            // Reload dashboard to update balances
-            const dashboard = await this.backendService.getDashboard(this.currentActor);
-            if (dashboard && dashboard.player) {
-                const rawCurrency = Number(dashboard.player.ingameCurrency ?? dashboard.player.ingame_currency ?? 0);
-                const previousCurrency = Number(this.currentGameDollars ?? 0);
-                const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
-                const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
-                    ? previousCurrency
-                    : sanitizedCurrency;
-                this.updateGameDollars(effectiveCurrency, true);
-            }
-            
-            // Re-render slots (the completed job will be removed, slot returns to available state)
+            this.showNotification('Awaiting realtime confirmation for rewards...', 'info');
+
+            // Re-render slots (the completed job will be removed once realtime updates arrive)
             this.renderMiningSlots();
             this.updateMiningStats();
             
@@ -1961,10 +2002,7 @@ class MiningGame extends TSDGEMSGame {
                 `;
                 
                 this.showNotification(`✅ Mining slot ${slotNum} unlocked successfully!`, 'success');
-                
-                // Force reload mining data after payment (bypass cache)
-                this.isInitialized = false;
-                await this.loadMiningData(this.currentActor);
+                this.showNotification('Realtime update in progress. Your dashboard will refresh automatically.', 'info');
                 
                 // Close modal after delay
                 setTimeout(() => {
@@ -2656,12 +2694,9 @@ class MiningGame extends TSDGEMSGame {
             this.showLoadingState(false);
             
             if (result.success) {
-                // Reload staked assets from backend to ensure UI is in sync
-                await this.loadStakedAssets(this.currentActor);
-                
-                this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
+                // UI will update automatically via realtime:mining-slots event
+                this.showNotification(`✅ Staked ${name} to Slot ${slotNum}! Realtime update pending...`, 'success');
                 this.closeStakeModal();
-                this.renderMiningSlots();
             } else {
                 throw new Error(result.error || 'Failed to stake mine');
             }
@@ -2948,14 +2983,11 @@ class MiningGame extends TSDGEMSGame {
             // Hide loading state
             this.showLoadingState(false);
             
-            // Reload from backend to sync state
-            await this.loadStakedAssets(this.currentActor);
-            
+            // UI will update automatically via realtime:mining-slots event
             this.selectedWorkersForUnstake.clear();
-            this.renderMiningSlots();
             
             const count = assetIdsToUnstake.length;
-            this.showNotification(`✅ Unstaked ${count} worker${count > 1 ? 's' : ''} from Slot ${slotNum}!`, 'success');
+            this.showNotification(`✅ Unstaked ${count} worker${count > 1 ? 's' : ''} from Slot ${slotNum}! Realtime update pending...`, 'success');
             
         } catch (error) {
             console.error('[Mining] Failed to unstake workers:', error);
@@ -2984,11 +3016,8 @@ class MiningGame extends TSDGEMSGame {
             );
             
             if (result.success) {
-                // Reload staked assets from backend to ensure UI is in sync
-                await this.loadStakedAssets(this.currentActor);
-                
-                this.showNotification(`✅ Unstaked ${worker.name} from Slot ${slotNum}!`, 'success');
-                this.renderMiningSlots();
+                // UI will update automatically via realtime:mining-slots event
+                this.showNotification(`✅ Unstaked ${worker.name} from Slot ${slotNum}! Realtime update pending...`, 'success');
             } else {
                 throw new Error(result.error || 'Failed to unstake worker');
             }
@@ -3095,11 +3124,8 @@ class MiningGame extends TSDGEMSGame {
             );
             
             if (result.success) {
-                // Reload staked assets from backend to ensure UI is in sync
-                await this.loadStakedAssets(this.currentActor);
-                
-                this.showNotification(`✅ Unstaked ${stakedMine.name} from Slot ${slotNum}!`, 'success');
-                this.renderMiningSlots();
+                // UI will update automatically via realtime:mining-slots event
+                this.showNotification(`✅ Unstaked ${stakedMine.name} from Slot ${slotNum}! Realtime update pending...`, 'success');
             } else {
                 throw new Error(result.error || 'Failed to unstake mine');
             }
@@ -3148,52 +3174,6 @@ class MiningGame extends TSDGEMSGame {
                 this.renderMiningSlots();
             }
         }, 1000);
-    }
-
-    async startAutoRefresh() {
-        if (!this.currentActor) return;
-
-        // Try to use TSDRealtime if available
-        if (window.TSDRealtime) {
-            try {
-                console.log('[Mining] 🎯 Starting TSDRealtime for mining data...');
-                window.TSDRealtime.start(this.currentActor);
-                console.log('[Mining] ✅ TSDRealtime active - instant updates enabled!');
-                return;
-            } catch (error) {
-                console.warn('[Mining] TSDRealtime failed, falling back to polling:', error);
-            }
-        } else {
-            console.warn('[Mining] TSDRealtime not available');
-        }
-
-        // Fallback: Polling method
-        // Refresh mining data every 30 seconds
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-        }
-
-        this.refreshInterval = setInterval(async () => {
-            if (this.isLoggedIn && this.currentActor) {
-                try {
-                    await this.fetchActiveMiningJobs(this.currentActor);
-                    this.renderMiningSlots();
-                    this.updateMiningStats();
-                } catch (error) {
-                    console.error('[Mining] Auto-refresh failed:', error);
-                }
-            }
-        }, 30000);
-        
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            if (this.refreshInterval) {
-                clearInterval(this.refreshInterval);
-            }
-            if (this.timerInterval) {
-                clearInterval(this.timerInterval);
-            }
-        });
     }
 
     showLoadingState(isLoading, message = 'Loading Mining Data') {
@@ -3273,11 +3253,11 @@ class MiningGame extends TSDGEMSGame {
         console.log('[Mining] Disconnecting wallet...');
         
         try {
-            // Stop intervals
-            if (this.refreshInterval) {
-                clearInterval(this.refreshInterval);
-                this.refreshInterval = null;
+            if (window.TSDRealtime && typeof window.TSDRealtime.stop === 'function') {
+                window.TSDRealtime.stop();
             }
+
+            // Stop intervals
             if (this.timerInterval) {
                 clearInterval(this.timerInterval);
                 this.timerInterval = null;
@@ -3449,22 +3429,26 @@ class MiningGame extends TSDGEMSGame {
             return;
         }
 
-        try {
-            const [inventoryData, stakedAssets] = await Promise.all([
-                this.backendService.getInventory(this.currentActor, forceRefresh),
-                this.backendService.getStakedAssets(this.currentActor)
-            ]);
+        if (forceRefresh) {
+            this.showNotification('Inventory updates automatically via realtime data.', 'info');
+        }
 
-            console.log('[Mining] loadInventoryAndAssets -> inventory:', inventoryData, 'staked:', stakedAssets);
+        if (this.inventoryData) {
+            this.updateInventoryStructures(this.inventoryData);
+        }
 
-            this.updateInventoryStructures(inventoryData);
-            await this.loadStakedAssets(this.currentActor, stakedAssets);
-            return { inventoryData, stakedAssets };
-         } catch (error) {
-             console.error('[Mining] Failed to load inventory and assets:', error);
-             throw error;
-         }
-     }
+        if (Array.isArray(this.realtimeData.miningSlots)) {
+            this.updateStakedAssetsFromLive(this.realtimeData.miningSlots);
+        }
+
+        return {
+            inventoryData: this.inventoryData,
+            stakedAssets: {
+                mining: this.stakedMines,
+                workers: this.stakedWorkers
+            }
+        };
+    }
 
     updateInventoryStructures(inventoryData) {
         this.inventoryData = inventoryData || null;

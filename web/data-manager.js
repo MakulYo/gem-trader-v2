@@ -347,65 +347,6 @@ class DataManager {
         return await loadPromise;
     }
 
-    // Preload critical data when actor connects
-    async preloadCriticalData(actor) {
-        this.currentActor = actor;
-        console.log('[DataManager] 🚀 Preloading critical data for', actor);
-        
-        const startTime = Date.now();
-        
-        // Load in parallel
-        const promises = [
-            this.getDashboard(actor).catch(e => console.error('[DataManager] Dashboard preload failed:', e)),
-            this.getInventory(actor).catch(e => console.error('[DataManager] Inventory preload failed:', e)),
-            this.getCityMatrix().catch(e => console.error('[DataManager] CityMatrix preload failed:', e)),
-            this.getBasePrice().catch(e => console.error('[DataManager] BasePrice preload failed:', e))
-        ];
-
-        await Promise.allSettled(promises);
-        
-        const elapsed = Date.now() - startTime;
-        console.log(`[DataManager] ✅ Critical data preloaded in ${elapsed}ms`);
-    }
-
-    async getDashboard(actor) {
-        if (!actor) actor = this.currentActor;
-        return this.get('dashboard', () => this.backendService.getDashboard(actor));
-    }
-
-    async getInventory(actor, forceRefresh = false) {
-        if (!actor) actor = this.currentActor;
-        return this.get('inventory', () => this.backendService.getInventory(actor, forceRefresh), forceRefresh);
-    }
-
-    async getCityMatrix() {
-        return this.get('cityMatrix', () => this.backendService.getCityMatrix());
-    }
-
-    async getBasePrice() {
-        return this.get('basePrice', () => this.backendService.getBasePrice());
-    }
-
-    async getLeaderboard(actor, limit = 100) {
-        if (!actor) actor = this.currentActor;
-        return this.get('leaderboard', () => this.backendService.getLeaderboard(actor, limit));
-    }
-
-    async getActiveMining(actor) {
-        if (!actor) actor = this.currentActor;
-        return this.get('activeMining', () => this.backendService.getActiveMining(actor));
-    }
-
-    async getActivePolishing(actor) {
-        if (!actor) actor = this.currentActor;
-        return this.get('activePolishing', () => this.backendService.getActivePolishing(actor));
-    }
-
-    async getStakedAssets(actor) {
-        if (!actor) actor = this.currentActor;
-        return this.get('stakedAssets', () => this.backendService.getStakedAssets(actor));
-    }
-
     // Invalidate cache when data changes
     invalidate(cacheKey) {
         if (this.cache[cacheKey]) {

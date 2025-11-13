@@ -247,6 +247,28 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
         if (Number.isFinite(multiplier) && multiplier !== 1) {
           normalized.multiplier = multiplier;
         }
+
+      const templateMint = asset.template_mint || asset.templateMint;
+      if (templateMint) normalized.template_mint = templateMint;
+
+      const imagePath = asset.imagePath || asset.image_url;
+      if (imagePath) normalized.imagePath = imagePath;
+
+      if (type === 'gem') {
+        const gemType = asset.gemType || asset.gem_type || asset.typeName;
+        if (gemType) normalized.gemType = gemType;
+
+        if (asset.bonus !== undefined) {
+          const bonus = Number(asset.bonus);
+          normalized.bonus = Number.isFinite(bonus) ? bonus : 0;
+        }
+
+        if (asset.isPolished !== undefined) {
+          normalized.isPolished = Boolean(asset.isPolished);
+        } else if (asset.is_polished !== undefined) {
+          normalized.isPolished = Boolean(asset.is_polished);
+        }
+      }
       }
 
       return normalized;

@@ -52,7 +52,6 @@ class PolishingGame extends TSDGEMSGame {
         this.activeJobs = [];
         this.pendingCompletionJobs = new Set();
         this.effectiveSlots = 0;
-        this.refreshInterval = null;
         this.timerInterval = null;
         this.inventoryData = null;
         this.polishingTableNFTs = [];
@@ -60,6 +59,14 @@ class PolishingGame extends TSDGEMSGame {
         this.polishedGems = {}; // { polished_diamond: X, polished_ruby: Y, ... }
         this.selectedSlotForStaking = null;
         this.stakedTables = {}; // { slotNum: { template_id, name } }
+        
+        this.awaitingInitialRealtime = false;
+        this.initialRealtimePromise = null;
+        this.initialRealtimeResolver = null;
+        this.initialRealtimeReject = null;
+        this.initialRealtimeTimer = null;
+        this.realtimeHandlersRegistered = false;
+        this.realtimeData = this.getEmptyRealtimeState();
 
         // Mobile optimization
         this.isMobile = this.detectMobile();
@@ -113,98 +120,395 @@ class PolishingGame extends TSDGEMSGame {
 
     // 🔥 Setup listeners for live polishing slots data
     setupLiveDataListeners() {
-        console.log('[Polishing] Setting up live data listeners...');
+        console.log('[Polishing] Setting up realtime listeners...');
 
-        // Listen for polishing slots updates from live data
-        window.addEventListener('realtime:polishing-slots', (event) => {
-            const { actor, slots } = event.detail;
-            if (actor === this.currentActor && slots) {
-                console.log('[Polishing] 🔥 Realtime polishing slots update:', slots.length, 'slots');
-                this.updatePolishingSlotsFromLive(slots);
-            }
-        });
-
-        // Listen for profile updates (for Game $ and slot unlocks)
-        window.addEventListener('realtime:profile', (event) => {
-            const { actor, profile } = event.detail;
-            if (actor === this.currentActor && profile) {
-                console.log('[Polishing] 🔥 Realtime profile update:', profile);
-
-                // Update effective slots
-                const unlockedSlots = typeof profile.polishingSlotsUnlocked === 'number'
-                    ? Math.max(0, Math.min(profile.polishingSlotsUnlocked, MAX_POLISHING_SLOTS))
-                    : null;
-
-                if (unlockedSlots !== null) {
-                    const previousSlots = this.effectiveSlots || 0;
-                    const nextSlots = Math.max(previousSlots, unlockedSlots);
-                    if (nextSlots !== previousSlots) {
-                        this.effectiveSlots = nextSlots;
-                    }
-                }
-
-                // Update Game $
-                if (profile.ingameCurrency !== undefined) {
-                    this.updateGameDollars(profile.ingameCurrency, false);
-                }
-
-                // Re-render slots if unlocks changed
-                this.renderPolishingSlots();
-            }
-        });
-
-        // Listen for gems updates for rough gem counts
-        window.addEventListener('realtime:inventory-gems', (event) => {
-            const { actor, gems } = event.detail;
-            if (actor === this.currentActor && gems) {
-                console.log('[Polishing] 🔥 Realtime gems update:', gems);
-                this.updateGemCountsFromRealtime(gems);
-            }
-        });
-    }
-
-    // 🔥 Update polishing slots from live data
-    updatePolishingSlotsFromLive(slots) {
-        console.log('[Polishing] Updating polishing slots from live data...');
-
-        // Convert live slots format to activeJobs format
-        const activeJobs = slots
-            .filter(slot => slot.state === 'active' || slot.state === 'running')
-            .map(slot => ({
-                jobId: `job_slot_${slot.id}`,
-                slotId: `slot_${slot.id}`,
-                startedAt: slot.startedAt,
-                finishAt: slot.finishAt,
-                power: slot.power || 0,
-                state: slot.state
-            }));
-
-        this.activeJobs = activeJobs;
-        console.log('[Polishing] Active jobs from live data:', this.activeJobs.length);
-
-        // Update staked assets from live data
-        if (slots) {
-            this.stakedTables = {};
-            this.stakedGems = {};
-
-            slots.forEach(slot => {
-                if (slot.staked) {
-                    const slotNum = slot.id;
-                    const tables = slot.staked.filter(asset => asset.type === 'table');
-                    const gems = slot.staked.filter(asset => asset.type === 'gem');
-
-                    if (tables.length > 0) {
-                        this.stakedTables[slotNum] = tables[0]; // Usually only one table per slot
-                    }
-
-                    if (gems.length > 0) {
-                        this.stakedGems[slotNum] = gems;
-                    }
-                }
-            });
+        if (this.realtimeHandlersRegistered) {
+            return;
         }
 
+        this.realtimeHandlersRegistered = true;
+
+        this.onRealtimeLive = (event) => {
+            const { actor, live } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            console.log('[Polishing] 🔄 realtime:live aggregate received');
+            this.mergeLiveData(live);
+        };
+
+        this.onRealtimeProfile = (event) => {
+            const { actor, profile } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor) || !profile) {
+                return;
+            }
+            this.applyProfileFromRealtime(profile);
+        };
+
+        this.onRealtimePolishingSlots = (event) => {
+            const { actor, slots } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.applyPolishingSlotsFromRealtime(slots);
+        };
+
+        this.onRealtimeInventorySummary = (event) => {
+            const { actor, summary } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.applyInventorySummaryFromRealtime(summary);
+        };
+
+        this.onRealtimeInventoryGems = (event) => {
+            const { actor, gems } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.applyGemsFromRealtime(gems);
+        };
+
+        window.addEventListener('realtime:live', this.onRealtimeLive);
+        window.addEventListener('realtime:profile', this.onRealtimeProfile);
+        window.addEventListener('realtime:polishing-slots', this.onRealtimePolishingSlots);
+        window.addEventListener('realtime:inventory-summary', this.onRealtimeInventorySummary);
+        window.addEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
+    }
+
+    getEmptyRealtimeState() {
+        return {
+            live: null,
+            profile: null,
+            polishingSlots: [],
+            inventory: null,
+            inventorySummary: null,
+            gems: null
+        };
+    }
+
+    preparePolishingForRealtime() {
+        this.showLoadingState(true);
+    }
+
+    clearInitialRealtimeTimer() {
+        if (this.initialRealtimeTimer) {
+            clearTimeout(this.initialRealtimeTimer);
+            this.initialRealtimeTimer = null;
+        }
+    }
+
+    handleRealtimeStartFailure(error) {
+        console.error('[Polishing] Failed to start realtime polishing stream:', error);
+        this.clearInitialRealtimeTimer();
+        this.awaitingInitialRealtime = false;
+        this.showLoadingState(false);
+        this.rejectInitialRealtime(error);
+        this.showNotification('Failed to start realtime polishing data: ' + error.message, 'error');
+    }
+
+    resetInitialRealtimePromise() {
+        this.initialRealtimePromise = null;
+        this.initialRealtimeResolver = null;
+        this.initialRealtimeReject = null;
+    }
+
+    resolveInitialRealtime() {
+        if (!this.initialRealtimePromise) {
+            return;
+        }
+        if (this.initialRealtimeResolver) {
+            this.initialRealtimeResolver();
+        }
+        this.resetInitialRealtimePromise();
+    }
+
+    rejectInitialRealtime(error) {
+        if (!this.initialRealtimePromise) {
+            return;
+        }
+        if (this.initialRealtimeReject) {
+            this.initialRealtimeReject(error);
+        }
+        this.resetInitialRealtimePromise();
+    }
+
+    cleanupRealtimeSession() {
+        this.clearInitialRealtimeTimer();
+        this.awaitingInitialRealtime = false;
+        this.resetInitialRealtimePromise();
+        this.realtimeData = this.getEmptyRealtimeState();
+        this.activeJobs = [];
+        this.stakedTables = {};
+        this.inventoryData = null;
+        this.polishingTableNFTs = [];
+        this.roughGemsCount = 0;
+        this.polishedGems = {};
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+
+    isEventForCurrentActor(actor) {
+        return Boolean(this.currentActor) && actor === this.currentActor;
+    }
+
+    startRealtimeForActor(actor) {
+        if (!actor) {
+            console.warn('[Polishing] No actor provided, skipping realtime start');
+            return Promise.resolve();
+        }
+
+        const sameActor = this.currentActor === actor;
+        if (sameActor && !this.awaitingInitialRealtime && this.realtimeData.polishingSlots.length > 0) {
+            console.log('[Polishing] Realtime polishing data already active');
+            return Promise.resolve();
+        }
+
+        this.currentActor = actor;
+        this.isLoggedIn = true;
+
+        this.cleanupRealtimeSession();
+        this.preparePolishingForRealtime();
+
+        this.awaitingInitialRealtime = true;
+        this.initialRealtimePromise = new Promise((resolve, reject) => {
+            this.initialRealtimeResolver = resolve;
+            this.initialRealtimeReject = reject;
+        });
+
+        if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
+            try {
+                window.TSDRealtime.start(actor);
+            } catch (error) {
+                this.handleRealtimeStartFailure(error);
+                throw error;
+            }
+        } else {
+            const error = new Error('TSDRealtime is not available');
+            this.handleRealtimeStartFailure(error);
+            throw error;
+        }
+
+        this.initialRealtimeTimer = setTimeout(() => {
+            if (this.awaitingInitialRealtime) {
+                this.showNotification('Waiting for realtime polishing data...', 'info');
+            }
+        }, 4000);
+
+        return this.initialRealtimePromise;
+    }
+
+    markRealtimeInitialized() {
+        if (!this.awaitingInitialRealtime) {
+            return;
+        }
+        this.awaitingInitialRealtime = false;
+        this.clearInitialRealtimeTimer();
+        this.showLoadingState(false);
+        this.resolveInitialRealtime();
+    }
+
+    mergeLiveData(live) {
+        if (!live || typeof live !== 'object') {
+            return;
+        }
+
+        this.realtimeData.live = live;
+
+        if (live.profile) {
+            this.applyProfileFromRealtime(live.profile);
+        }
+        if (live.polishingSlots) {
+            this.applyPolishingSlotsFromRealtime(live.polishingSlots);
+        }
+        if (live.inventory) {
+            this.applyInventoryFromRealtime(live.inventory);
+        } else if (live.inventorySummary) {
+            this.applyInventorySummaryFromRealtime(live.inventorySummary);
+        }
+        if (live.gems) {
+            this.applyGemsFromRealtime(live.gems);
+        }
+    }
+
+    applyProfileFromRealtime(profile) {
+        const rawCurrency = Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0);
+        const previousCurrency = Number(this.currentGameDollars ?? 0);
+        const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
+        const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
+            ? previousCurrency
+            : sanitizedCurrency;
+        this.updateGameDollars(effectiveCurrency, false);
+
+        if (typeof profile.polishingSlotsUnlocked === 'number') {
+            const unlocked = Math.max(0, Math.min(profile.polishingSlotsUnlocked, MAX_POLISHING_SLOTS));
+            if (unlocked !== this.effectiveSlots) {
+                this.effectiveSlots = unlocked;
+                this.renderPolishingSlots();
+            }
+        }
+    }
+
+    applyPolishingSlotsFromRealtime(slots) {
+        if (!Array.isArray(slots)) {
+            return;
+        }
+        this.realtimeData.polishingSlots = slots;
+        this.updatePolishingSlotsFromLive(slots);
+        this.updatePolishingStats();
+        this.startTimerUpdates();
+        this.markRealtimeInitialized();
+    }
+
+    applyInventoryFromRealtime(inventoryData) {
+        if (!inventoryData || typeof inventoryData !== 'object') {
+            return;
+        }
+
+        this.realtimeData.inventory = {
+            ...(this.realtimeData.inventory || {}),
+            ...inventoryData
+        };
+
+        this.inventoryData = this.realtimeData.inventory;
+        this.processInventoryDetails(this.inventoryData);
         this.renderPolishingSlots();
+        this.updatePolishingStats();
+    }
+
+    applyInventorySummaryFromRealtime(summary) {
+        if (!summary || typeof summary !== 'object') {
+            return;
+        }
+        this.realtimeData.inventorySummary = summary;
+        if (summary.inventory) {
+            this.applyInventoryFromRealtime(summary.inventory);
+        }
+    }
+
+    updatePolishingSlotsFromLive(slots) {
+        if (!Array.isArray(slots)) {
+            slots = [];
+        }
+
+        const previousJobs = Array.isArray(this.activeJobs) ? this.activeJobs : [];
+        const jobBySlot = new Map(previousJobs.map(job => [job.slotNum, job]));
+        const updatedJobs = [];
+        const updatedPending = new Set();
+        const nextStakedTables = {};
+
+        slots.forEach((slot) => {
+            const slotNum = Number(slot?.id ?? slot?.slotNum ?? slot?.slot_id ?? slot?.slot);
+            if (!slotNum || Number.isNaN(slotNum)) {
+                return;
+            }
+
+            const stakedAssets = Array.isArray(slot?.staked) ? slot.staked : [];
+            const tableAsset = stakedAssets.find(asset => (asset?.type || '').toLowerCase() === 'table');
+            if (tableAsset && tableAsset.asset_id) {
+                nextStakedTables[slotNum] = {
+                    template_id: tableAsset.template_id,
+                    name: tableAsset.name || `Table ${slotNum}`,
+                    imagePath: tableAsset.imagePath || tableAsset.image || '',
+                    asset_id: tableAsset.asset_id
+                };
+            }
+
+            const state = String(slot?.state || slot?.status || '').toLowerCase();
+            if (state === 'active' || state === 'complete' || state === 'ready') {
+                const previousJob = jobBySlot.get(slotNum) || {};
+                const jobId = slot.jobId || previousJob.jobId || `slot${slotNum}`;
+                if (this.pendingCompletionJobs.has(jobId)) {
+                    updatedPending.add(jobId);
+                    return;
+                }
+
+                const startedAt = this.toMillis(slot.startedAt ?? previousJob.startedAt ?? null);
+                const finishAt = this.toMillis(slot.finishAt ?? previousJob.finishAt ?? null);
+                const amountIn = Number(slot.amountIn ?? slot.amount ?? slot.gemsIn ?? previousJob.amountIn ?? 0);
+                const power = Number(slot.power ?? previousJob.power ?? 0);
+
+                updatedJobs.push({
+                    slotNum,
+                    jobId,
+                    startedAt,
+                    finishAt: finishAt ?? (startedAt ? startedAt + POLISHING_DURATION_MS : null),
+                    amountIn,
+                    power
+                });
+            }
+        });
+
+        this.pendingCompletionJobs = updatedPending;
+        this.stakedTables = nextStakedTables;
+        this.activeJobs = updatedJobs;
+        this.polishingSlots = slots;
+
+        this.renderPolishingSlots();
+    }
+
+    toMillis(value) {
+        if (!value) return null;
+        if (typeof value === 'number') return value;
+        if (value instanceof Date) return value.getTime();
+        if (typeof value === 'string') {
+            const parsed = Date.parse(value);
+            return Number.isNaN(parsed) ? null : parsed;
+        }
+        if (typeof value.toMillis === 'function') {
+            return value.toMillis();
+        }
+        if (typeof value === 'object' && value._seconds != null) {
+            const seconds = Number(value._seconds);
+            const nanos = Number(value._nanoseconds || 0);
+            if (Number.isFinite(seconds)) {
+                return (seconds * 1000) + Math.floor(nanos / 1e6);
+            }
+        }
+        return null;
+    }
+
+    applyGemsFromRealtime(gems) {
+        if (!gems || typeof gems !== 'object') {
+            return;
+        }
+        this.realtimeData.gems = gems;
+        this.roughGemsCount = Number(gems[ROUGH_GEM_KEY] ?? 0);
+
+        const polished = {};
+        POLISHED_GEM_TYPES.forEach(type => {
+            polished[type] = Number(gems[type] ?? 0);
+        });
+        this.polishedGems = polished;
+
+        this.updatePolishingStats();
+        this.renderPolishingSlots();
+    }
+
+    processInventoryDetails(inventoryData) {
+        this.polishingTableNFTs = [];
+        if (!inventoryData || !inventoryData.equipmentDetails) {
+            return;
+        }
+
+        const equipmentArray = Object.entries(inventoryData.equipmentDetails).flatMap(([templateId, details]) => {
+            const assets = details.assets || [];
+            return assets.map(assetId => {
+                const assetDetails = (inventoryData.assets || []).find(asset => asset.asset_id === assetId);
+                return {
+                    template_id: templateId,
+                    template_mint: assetDetails ? assetDetails.template_mint : 'unknown',
+                    name: details.name,
+                    image: details.image,
+                    imagePath: details.imagePath,
+                    asset_id: assetId
+                };
+            });
+        });
+
+        this.polishingTableNFTs = equipmentArray.filter(nft => (nft.name || '').toLowerCase().includes('polishing'));
     }
 
     setupWalletEventListeners() {
@@ -304,24 +608,7 @@ class PolishingGame extends TSDGEMSGame {
             return;
         }
 
-        try {
-            console.log('[Polishing] Refreshing inventory from blockchain...');
-            this.showNotification('Fetching fresh data from blockchain...', 'info');
-            
-            // Force refresh inventory data
-            this.inventoryData = await this.backendService.refreshInventory(this.currentActor);
-            
-            console.log('[Polishing] Inventory refreshed:', this.inventoryData);
-            
-            // Reload polishing data with fresh inventory
-            this.isInitialized = false;
-            await this.loadPolishingData(this.currentActor);
-            
-            this.showNotification('Inventory refreshed from blockchain!', 'success');
-        } catch (error) {
-            console.error('[Polishing] Failed to refresh inventory:', error);
-            this.showNotification('Failed to refresh inventory: ' + error.message, 'error');
-        }
+        this.showNotification('Inventory aktualisiert sich automatisch über Realtime.', 'info');
     }
 
     async connectWallet() {
@@ -366,276 +653,17 @@ class PolishingGame extends TSDGEMSGame {
     }
 
     async loadPolishingData(actor) {
-        // Check if already initialized - skip full reload
-        if (this.isInitialized && this.lastDataLoad && (Date.now() - this.lastDataLoad) < 300000) {
-            console.log('[Polishing] Already initialized, skipping full reload');
-            // Just refresh active jobs and gem inventory (quick)
-            await this.fetchActivePolishingJobs(actor);
-            await this.fetchGemInventory(actor);
-            this.renderPolishingSlots();
+        if (!actor) {
+            console.warn('[Polishing] loadPolishingData called without actor');
             return;
         }
-        
-        try {
-            console.log('[Polishing] ========================================');
-            console.log('[Polishing] Loading polishing data for actor:', actor);
-            
-            // Show loading state
-            this.showLoadingState(true);
-            
-            this.showNotification('📊 Loading polishing data...', 'info');
 
-            // Fetch all data in parallel for better performance
-            // Note: initPlayer runs in background for new players
-            const results = await Promise.all([
-                this.backendService.getDashboard(actor),
-                this.fetchActivePolishingJobs(actor).catch(() => ({ jobs: [] })),
-                this.fetchInventoryData(actor).catch(() => null),
-                this.fetchGemInventory(actor).catch(() => 0),
-                this.backendService.getStakedAssets(actor).catch(() => ({ stakingData: {} }))
-            ]);
-            
-            const [dashboard, activeJobs, inventoryData, gemInventory, stakedAssets] = results;
-
-            if (dashboard && dashboard.player) {
-                console.log('[Polishing] Player data loaded:', dashboard.player);
-                
-                const rawCurrency = Number(dashboard.player.ingameCurrency ?? dashboard.player.ingame_currency ?? 0);
-                const previousCurrency = Number(this.currentGameDollars ?? 0);
-                const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
-                const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
-                    ? previousCurrency
-                    : sanitizedCurrency;
-                this.updateGameDollars(effectiveCurrency, false);
-            }
-            
-            // Process active jobs
-            if (activeJobs && activeJobs.jobs) {
-                this.activeJobs = activeJobs.jobs;
-            }
-            
-            // Process gem inventory
-            if (gemInventory) {
-                this.roughGemsCount = gemInventory;
-            }
-            
-            // Process inventory data
-            if (inventoryData) {
-                // Process polish table NFTs
-                if (inventoryData.equipmentDetails) {
-                    const equipmentArray = Object.entries(inventoryData.equipmentDetails).map(([templateId, details]) => {
-                        // Create individual NFT objects with template_mint
-                        const assets = details.assets || [];
-                        return assets.map(assetId => {
-                            const assetDetails = inventoryData.assets.find(asset => asset.asset_id === assetId);
-                            return {
-                                template_id: templateId,
-                                template_mint: assetDetails ? assetDetails.template_mint : 'unknown',
-                                name: details.name,
-                                image: details.image,
-                                imagePath: details.imagePath,
-                                asset_id: assetId
-                            };
-                        });
-                    }).flat();
-                    
-                    this.polishingTableNFTs = equipmentArray.filter(nft => {
-                        const name = (nft.name || '').toLowerCase();
-                        return name.includes('polishing');
-                    });
-                }
-            }
-            
-            // Process staked assets
-            if (stakedAssets && stakedAssets.stakingData) {
-                const stakingData = stakedAssets.stakingData;
-                this.stakedTables = {};
-                this.stakedGems = {};
-                
-                if (stakingData.polishing) {
-                    Object.entries(stakingData.polishing).forEach(([slotKey, slotData]) => {
-                        const slotNum = parseInt(slotKey.replace('slot', ''));
-                        
-                        if (slotData.table) {
-                            this.stakedTables[slotNum] = {
-                                template_id: slotData.table.template_id,
-                                name: slotData.table.name,
-                                asset_id: slotData.table.asset_id
-                            };
-                        }
-                        
-                        if (slotData.gem) {
-                            this.stakedGems[slotNum] = {
-                                template_id: slotData.gem.template_id,
-                                name: slotData.gem.name,
-                                gemType: slotData.gem.gemType,
-                                isPolished: slotData.gem.isPolished,
-                                bonus: slotData.gem.bonus,
-                                asset_id: slotData.gem.asset_id
-                            };
-                        }
-                    });
-                }
-            }             this.renderPolishingSlots();
-             this.updatePolishingStats();
-             
-             // Hide loading state
-             this.showLoadingState(false);
-             
-             // Mark as initialized and track load time
-            this.isInitialized = true;
-            this.lastDataLoad = Date.now();
-            
-            // Start auto-refresh
-            this.startAutoRefresh();
-            
-            // Start timer updates
-            this.startTimerUpdates();
-            
-            this.showNotification('✅ Polishing data loaded!', 'success');
-            console.log('[Polishing] ✅ Polishing data loaded successfully');
-            console.log('[Polishing] ========================================');
-            
-        } catch (error) {
-            console.error('[Polishing] Failed to load polishing data:', error);
-            
-            // Hide loading state on error
-            this.showLoadingState(false);
-            
-            this.showNotification('❌ Failed to load polishing data: ' + error.message, 'error');}
-    }
-
-    async fetchActivePolishingJobs(actor) {
-        try {
-            console.log('[Polishing] Fetching active polishing jobs...');
-            
-            const url = `${this.backendService.apiBase}/getActivePolishing?actor=${encodeURIComponent(actor)}`;
-            const response = await fetch(url);
-            
-            if (!response.ok) {
-                throw new Error(`getActivePolishing failed: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            console.log('[Polishing] Active polishing jobs response:', data);
-            
-            const jobs = data.jobs || [];
-            // Filter out jobs that we have already claimed optimistically
-            this.activeJobs = jobs.filter(j => !this.pendingCompletionJobs.has(j.jobId));
-            
-            console.log('[Polishing] Active jobs:', this.activeJobs.length);
-            console.log('[Polishing] Effective slots:', this.effectiveSlots);
-            
-            // Return data for Promise.all usage
-            return { jobs };
-            
-        } catch (error) {
-            console.error('[Polishing] Failed to fetch active jobs:', error);
-            this.activeJobs = [];
-            return { jobs: [] };
+        if (this.awaitingInitialRealtime && this.currentActor === actor && this.initialRealtimePromise) {
+            console.log('[Polishing] Realtime load already in progress - waiting for next update');
+            return this.initialRealtimePromise;
         }
-    }
 
-    async fetchInventoryData(actor) {
-        try {
-            console.log('[Polishing] Fetching inventory data...');
-            
-            const inventoryData = await this.backendService.getInventory(actor, false);
-            console.log('[Polishing] Inventory data received:', inventoryData);
-            
-            // Update instance variables
-            this.inventoryData = inventoryData;
-            this.effectiveSlots = inventoryData.polishingSlots || 0;
-            
-            // Return data for Promise.all usage
-            return inventoryData;
-            
-        } catch (error) {
-            console.error('[Polishing] Failed to fetch inventory:', error);
-            this.inventoryData = null;
-            this.polishingTableNFTs = [];
-            return null;
-        }
-    }
-
-    async fetchGemInventory(actor) {
-        try {
-            console.log('[Polishing] Fetching gem inventory...');
-            
-            const inventoryData = await this.backendService.getInventory(actor, false);
-            console.log('[Polishing] Full inventory data:', inventoryData);
-            
-            // Extract rough gem count (only one type)
-            const roughGemsCount = inventoryData[ROUGH_GEM_KEY] || 0;
-            
-            // Extract all 10 specific polished gem types
-            const polishedGems = {};
-            POLISHED_GEM_TYPES.forEach(gemType => {
-                polishedGems[gemType] = inventoryData[gemType] || 0;
-            });
-            
-            // Update instance variables
-            this.roughGemsCount = roughGemsCount;
-            this.polishedGems = polishedGems;
-            
-            console.log('[Polishing] ROUGH_GEM_KEY:', ROUGH_GEM_KEY);
-            console.log('[Polishing] Rough gems count:', this.roughGemsCount);
-            console.log('[Polishing] Polished gems:', this.polishedGems);
-            
-            if (this.roughGemsCount === 0) {
-                console.warn('[Polishing] No rough gems found! Button will be disabled.');
-            }
-            
-            // Return data for Promise.all usage
-            return roughGemsCount;
-            
-        } catch (error) {
-            console.error('[Polishing] Failed to fetch gem inventory:', error);
-            this.roughGemsCount = 0;
-            this.polishedGems = {};
-            return 0;
-        }
-    }
-
-    async loadStakedAssets(actor) {
-        try {
-            console.log('[Polishing] Loading staked assets...');
-            
-            const stakingResponse = await this.backendService.getStakedAssets(actor);
-            console.log('[Polishing] Staking data received:', stakingResponse);
-            
-            if (stakingResponse && stakingResponse.stakingData) {
-                const stakingData = stakingResponse.stakingData;
-                
-                // Initialize staking data
-                this.stakedTables = {};
-                
-                // Process polishing staking data
-                if (stakingData.polishing) {
-                    Object.entries(stakingData.polishing).forEach(([slotKey, slotData]) => {
-                        const slotNum = parseInt(slotKey.replace('slot', ''));
-                        
-                        if (slotData.table) {
-                            this.stakedTables[slotNum] = {
-                                template_id: slotData.table.template_id,
-                                name: slotData.table.name,
-                                imagePath: slotData.table.imagePath || '',
-                                asset_id: slotData.table.asset_id
-                            };
-                        }
-                    });
-                }
-                
-                console.log('[Polishing] Loaded staked tables:', this.stakedTables);
-            } else {
-                console.log('[Polishing] No staking data found, initializing empty');
-                this.stakedTables = {};
-            }
-            
-        } catch (error) {
-            console.error('[Polishing] Failed to load staked assets:', error);
-            this.stakedTables = {};
-        }
+        return this.startRealtimeForActor(actor);
     }
 
     /**
@@ -1215,9 +1243,8 @@ class PolishingGame extends TSDGEMSGame {
             // Close modal
             this.closeStakeModal();
             
-            // Refresh polishing data
-            await this.fetchActivePolishingJobs(this.currentActor);
-            await this.fetchGemInventory(this.currentActor);
+            // Wait for realtime updates to refresh slots and inventory
+            this.showNotification('Realtime update pending...', 'info');
             this.renderPolishingSlots();
             this.updatePolishingStats();
             
@@ -1278,32 +1305,13 @@ class PolishingGame extends TSDGEMSGame {
             // Show reward popup with actual results
             this.showRewardPopup(totalOut, 'Polished Gems', results);
             
-            // Delay server sync slightly to avoid state bouncing
-            await new Promise(r => setTimeout(r, 1500));
-            // Retry until the job disappears server-side
-            for (let attempt = 0; attempt < 3; attempt++) {
-                await this.fetchActivePolishingJobs(this.currentActor);
-                if (!this.activeJobs.find(j => j.jobId === jobId)) break;
-                await new Promise(r => setTimeout(r, 1500));
-            }
-            await this.fetchGemInventory(this.currentActor);
-            
-            // Reload dashboard to update balances
-            const dashboard = await this.backendService.getDashboard(this.currentActor);
-            if (dashboard && dashboard.player) {
-                const rawCurrency = Number(dashboard.player.ingameCurrency ?? dashboard.player.ingame_currency ?? 0);
-                const previousCurrency = Number(this.currentGameDollars ?? 0);
-                const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
-                const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
-                    ? previousCurrency
-                    : sanitizedCurrency;
-                this.updateGameDollars(effectiveCurrency, true);
-            }
-            
+            this.showNotification('Realtime update pending...', 'info');
             this.renderPolishingSlots();
-            this.updatePolishingStats();        } catch (error) {
+            this.updatePolishingStats();
+        } catch (error) {
             console.error('[Polishing] Failed to complete polishing:', error);
             this.showNotification('❌ Failed to claim rewards: ' + error.message, 'error');
+            this.pendingCompletionJobs.delete(jobId);
         } finally {
             // Re-enable the button
             if (claimButton) {
@@ -1311,7 +1319,6 @@ class PolishingGame extends TSDGEMSGame {
                 claimButton.innerHTML = '<i class="fas fa-gift"></i> CLAIM REWARDS';
                 claimButton.style.opacity = '1';
             }
-            this.pendingCompletionJobs.delete(jobId);
         }
     }
 
@@ -1447,11 +1454,9 @@ class PolishingGame extends TSDGEMSGame {
                     </div>
                 `;
                 
-                this.showNotification(`✅ Polishing slot ${slotNum} unlocked successfully!`, 'success');
+                this.showNotification(`✅ Polishing slot ${slotNum} unlocked successfully! Realtime update pending...`, 'success');
                 
-                // Force reload polishing data after payment (bypass cache)
-                this.isInitialized = false;
-                await this.loadPolishingData(this.currentActor);
+                // UI will update automatically via realtime:polishing-slots event
                 
                 // Close modal after delay
                 setTimeout(() => {
@@ -1597,12 +1602,19 @@ class PolishingGame extends TSDGEMSGame {
             this.showStakingLoadingState(false);
             
             if (result.success) {
-                // Update local state with backend data
-                await this.loadStakedAssets(this.currentActor);
-                
+                // Optimistically update local state while waiting for realtime
+                this.stakedTables[slotNum] = {
+                    template_id: templateId,
+                    name,
+                    imagePath,
+                    asset_id: assetId
+                };
+
                 this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
+                this.showNotification('Realtime update pending...', 'info');
                 this.closeStakeModal();
                 this.renderPolishingSlots();
+                this.updatePolishingStats();
             } else {
                 throw new Error(result.error || 'Failed to stake table');
             }
@@ -1697,12 +1709,12 @@ class PolishingGame extends TSDGEMSGame {
             );
 
             if (result.success) {
-                // Update local state with backend data
-                await this.loadStakedAssets(this.currentActor);
-
+                delete this.stakedTables[slotNum];
                 this.showNotification(`✅ Unstaked ${stakedTable.name} from Slot ${slotNum}!`, 'success');
+                this.showNotification('Realtime update pending...', 'info');
                 this.closeStakeModal(); // Close the confirmation modal
                 this.renderPolishingSlots();
+                this.updatePolishingStats();
             } else {
                 throw new Error(result.error || 'Failed to unstake table');
             }
@@ -1756,45 +1768,14 @@ class PolishingGame extends TSDGEMSGame {
     async startAutoRefresh() {
         if (!this.currentActor) return;
 
-        // Try to use TSDRealtime if available
         if (window.TSDRealtime) {
             try {
-                console.log('[Polishing] 🎯 Starting TSDRealtime for polishing data...');
+                console.log('[Polishing] 🎯 Ensuring TSDRealtime is running for polishing data...');
                 window.TSDRealtime.start(this.currentActor);
-                console.log('[Polishing] ✅ TSDRealtime active - instant updates enabled!');
-                return;
             } catch (error) {
-                console.warn('[Polishing] TSDRealtime failed, falling back to polling:', error);
+                console.warn('[Polishing] TSDRealtime start failed:', error);
             }
-        } else {
-            console.warn('[Polishing] TSDRealtime not available');
         }
-
-        // Fallback: Polling method
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-        }
-
-        this.refreshInterval = setInterval(async () => {
-            if (this.isLoggedIn && this.currentActor) {
-                try {
-                    await this.fetchActivePolishingJobs(this.currentActor);
-                    this.renderPolishingSlots();
-                    this.updatePolishingStats();
-                } catch (error) {
-                    console.error('[Polishing] Auto-refresh failed:', error);
-                }
-            }
-        }, 30000);
-        
-        window.addEventListener('beforeunload', () => {
-            if (this.refreshInterval) {
-                clearInterval(this.refreshInterval);
-            }
-            if (this.timerInterval) {
-                clearInterval(this.timerInterval);
-            }
-        });
     }
 
     showLoadingState(isLoading) {

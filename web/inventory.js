@@ -3,7 +3,6 @@
 class InventoryPage extends TSDGEMSGame {
     constructor() {
         super();
-        this.backendService = window.backendService;
         this.inventoryData = null;
         this.allNFTs = [];
         this.filteredNFTs = [];
@@ -12,6 +11,19 @@ class InventoryPage extends TSDGEMSGame {
         this.schemas = new Set();
         this.stakedAssetIds = new Set(); // Track staked assets
         this.currentPage = 1;
+        this.isLoggedIn = false;
+
+        this.awaitingInitialRealtime = false;
+        this.initialRealtimePromise = null;
+        this.initialRealtimeResolver = null;
+        this.initialRealtimeReject = null;
+        this.realtimeData = this.getEmptyRealtimeState();
+        this.initialRealtimeTimer = null;
+        this.realtimeHandlersRegistered = false;
+
+        this.handleWalletConnected = this.handleWalletConnected.bind(this);
+        this.handleWalletSessionRestored = this.handleWalletSessionRestored.bind(this);
+        this.handleWalletDisconnected = this.handleWalletDisconnected.bind(this);
 
         // Mobile optimization: fewer items per page to reduce memory usage
         this.isMobile = this.detectMobile();
@@ -27,6 +39,7 @@ class InventoryPage extends TSDGEMSGame {
             });
         }
 
+        this.setupRealtimeEventHandlers();
         this.init();
     }
 
@@ -55,126 +68,507 @@ class InventoryPage extends TSDGEMSGame {
         console.log('[Inventory] 📱 Inventory cache cleared');
     }
 
-    init() {this.setupEventListeners();
+    init() {
+        this.setupEventListeners();
 
         // Delayed wallet check to ensure wallet.js is fully initialized
         setTimeout(() => {
             this.checkWalletAndLoadInventory();
         }, 200);
 
+        this.prepareInventoryForRealtime();
         this.showNotification('Inventory system ready', 'info');
+    }
+
+    getEmptyRealtimeState() {
+        return {
+            live: null,
+            summary: null,
+            gems: null,
+            speedboost: null,
+            miningSlots: [],
+            polishingSlots: [],
+            assets: [],
+        };
+    }
+
+    setupRealtimeEventHandlers() {
+        if (this.realtimeHandlersRegistered) {
+            return;
+        }
+
+        this.realtimeHandlersRegistered = true;
+
+        this.onRealtimeLive = (event) => {
+            const { actor, live } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.mergeLiveInventoryData(live);
+            this.renderRealtimeInventory();
+        };
+
+        this.onRealtimeInventorySummary = (event) => {
+            const { actor, summary } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.summary = summary || null;
+            this.renderRealtimeInventory();
+        };
+
+        this.onRealtimeInventoryGems = (event) => {
+            const { actor, gems } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.gems = gems || {};
+            this.renderRealtimeInventory();
+        };
+
+        this.onRealtimeInventorySpeedboost = (event) => {
+            const { actor, speedboost } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.speedboost = speedboost || null;
+        };
+
+        this.onRealtimeMiningSlots = (event) => {
+            const { actor, slots } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.miningSlots = Array.isArray(slots) ? slots : [];
+            this.rebuildStakedAssetIds();
+            if (this.inventoryData) {
+                this.renderNFTs();
+            }
+        };
+
+        this.onRealtimePolishingSlots = (event) => {
+            const { actor, slots } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.polishingSlots = Array.isArray(slots) ? slots : [];
+            this.rebuildStakedAssetIds();
+            if (this.inventoryData) {
+                this.renderNFTs();
+            }
+        };
+
+        window.addEventListener('realtime:live', this.onRealtimeLive);
+        window.addEventListener('realtime:inventory-summary', this.onRealtimeInventorySummary);
+        window.addEventListener('realtime:inventory-gems', this.onRealtimeInventoryGems);
+        window.addEventListener('realtime:inventory-speedboost', this.onRealtimeInventorySpeedboost);
+        window.addEventListener('realtime:mining-slots', this.onRealtimeMiningSlots);
+        window.addEventListener('realtime:polishing-slots', this.onRealtimePolishingSlots);
+    }
+
+    prepareInventoryForRealtime() {
+        this.clearInitialRealtimeTimer();
+
+        const statPlaceholders = {
+            'total-nfts': '--',
+            'polished-gems': '--',
+            'rough-gems': '--',
+            'equipment-count': '--',
+            'unique-templates': '--'
+        };
+
+        Object.entries(statPlaceholders).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        });
+
+        this.showLoadingState();
+    }
+
+    clearInitialRealtimeTimer() {
+        if (this.initialRealtimeTimer) {
+            clearTimeout(this.initialRealtimeTimer);
+            this.initialRealtimeTimer = null;
+        }
+    }
+
+    handleRealtimeStartFailure(error) {
+        console.error('[Inventory] Failed to start realtime inventory stream:', error);
+        this.clearInitialRealtimeTimer();
+        this.awaitingInitialRealtime = false;
+        this.rejectInitialRealtime(error);
+        this.showEmptyState('error');
+        this.showNotification('Failed to start realtime inventory: ' + error.message, 'error');
+    }
+
+    resetInitialRealtimePromise() {
+        this.initialRealtimePromise = null;
+        this.initialRealtimeResolver = null;
+        this.initialRealtimeReject = null;
+    }
+
+    resolveInitialRealtime() {
+        if (!this.initialRealtimePromise) {
+            return;
+        }
+        if (this.initialRealtimeResolver) {
+            this.initialRealtimeResolver();
+        }
+        this.resetInitialRealtimePromise();
+    }
+
+    rejectInitialRealtime(error) {
+        if (!this.initialRealtimePromise) {
+            return;
+        }
+        if (this.initialRealtimeReject) {
+            this.initialRealtimeReject(error);
+        }
+        this.resetInitialRealtimePromise();
+    }
+
+    cleanupRealtimeSession() {
+        this.clearInitialRealtimeTimer();
+        this.awaitingInitialRealtime = false;
+        this.resetInitialRealtimePromise();
+        this.realtimeData = this.getEmptyRealtimeState();
+        this.stakedAssetIds = new Set();
+        this.inventoryData = null;
+        this.allNFTs = [];
+        this.filteredNFTs = [];
+    }
+
+    isEventForCurrentActor(actor) {
+        return Boolean(this.currentActor) && actor === this.currentActor;
+    }
+
+    startRealtimeForActor(actor) {
+        if (!actor) {
+            console.warn('[Inventory] No actor provided, skipping realtime start');
+            return Promise.resolve();
+        }
+
+        if (this.awaitingInitialRealtime && this.currentActor === actor && this.initialRealtimePromise) {
+            console.log('[Inventory] Realtime stream already active - waiting for next update');
+            return this.initialRealtimePromise;
+        }
+
+        if (!this.awaitingInitialRealtime && this.inventoryData) {
+            console.log('[Inventory] Realtime inventory already synced - skipping restart');
+            return Promise.resolve();
+        }
+
+        this.cleanupRealtimeSession();
+        this.prepareInventoryForRealtime();
+
+        this.realtimeData = this.getEmptyRealtimeState();
+        this.awaitingInitialRealtime = true;
+
+        this.resetInitialRealtimePromise();
+        this.initialRealtimePromise = new Promise((resolve, reject) => {
+            this.initialRealtimeResolver = resolve;
+            this.initialRealtimeReject = reject;
+        });
+
+        if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
+            try {
+                window.TSDRealtime.start(actor);
+            } catch (error) {
+                this.handleRealtimeStartFailure(error);
+                throw error;
+            }
+        } else {
+            const error = new Error('TSDRealtime is not available');
+            this.handleRealtimeStartFailure(error);
+            throw error;
+        }
+
+        this.initialRealtimeTimer = setTimeout(() => {
+            if (this.awaitingInitialRealtime) {
+                this.showNotification('Waiting for realtime inventory data...', 'info');
+            }
+        }, 4000);
+
+        return this.initialRealtimePromise;
+    }
+
+    mergeLiveInventoryData(live) {
+        if (!live || typeof live !== 'object') {
+            return;
+        }
+
+        this.realtimeData.live = live;
+
+        if (live.inventorySummary !== undefined) {
+            this.realtimeData.summary = live.inventorySummary;
+        }
+        if (live.gems !== undefined) {
+            this.realtimeData.gems = live.gems;
+        }
+
+        if (Array.isArray(live.inventoryAssets)) {
+            this.realtimeData.assets = live.inventoryAssets;
+        } else if (live.inventory && Array.isArray(live.inventory.assets)) {
+            this.realtimeData.assets = live.inventory.assets;
+        } else if (Array.isArray(live.assets)) {
+            this.realtimeData.assets = live.assets;
+        }
+
+        if (Array.isArray(live.miningSlots)) {
+            this.realtimeData.miningSlots = live.miningSlots;
+        }
+        if (Array.isArray(live.polishingSlots)) {
+            this.realtimeData.polishingSlots = live.polishingSlots;
+        }
+
+        this.rebuildStakedAssetIds();
+    }
+
+    renderRealtimeInventory() {
+        const assets = this.getRealtimeAssets();
+        const hasSummary = !!(this.realtimeData.summary && Object.keys(this.realtimeData.summary).length);
+        const hasAssets = assets.length > 0;
+        const hasGems = !!(this.realtimeData.gems && Object.keys(this.realtimeData.gems).length);
+
+        if (this.awaitingInitialRealtime && (hasSummary || hasAssets || hasGems)) {
+            this.awaitingInitialRealtime = false;
+            this.clearInitialRealtimeTimer();
+            this.resolveInitialRealtime();
+        }
+
+        this.inventoryData = this.buildInventoryDataFromRealtime(assets);
+        this.processInventoryData();
+        this.rebuildStakedAssetIds();
+        this.updateStats();
+        this.filterNFTs();
+    }
+
+    buildInventoryDataFromRealtime(assets = this.getRealtimeAssets()) {
+        const summary = this.realtimeData.summary || {};
+        const templateCounts = summary.templateCounts || summary.templates || null;
+        const totalFromSummary = summary.total ?? summary.totalNFTs ?? summary.inventoryTotal;
+
+        const data = {
+            ...summary,
+            total: Number.isFinite(totalFromSummary) ? totalFromSummary : assets.length,
+            polished: summary.polished ?? summary.polishedTotal ?? summary.totalPolished ?? 0,
+            rough: summary.rough ?? summary.roughTotal ?? summary.totalRough ?? 0,
+            equipment: summary.equipment ?? summary.equipmentCount ?? 0,
+            uniqueTemplates: summary.uniqueTemplates ?? summary.unique ?? (templateCounts ? Object.keys(templateCounts).length : 0),
+            assets,
+            templateCounts,
+            gems: this.realtimeData.gems || {},
+            collection: summary.collection || 'tsdmediagems'
+        };
+
+        return data;
+    }
+
+    getRealtimeAssets() {
+        const normalizeAssets = (value) => {
+            if (!value) {
+                return null;
+            }
+            if (Array.isArray(value)) {
+                return value;
+            }
+            if (typeof value === 'object') {
+                return Object.values(value);
+            }
+            return null;
+        };
+
+        let assets = normalizeAssets(this.realtimeData.assets);
+        if (assets) {
+            return assets;
+        }
+
+        const summary = this.realtimeData.summary;
+        if (summary) {
+            assets = normalizeAssets(summary.assets);
+            if (assets) {
+                return assets;
+            }
+            assets = normalizeAssets(summary.inventoryAssets);
+            if (assets) {
+                return assets;
+            }
+            assets = normalizeAssets(summary.items);
+            if (assets) {
+                return assets;
+            }
+        }
+
+        const live = this.realtimeData.live;
+        if (live) {
+            assets = normalizeAssets(live.inventoryAssets);
+            if (assets) {
+                return assets;
+            }
+            assets = normalizeAssets(live.assets);
+            if (assets) {
+                return assets;
+            }
+            if (live.inventory) {
+                assets = normalizeAssets(live.inventory.assets);
+                if (assets) {
+                    return assets;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    rebuildStakedAssetIds() {
+        const staked = new Set();
+        const register = (assetId) => {
+            if (assetId) {
+                staked.add(String(assetId));
+            }
+        };
+
+        const miningSlots = Array.isArray(this.realtimeData.miningSlots) ? this.realtimeData.miningSlots : [];
+        miningSlots.forEach((slot) => {
+            register(slot?.mine?.asset_id);
+
+            if (Array.isArray(slot?.staked)) {
+                slot.staked.forEach(item => register(item?.asset_id));
+            }
+            if (Array.isArray(slot?.workers)) {
+                slot.workers.forEach(worker => register(worker?.asset_id));
+            }
+            if (Array.isArray(slot?.speedboost)) {
+                slot.speedboost.forEach(boost => register(boost?.asset_id));
+            }
+        });
+
+        const polishingSlots = Array.isArray(this.realtimeData.polishingSlots) ? this.realtimeData.polishingSlots : [];
+        polishingSlots.forEach((slot) => {
+            register(slot?.table?.asset_id);
+            if (Array.isArray(slot?.gems)) {
+                slot.gems.forEach(gem => register(gem?.asset_id));
+            }
+        });
+
+        this.stakedAssetIds = staked;
+    }
+
+    async handleWalletConnected(event) {
+        const actor = event?.detail?.actor;
+        if (!actor) {
+            console.warn('[Inventory] wallet-connected event received without actor');
+            return;
+        }
+
+        await this.onActorAvailable(actor, {
+            loadingMessage: `Loading inventory for ${actor}...`,
+            successMessage: 'Inventory synced from realtime feed!'
+        });
+    }
+
+    async handleWalletSessionRestored(event) {
+        const actor = event?.detail?.actor;
+        if (!actor) {
+            return;
+        }
+
+        await this.onActorAvailable(actor, {
+            loadingMessage: `Restoring inventory for ${actor}...`,
+            successMessage: 'Inventory synced from realtime feed!'
+        });
+    }
+
+    handleWalletDisconnected() {
+        console.log('[Inventory] Wallet disconnected event received');
+
+        if (window.TSDRealtime && typeof window.TSDRealtime.stop === 'function') {
+            window.TSDRealtime.stop();
+        }
+
+        this.currentActor = null;
+        this.isLoggedIn = false;
+        this.cleanupRealtimeSession();
+
+        this.allNFTs = [];
+        this.filteredNFTs = [];
+        this.resetInventoryStats();
+        this.showEmptyState('no-wallet');
+        this.showNotification('Wallet disconnected', 'info');
+    }
+
+    resetInventoryStats() {
+        const defaults = {
+            'total-nfts': '0',
+            'polished-gems': '0',
+            'rough-gems': '0',
+            'equipment-count': '0',
+            'unique-templates': '0'
+        };
+
+        Object.entries(defaults).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        });
+    }
+
+    async onActorAvailable(actor, { loadingMessage, successMessage } = {}) {
+        this.currentActor = actor;
+        this.isLoggedIn = true;
+
+        if (loadingMessage) {
+            this.showNotification(loadingMessage, 'info');
+        }
+
+        try {
+            await this.loadInventory(false);
+            if (successMessage) {
+                this.showNotification(successMessage, 'success');
+            }
+        } catch (error) {
+            console.error('[Inventory] Failed to initialize realtime inventory:', error);
+        }
     }
 
     async checkWalletAndLoadInventory() {
         console.log('[Inventory] Setting up wallet event listeners...');
         
-        // Listen for new wallet connection
-        window.addEventListener('wallet-connected', async (e) => {
-            console.log('[Inventory] [OK] Wallet connected event received:', e.detail);
-            this.currentActor = e.detail.actor;
-            await this.loadInventory(false);
-        });
+        window.addEventListener('wallet-connected', this.handleWalletConnected);
+        window.addEventListener('wallet-session-restored', this.handleWalletSessionRestored);
+        window.addEventListener('wallet-disconnected', this.handleWalletDisconnected);
 
-        // Listen for restored session
-        window.addEventListener('wallet-session-restored', async (e) => {
-            console.log('[Inventory] [OK] Wallet session restored event received:', e.detail);
-            this.currentActor = e.detail.actor;
-            await this.loadInventory(false);
-        });
-
-        // Check if wallet info is already available
         console.log('[Inventory] Checking walletSessionInfo:', window.walletSessionInfo);
         
         if (window.walletSessionInfo && window.walletSessionInfo.actor) {
-            this.currentActor = window.walletSessionInfo.actor;
-            console.log('[Inventory] [OK] Using existing wallet session:', this.currentActor);
-            await this.loadInventory(false);
+            const actor = window.walletSessionInfo.actor;
+            console.log('[Inventory] Using existing wallet session:', actor);
+            await this.handleWalletSessionRestored({ detail: { actor } });
         } else {
-            console.log('[Inventory] â³ No wallet session found yet, waiting for connection...');
+            console.log('[Inventory] No wallet session found yet, waiting for connection...');
             this.showEmptyState('no-wallet');
         }
     }
 
     async loadInventory(forceRefresh = false) {
+        // DISABLED: Manual data fetching removed - relying solely on realtime events
+        // All inventory data loading is now handled via TSDRealtime events (realtime:inventory-gems, realtime:inventory-summary, etc.)
+        
         if (!this.currentActor) {
             console.log('[Inventory] No actor connected, skipping inventory load');
-            this.showNotification('Connect your wallet to view inventory', 'info');this.showEmptyState('no-wallet');
+            this.showNotification('Connect your wallet to view inventory', 'info');
+            this.showEmptyState('no-wallet');
             return;
         }
 
-        try {
-            console.log('[Inventory] Loading inventory for:', this.currentActor);
-            this.showLoadingState();
-            this.showNotification(forceRefresh ? 'Refreshing inventory from blockchain...' : 'Loading inventory...', 'info');
-            
-            // Load inventory and staked assets in parallel
-            const [inventoryData, stakedAssets] = await Promise.all([
-                this.backendService.getInventory(this.currentActor, forceRefresh),
-                this.loadStakedAssetsForInventory(this.currentActor)
-            ]);
-            
-            this.inventoryData = inventoryData;
-            
-            console.log('[Inventory] Inventory loaded:', this.inventoryData);
-            console.log('[Inventory] Staked assets loaded:', this.stakedAssetIds.size, 'assets');
-            
-            // For demonstration, we'll show template-based data
-            // In production, you'd want to fetch full NFT details
-            this.processInventoryData();
-            this.updateStats();
-            this.renderNFTs();const cacheStatus = this.inventoryData.cached ? '(cached)' : '(live)';
-            this.showNotification(`Inventory loaded ${cacheStatus}`, 'success');
-        } catch (error) {
-            console.error('[Inventory] Failed to load inventory:', error);
-            this.showNotification('Failed to load inventory: ' + error.message, 'error');this.showEmptyState('error');
+        if (forceRefresh) {
+            this.showNotification('Realtime stream active - waiting for Firestore to update...', 'info');
         }
-    }
 
-    async loadStakedAssetsForInventory(actor) {
-        try {
-            console.log('[Inventory] Loading staked assets for inventory display...');
-            
-            const stakingResponse = await this.backendService.getStakedAssets(actor);
-            console.log('[Inventory] Staking data received:', stakingResponse);
-            
-            // Extract all staked asset IDs
-            this.stakedAssetIds = new Set();
-            
-            if (stakingResponse && stakingResponse.stakingData) {
-                const stakingData = stakingResponse.stakingData;
-                
-                // Check mining page
-                if (stakingData.mining) {
-                    Object.values(stakingData.mining).forEach(slotData => {
-                        if (slotData.mine?.asset_id) {
-                            this.stakedAssetIds.add(slotData.mine.asset_id);
-                        }
-                        if (slotData.workers) {
-                            slotData.workers.forEach(w => {
-                                if (w.asset_id) this.stakedAssetIds.add(w.asset_id);
-                            });
-                        }
-                    });
-                }
-                
-                // Check polishing page
-                if (stakingData.polishing) {
-                    Object.values(stakingData.polishing).forEach(slotData => {
-                        if (slotData.table?.asset_id) {
-                            this.stakedAssetIds.add(slotData.table.asset_id);
-                        }
-                    });
-                }
-            }
-            
-            console.log('[Inventory] Found', this.stakedAssetIds.size, 'staked assets');
-            return this.stakedAssetIds;
-            
-        } catch (error) {
-            console.error('[Inventory] Failed to load staked assets:', error);
-            this.stakedAssetIds = new Set();
-            return this.stakedAssetIds;
-        }
+        return this.startRealtimeForActor(this.currentActor);
     }
 
     processInventoryData() {
@@ -539,23 +933,18 @@ class InventoryPage extends TSDGEMSGame {
     }
 
     setupEventListeners() {
-        // Refresh button
-        const refreshBtn = document.getElementById('refresh-inventory-btn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', async () => {
-                const icon = refreshBtn.querySelector('i');
-                if (icon) icon.classList.add('fa-spin');
-                
-                await this.refreshInventory();
-                
-                if (icon) icon.classList.remove('fa-spin');
-            });
-        }
+        // Refresh button - REMOVED: Manual refresh disabled, relying solely on realtime events
+        // const refreshBtn = document.getElementById('refresh-inventory-btn');
+        // if (refreshBtn) {
+        //     refreshBtn.addEventListener('click', () => {
+        //         this.showNotification('Inventory updates automatically via realtime events.', 'info');
+        //     });
+        // }
 
         // Search input
         const searchInput = document.getElementById('search-input');
         if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
+            searchInput.addEventListener('input', () => {
                 this.filterNFTs();
             });
         }
@@ -591,13 +980,6 @@ class InventoryPage extends TSDGEMSGame {
                 }
             });
         }
-
-        // Realtime inventory update listeners
-        window.addEventListener('inventory:updated', (event) => {
-            console.log('[Inventory] 🔄 Realtime inventory update received:', event.detail);
-            // Refresh inventory data from backend to get full updated inventory
-            this.loadInventory(true); // Force refresh
-        });
     }
 
     filterNFTs() {
@@ -620,28 +1002,14 @@ class InventoryPage extends TSDGEMSGame {
         this.renderNFTs();
     }
 
-    async refreshInventory() {
-        if (!this.currentActor) {
-            this.showNotification('Connect your wallet first!', 'warning');
-            return;
-        }
-
-        try {
-            console.log('[Inventory] Refreshing inventory from blockchain...');
-            this.showNotification('Fetching fresh data from blockchain...', 'info');
-            
-            this.inventoryData = await this.backendService.refreshInventory(this.currentActor);
-            
-            console.log('[Inventory] Inventory refreshed:', this.inventoryData);
-            console.log('[Inventory] polishingTableCount:', this.inventoryData.polishingTableCount);
-            console.log('[Inventory] polishingSlots:', this.inventoryData.polishingSlots);
-            this.processInventoryData();
-            this.updateStats();
-            this.renderNFTs();this.showNotification('Inventory refreshed from blockchain!', 'success');
-        } catch (error) {
-            console.error('[Inventory] Failed to refresh inventory:', error);
-            this.showNotification('Failed to refresh inventory: ' + error.message, 'error');}
-    }
+    // REMOVED: refreshInventory function - manual refresh disabled, relying solely on realtime events
+    // async refreshInventory() {
+    //     if (!this.currentActor) {
+    //         this.showNotification('Connect your wallet first!', 'warning');
+    //         return;
+    //     }
+    //     this.showNotification('Inventory updates automatically via realtime stream. No manual refresh required.', 'info');
+    // }
 }
 
 // Initialize inventory page when DOM loads

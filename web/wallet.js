@@ -31,18 +31,12 @@ async function fxPost(path, body = {}) {
   })
 }
 
-// --- Functions used here: initPlayer + getDashboard ---
+// --- Functions used here: initPlayer ---
 async function initPlayer(actor) {
   const r = await fxPost('/initPlayer', { actor })
   if (!r.ok) throw new Error(`initPlayer ${r.status}`)
   return r.json()
 }
-async function getDashboard(actor) {
-  const r = await fxGet('/getDashboard', { actor })
-  if (!r.ok) throw new Error(`getDashboard ${r.status}`)
-  return r.json()
-}
-
 // --- WAX mainnet chain ---
 const CHAIN = {
   id: '1064487b3cd1a897ce03ae5b6a865651747e2e152090f99c1d19d44e01aea5a4',
@@ -125,15 +119,10 @@ window.walletConnect = async function walletConnect() {
 
   try {
     await initPlayer(actor)
-    const dash = await getDashboard(actor)
-    const el = document.getElementById('header-game-dollars')
-    const val = dash?.profile?.ingameCurrency
-    if (el && typeof val === 'number') el.textContent = `Game $: ${val.toLocaleString()}`
-    setStatus(session.walletPlugin?.metadata?.name || session.walletPlugin?.id || '')
   } catch (e) {
     console.warn('[wallet] hydrate skipped:', e)
-    setStatus(session.walletPlugin?.metadata?.name || session.walletPlugin?.id || '')
   }
+  setStatus(session.walletPlugin?.metadata?.name || session.walletPlugin?.id || '')
 
   // 🔴 Start realtime listeners for this actor
   try { window.TSDRealtime?.start(actor) } catch (e) { console.warn('[Wallet] Realtime start failed', e) }
@@ -224,13 +213,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           // 🔴 Start realtime for restored session
           try { window.TSDRealtime?.start(actor) } catch (e) { console.warn('[Wallet] Realtime start failed', e) }
 
-          setTimeout(async () => {
+          setTimeout(() => {
             window.dispatchEvent(new CustomEvent('wallet-session-restored', { detail: { actor, session } }))
-            setTimeout(async () => {
-              if (window.backendService) {
-                try { await window.backendService.getDashboard(actor) } catch {}
-              }
-            }, 500)
           }, 100)
         }
       }

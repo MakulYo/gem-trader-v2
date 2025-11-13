@@ -34,6 +34,30 @@ class TradingGame extends TSDGEMSGame {
         this.init();
     }
 
+    prepareTradingForRealtime() {
+        console.log('[Trading] Preparing UI for realtime data...');
+
+        const basePriceValue = document.getElementById('base-price-value');
+        if (basePriceValue) {
+            basePriceValue.textContent = 'Loading…';
+        }
+
+        const basePriceUpdate = document.getElementById('base-price-update');
+        if (basePriceUpdate) {
+            basePriceUpdate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for realtime...';
+        }
+
+        const matrixWrapper = document.getElementById('city-boost-matrix-wrapper');
+        if (matrixWrapper) {
+            matrixWrapper.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #aaa;">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p style="margin-top: 12px;">Waiting for realtime city boost data...</p>
+                </div>
+            `;
+        }
+    }
+
     detectMobile() {
         // Check for mobile devices
         const userAgent = navigator.userAgent || navigator.vendor || window.opera;
@@ -64,8 +88,9 @@ class TradingGame extends TSDGEMSGame {
     init() {
         this.setupTradingSubpages();
         this.setupChartControls();
-        this.setupActorListener();this.loadInitialData();
-        this.showNotification('Loading trading markets...', 'info');
+        this.setupActorListener();
+        this.prepareTradingForRealtime();
+        this.showNotification('Waiting for realtime trading data...', 'info');
         
         // Check if actor is already available after a short delay
         setTimeout(() => {
@@ -81,18 +106,12 @@ class TradingGame extends TSDGEMSGame {
         window.addEventListener('walletConnected', (e) => {
             this.currentActor = e.detail.actor;
             console.log('[Trading] Actor connected:', this.currentActor);
-            // Load staked gems to show active benefits
-            this.loadStakedGems();
-            this.loadPolishedGemsCount();
             this.updateStakingGrid();
         });
 
         window.addEventListener('wallet-session-restored', (e) => {
             this.currentActor = e.detail.actor;
             console.log('[Trading] Actor session restored:', this.currentActor);
-            // Load staked gems to show active benefits
-            this.loadStakedGems();
-            this.loadPolishedGemsCount();
             this.updateStakingGrid();
         });
 
@@ -110,50 +129,7 @@ class TradingGame extends TSDGEMSGame {
         if (window.walletSessionInfo && window.walletSessionInfo.actor) {
             this.currentActor = window.walletSessionInfo.actor;
             console.log('[Trading] Actor already set:', this.currentActor);
-            // Load staked gems immediately to show active benefits
-            this.loadStakedGems();
-            this.loadPolishedGemsCount();
             this.updateStakingGrid();
-        }
-    }
-
-    async loadPolishedGemsCount() {
-        if (!this.currentActor) {
-            this.polishedGemsCount = {};
-            this.renderCityMatrix(); // Re-render without counts
-            return;
-        }
-
-        try {
-            console.log('[Trading] Loading polished gems count...');
-            const inventoryData = await this.backendService.getInventory(this.currentActor, false);
-            
-            // Extract polished gems count (same format as polishing page)
-            const POLISHED_GEM_TYPES = [
-                'polished_diamond',
-                'polished_ruby',
-                'polished_emerald',
-                'polished_sapphire',
-                'polished_topaz',
-                'polished_amethyst',
-                'polished_aquamarine',
-                'polished_jade',
-                'polished_opal',
-                'polished_tanzanite'
-            ];
-            
-            this.polishedGemsCount = {};
-            POLISHED_GEM_TYPES.forEach(gemType => {
-                this.polishedGemsCount[gemType] = inventoryData[gemType] || 0;
-            });
-            
-            console.log('[Trading] Polished gems count:', this.polishedGemsCount);
-            
-            // Re-render the matrix with updated counts
-            this.renderCityMatrix();
-        } catch (error) {
-            console.error('[Trading] Failed to load polished gems count:', error);
-            this.polishedGemsCount = {};
         }
     }
 
@@ -163,122 +139,6 @@ class TradingGame extends TSDGEMSGame {
         if (stakingSubpage && stakingSubpage.classList.contains('active')) {
             this.renderStakingGrid();
         }
-    }
-
-    async loadInitialData() {
-        try {
-            // Load city matrix and base price immediately (no wallet required)
-            console.log('[Trading] Loading initial data...');
-            const [cityMatrix, basePriceData] = await Promise.all([
-                this.backendService.getCityMatrix(),
-                this.backendService.getBasePrice()
-            ]);
-
-            this.cityMatrix = cityMatrix;
-            this.basePriceData = basePriceData;
-
-            console.log('[Trading] City Matrix loaded:', cityMatrix);
-            console.log('[Trading] Base Price loaded:', basePriceData);
-            
-            // Test the data structure
-            console.log('[Trading] Testing cityMatrix structure:');
-            console.log('- cityMatrix type:', typeof cityMatrix);
-            console.log('- cityMatrix keys:', Object.keys(cityMatrix || {}));
-            if (cityMatrix && cityMatrix.boosts) {
-                console.log('- boosts type:', typeof cityMatrix.boosts);
-                console.log('- boosts keys:', Object.keys(cityMatrix.boosts));
-                console.log('- first city data:', Object.keys(cityMatrix.boosts)[0], cityMatrix.boosts[Object.keys(cityMatrix.boosts)[0]]);
-            }            this.renderBasePriceDisplay();
-            this.renderCityMatrix();
-            this.initializeGemPriceChart();
-            // Don't render staking grid here - will be rendered when actor is set
-            
-            this.showNotification('Trading markets loaded!', 'success');
-            
-            // Start auto-refresh for backend data
-            this.startAutoRefresh();
-            
-        } catch (error) {
-            console.error('[Trading] Failed to load initial data:', error);
-            this.showNotification('Failed to load trading data: ' + error.message, 'error');}
-    }
-
-    async startAutoRefresh() {
-        // Try to use TSDRealtime if available
-        if (window.TSDRealtime) {
-            try {
-                console.log('[Trading] 🎯 Starting TSDRealtime for trading data...');
-                window.TSDRealtime.start(this.currentActor);
-                console.log('[Trading] ✅ TSDRealtime active - instant updates enabled!');
-                return;
-            } catch (error) {
-                console.warn('[Trading] TSDRealtime failed, falling back to polling:', error);
-            }
-        } else {
-            console.warn('[Trading] TSDRealtime not available');
-        }
-
-        // Fallback: Polling method
-        this.setupPolling();
-    }
-
-
-    setupPolling() {
-        // Clear existing interval if any
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-        }
-
-        // Refresh every 60 seconds (city boosts update every minute on backend)
-        this.refreshInterval = setInterval(async () => {
-            try {
-                console.log('[Trading] Auto-refreshing backend data...');
-                
-                // Fetch updated data in parallel
-                const [cityMatrix, basePriceData] = await Promise.all([
-                    this.backendService.getCityMatrix(),
-                    this.backendService.getBasePrice()
-                ]);
-
-                // Update local data
-                this.cityMatrix = cityMatrix;
-                this.basePriceData = basePriceData;
-
-                // Re-render UI components
-                this.renderBasePriceDisplay();
-                this.renderCityMatrix();
-
-                console.log('[Trading] Auto-refresh completed');
-                
-            } catch (error) {
-                console.error('[Trading] Auto-refresh failed:', error);
-            }
-        }, 60000); // 60 seconds
-
-        console.log('[Trading] ⏱️ Polling started (60s interval) - realtime not available');
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            if (this.refreshInterval) {
-                clearInterval(this.refreshInterval);
-            }
-        });
-
-        // Pause refresh when page is hidden, resume when visible
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                if (this.refreshInterval) {
-                    clearInterval(this.refreshInterval);
-                    this.refreshInterval = null;
-                    console.log('[Trading] Polling paused (page hidden)');
-                }
-            } else {
-                if (!this.refreshInterval) {
-                    this.setupPolling();
-                    console.log('[Trading] Polling resumed (page visible)');
-                }
-            }
-        });
     }
 
     renderBasePriceDisplay() {
@@ -773,35 +633,12 @@ class TradingGame extends TSDGEMSGame {
                     return;
                 }
 
-                // Capture current quote before refreshing
+                // Capture current quote before invoking backend validation
                 const oldQuote = this.getCurrentQuote(city, gem, amount);
 
-                // Fetch latest price/boost to detect changes
                 try {
-                    const [freshBasePrice, freshMatrix] = await Promise.all([
-                        this.backendService.getBasePrice(),
-                        this.backendService.getCityMatrix()
-                    ]);
-
-                    // Update local caches
-                    this.basePriceData = freshBasePrice;
-                    if (freshMatrix && freshMatrix.boosts) {
-                        let boosts = freshMatrix.boosts;
-                        if (Array.isArray(boosts)) {
-                            const obj = {}; boosts.forEach(c => c?.id && (obj[c.id] = c.bonuses)); boosts = obj;
-                        }
-                        this.boostsData = boosts;
-                    }
-
-                    const newQuote = this.getCurrentQuote(city, gem, amount);
-
-                    const changed = Math.abs(newQuote.estimatedPayout - oldQuote.estimatedPayout) > 0.0001;
-
-                    const proceed = await this.confirmPriceChangeIfNeeded(oldQuote, newQuote);
-                    if (!proceed) return;
-
                     this.setSellButtonLoading(true, finalSellBtn);
-                    await this.handleGemSale(city, gem, amount);
+                    await this.handleGemSale(city, gem, amount, oldQuote);
                 } catch (error) {
                     console.error('[Trading] Error before selling:', error);
                     this.showNotification('Failed to prepare sale: ' + error.message, 'error');
@@ -1161,9 +998,7 @@ class TradingGame extends TSDGEMSGame {
         if (!stakingGrid) return;
 
         // Load staked gems if we have an actor
-        if (this.currentActor) {
-            await this.loadStakedGems();
-        } else {
+        if (!this.currentActor) {
             // Clear staked gems if no actor
             this.stakedGems = {};
         }
@@ -1280,22 +1115,6 @@ class TradingGame extends TSDGEMSGame {
     // GEM STAKING METHODS
     // ========================================
 
-    async loadStakedGems() {
-        if (!this.currentActor) return;
-        
-        try {
-            console.log('[Trading] Loading staked gems for', this.currentActor);
-            this.stakedGems = await this.backendService.getStakedGems(this.currentActor);
-            console.log('[Trading] Loaded staked gems:', this.stakedGems);
-            
-            // Update active benefits display
-            this.renderActiveBenefits();
-        } catch (error) {
-            console.error('[Trading] Failed to load staked gems:', error);
-            this.stakedGems = {};
-        }
-    }
-
     renderActiveBenefits() {
         const benefitsDisplay = document.getElementById('benefits-display');
         if (!benefitsDisplay) return;
@@ -1355,6 +1174,129 @@ class TradingGame extends TSDGEMSGame {
         `;
     }
 
+    updateStakedGemsFromRealtime(liveData) {
+        if (!this.currentActor) {
+            this.stakedGems = {};
+            this.renderActiveBenefits();
+            return;
+        }
+
+        let gemsStaking = null;
+        if (liveData?.staking?.gems) {
+            gemsStaking = liveData.staking.gems;
+        } else if (liveData?.gemStaking) {
+            gemsStaking = liveData.gemStaking;
+        } else if (liveData?.gemsStaking) {
+            gemsStaking = liveData.gemsStaking;
+        } else if (liveData?.inventorySummary?.staking?.gems) {
+            gemsStaking = liveData.inventorySummary.staking.gems;
+        } else if (liveData?.inventorySummary?.gems?.staking) {
+            gemsStaking = liveData.inventorySummary.gems.staking;
+        }
+
+        if (!gemsStaking) {
+            // Keep existing state if realtime payload lacks gem staking info
+            return;
+        }
+
+        const normalized = {};
+        if (Array.isArray(gemsStaking)) {
+            gemsStaking.forEach(entry => {
+                const slotNum = entry?.slot ?? entry?.slotNum ?? entry?.slot_id ?? entry?.id;
+                if (!slotNum) return;
+                const slotKey = `slot${slotNum}`;
+                const formatted = this.normalizeGemSlotData(entry);
+                if (formatted) {
+                    normalized[slotKey] = formatted;
+                }
+            });
+        } else if (typeof gemsStaking === 'object') {
+            Object.entries(gemsStaking).forEach(([key, value]) => {
+                const slotKey = key.startsWith('slot') ? key : `slot${key}`;
+                const formatted = this.normalizeGemSlotData(value);
+                if (formatted) {
+                    normalized[slotKey] = formatted;
+                }
+            });
+        }
+
+        this.stakedGems = normalized;
+        this.renderActiveBenefits();
+        this.updateStakingGrid();
+    }
+
+    normalizeGemSlotData(rawSlot) {
+        if (!rawSlot) {
+            return null;
+        }
+
+        const base = rawSlot.gem ? { ...rawSlot.gem } : { ...rawSlot };
+        if (!Object.keys(base).length) {
+            return null;
+        }
+
+        if (!base.asset_id && base.assetId) {
+            base.asset_id = base.assetId;
+        }
+
+        if (!base.template_id && base.templateId) {
+            base.template_id = base.templateId;
+        }
+
+        if (!base.template_mint && base.templateMint) {
+            base.template_mint = base.templateMint;
+        }
+
+        if (!base.imagePath && (base.image || base.image_url)) {
+            base.imagePath = base.image || base.image_url;
+        }
+
+        if (!base.gemType && (base.gem_type || base.typeName || base.name)) {
+            base.gemType = base.gem_type || base.typeName || base.name;
+        }
+
+        if (base.bonus !== undefined) {
+            const bonus = Number(base.bonus);
+            base.bonus = Number.isFinite(bonus) ? bonus : 0;
+        }
+
+        if (base.isPolished === undefined && base.is_polished !== undefined) {
+            base.isPolished = Boolean(base.is_polished);
+        }
+
+        return { gem: base };
+    }
+
+    updateInventorySummaryFromRealtime(summary = null, liveData = null) {
+        if (!summary && !liveData) {
+            return;
+        }
+
+        const inventoryData = summary ? { ...summary } : (this.inventoryData ? { ...this.inventoryData } : {});
+
+        const extractAssets = (source) => {
+            if (!source) return null;
+            if (Array.isArray(source)) return source;
+            if (typeof source === 'object') return Object.values(source);
+            return null;
+        };
+
+        let assets =
+            extractAssets(summary?.assets) ||
+            extractAssets(summary?.inventoryAssets) ||
+            extractAssets(liveData?.inventoryAssets) ||
+            extractAssets(liveData?.inventory?.assets) ||
+            inventoryData.assets ||
+            [];
+
+        if (!Array.isArray(assets)) {
+            assets = [];
+        }
+
+        inventoryData.assets = assets;
+        this.inventoryData = inventoryData;
+    }
+
     async openGemStakingModal(slotNum) {
         console.log(`[Trading] openGemStakingModal called for slot ${slotNum}`);
         
@@ -1368,11 +1310,11 @@ class TradingGame extends TSDGEMSGame {
             const expectedGemType = this.getSlotGemType(slotNum);
             console.log(`[Trading] Expected gem type: ${expectedGemType}`);
 
-            // Load inventory data if not already loaded
-            if (!this.inventoryData) {
-                console.log('[Trading] Loading inventory data...');
-                this.inventoryData = await this.backendService.getInventory(this.currentActor);
-                console.log('[Trading] Inventory data loaded');
+            // Ensure realtime inventory data is available
+            if (!this.inventoryData || !Array.isArray(this.inventoryData.assets) || this.inventoryData.assets.length === 0) {
+                console.warn('[Trading] Inventory data not ready yet - waiting for realtime stream');
+                this.showNotification('Waiting for realtime inventory data...', 'info');
+                return;
             }
 
             // Get gem NFTs from inventory
@@ -1574,10 +1516,10 @@ class TradingGame extends TSDGEMSGame {
             });
 
             if (result.success) {
-                // Update with actual backend data
-                await this.loadStakedGems();
-                await this.renderStakingGrid();
+                // Wait for realtime to deliver updated staking data
                 this.showNotification(`✅ Staked ${name} to Slot ${slotNum}!`, 'success');
+                this.showNotification('Realtime update pending...', 'info');
+                await this.renderStakingGrid();
             } else {
                 // Revert on failure
                 await this.renderStakingGrid();
@@ -1614,11 +1556,12 @@ class TradingGame extends TSDGEMSGame {
     }
     
     async unstakeGem(slotNum, assetId) {
+        let previousSlotData = null;
         try {
             console.log(`[Trading] Unstaking gem ${assetId} from slot ${slotNum}`);
             
             // Store current value for reverting on error
-            const previousSlotData = this.stakedGems[`slot${slotNum}`];
+            previousSlotData = this.stakedGems[`slot${slotNum}`];
             
             // Optimistic UI update - remove from local state immediately
             this.stakedGems[`slot${slotNum}`] = null;
@@ -1629,10 +1572,10 @@ class TradingGame extends TSDGEMSGame {
             const result = await this.backendService.unstakeGem(this.currentActor, slotNum, assetId);
 
             if (result.success) {
-                // Update with actual backend data
-                await this.loadStakedGems();
-                await this.renderStakingGrid();
+                // Wait for realtime to deliver updated staking data
                 this.showNotification(`✅ Unstaked gem from Slot ${slotNum}!`, 'success');
+                this.showNotification('Realtime update pending...', 'info');
+                await this.renderStakingGrid();
             } else {
                 // Revert on failure
                 this.stakedGems[`slot${slotNum}`] = previousSlotData;
@@ -1642,7 +1585,6 @@ class TradingGame extends TSDGEMSGame {
         } catch (error) {
             console.error('[Trading] Failed to unstake gem:', error);
             // Revert on error
-            const previousSlotData = this.stakedGems[`slot${slotNum}`] ? null : previousSlotData;
             this.stakedGems[`slot${slotNum}`] = previousSlotData;
             await this.renderStakingGrid();
             this.showNotification('Failed to unstake gem: ' + error.message, 'error');
@@ -1727,43 +1669,16 @@ class TradingGame extends TSDGEMSGame {
                     'success'
                 );
                 
-                // Refresh displays
-                await this.loadPlayerData();
-                await this.loadStakedGems();
-                await this.loadPolishedGemsCount(); // Refresh available gems count
-                
+                // Realtime will dispatch updated balances and inventory
+                this.showNotification('Realtime update pending...', 'info');
                 console.log('[Trading] Updated Game $:', result.totalPayout);
-                
-                // Update summary to reflect new boost calculations
+
+                // Update summary to reflect new boost calculations once realtime data arrives
                 this.updateSellControls();
             }
         } catch (error) {
             console.error('[Trading] Failed to sell gems:', error);
             this.showNotification(`Failed to sell gems: ${error.message}`, 'error');
-        }
-    }
-
-    async loadPlayerData() {
-        if (!this.currentActor) return;
-        
-        try {
-            const dashboardData = await this.backendService.getDashboard(this.currentActor);
-            console.log('[Trading] Dashboard data loaded:', dashboardData);
-            
-            if (dashboardData && dashboardData.profile) {
-                const currency = dashboardData.profile.ingameCurrency || 0;
-                console.log('[Trading] Updating header with new currency:', currency);
-                
-                // Dispatch global event to update Game $ with animation
-                window.dispatchEvent(new CustomEvent('gameDollars:update', {
-                    detail: { amount: currency, animate: true }
-                }));
-                console.log('[Trading] Dispatched gameDollars:update event');
-            } else {
-                console.warn('[Trading] No profile data in dashboard response');
-            }
-        } catch (error) {
-            console.error('[Trading] Failed to load player data:', error);
         }
     }
 
@@ -1800,6 +1715,7 @@ class TradingGame extends TSDGEMSGame {
         }
 
         this.boostsData = boostsObj;
+        this.cityMatrix = { boosts: boostsObj };
         console.log('[Trading] ✅ Updated city boosts from realtime:', this.boostsData);
 
         // Refresh the trading interface if it's currently displayed
@@ -1842,12 +1758,30 @@ document.addEventListener('DOMContentLoaded', () => {
     window.game = game; // Make globally accessible for onclick handlers
 
     // Setup realtime inventory listeners
-    window.addEventListener('inventory:updated', (event) => {
-        const { type, data } = event.detail;
-        console.log('[Trading] 🔄 Realtime inventory update received:', type, data);
+    window.addEventListener('realtime:inventory-gems', (event) => {
+        const { actor, gems } = event.detail || {};
+        if (!game) return;
+        if (game.currentActor && actor && actor !== game.currentActor) return;
+        console.log('[Trading] 🔄 Realtime inventory gems update received:', gems);
+        game.updatePolishedGemsFromRealtime(gems || {});
+    });
 
-        if (type === 'gems' && game) {
-            game.updatePolishedGemsFromRealtime(data);
+    window.addEventListener('realtime:inventory-summary', (event) => {
+        const { actor, summary } = event.detail || {};
+        if (!game) return;
+        if (game.currentActor && actor && actor !== game.currentActor) return;
+        console.log('[Trading] 🔄 Realtime inventory summary update received:', summary);
+        game.updateInventorySummaryFromRealtime(summary || null);
+    });
+
+    window.addEventListener('realtime:live', (event) => {
+        const { actor, live } = event.detail || {};
+        if (!game || !live) return;
+        if (game.currentActor && actor && actor !== game.currentActor) return;
+        console.log('[Trading] 🔄 Realtime live aggregate update received');
+        game.updateStakedGemsFromRealtime(live);
+        if (live.inventorySummary || live.inventoryAssets || live.inventory) {
+            game.updateInventorySummaryFromRealtime(live.inventorySummary || null, live);
         }
     });
 

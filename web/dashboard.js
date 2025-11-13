@@ -10,7 +10,7 @@ class DashboardGame extends TSDGEMSGame {
         
         // Check if backend service exists
         if (!window.backendService) {
-            console.error('âŒ Backend Service not found in window object!');
+            console.error('â Backend Service not found in window object!');
             console.error('Available in window:', Object.keys(window).filter(k => k.includes('backend')));
         } else {
             console.log('[OK] Backend Service found:', window.backendService);
@@ -19,8 +19,17 @@ class DashboardGame extends TSDGEMSGame {
         this.backendService = window.backendService;
         this.isLoggedIn = false;
         this.currentActor = null;
-        
+
+        this.realtimeHandlersRegistered = false;
+        this.awaitingInitialRealtime = false;
+        this.initialRealtimePromise = null;
+        this.initialRealtimeResolver = null;
+        this.initialRealtimeReject = null;
+        this.realtimeData = this.getEmptyRealtimeState();
+        this.initialRealtimeTimer = null;
+
         console.log('Initializing dashboard...');
+        this.setupRealtimeEventHandlers();
         this.init();
     }
 
@@ -57,9 +66,6 @@ class DashboardGame extends TSDGEMSGame {
     setupWalletEventListeners() {
         console.log('[Dashboard] Setting up wallet event listeners...');
 
-        // Setup realtime inventory listeners
-        this.setupInventoryRealtimeListeners();
-        
         // Listen for new wallet connection
         window.addEventListener('wallet-connected', async (event) => {
             const { actor } = event.detail;
@@ -109,57 +115,19 @@ class DashboardGame extends TSDGEMSGame {
         // CRITICAL: Listen for wallet disconnect
         window.addEventListener('wallet-disconnected', () => {
             console.log('[Dashboard] [DISCONNECT] Wallet disconnected event received');
-            
-            // Clear current actor and login state
+
+            if (window.TSDRealtime && typeof window.TSDRealtime.stop === 'function') {
+                window.TSDRealtime.stop();
+            }
+
+            this.cleanupRealtimeSession();
+
             this.currentActor = null;
             this.isLoggedIn = false;
-            
-            // Stop polling
-            if (this.pollingInterval) {
-                console.log('[Dashboard] Stopping polling interval');
-                clearInterval(this.pollingInterval);
-                this.pollingInterval = null;
-            }
-            
-            // Reset UI values to disconnected state
-            const elements = {
-                'tsd-balance': '0.00',
-                'active-workers': '0',
-                'rough-gems-count': '0',
-                'polished-gems-count': '0',
-                'mining-slots-count': '0/10',
-                'tsdm-balance': '0.00',
-                'header-game-dollars': 'Game $: 0'
-            };
-            
-            Object.entries(elements).forEach(([id, value]) => {
-                const el = document.getElementById(id);
-                if (el) el.textContent = value;
-            });
-            
-            // Hide wallet balance only (address is handled by wallet.js button)
-            const walletBalance = document.getElementById('wallet-balance');
-            if (walletBalance) {
-                walletBalance.textContent = '0.00 TSD';
-                walletBalance.classList.add('hidden');
-                console.log('[Dashboard] Wallet balance hidden');
-            }
-            
-            // Ensure Connect button is visible (wallet.js should handle this, but double-check)
-            const connectBtn = document.getElementById('connectWalletBtn');
-            if (connectBtn) {
-                connectBtn.classList.remove('hidden');
-                console.log('[Dashboard] Connect button visibility ensured');
-            }
-            
-            const logoutBtn = document.getElementById('logoutBtn');
-            if (logoutBtn) {
-                logoutBtn.classList.add('hidden');
-                console.log('[Dashboard] Logout button hidden');
-            }
-            
-            // Clear notifications and show disconnect message
-            this.showNotification('Disconnected from wallet', 'info');console.log('[Dashboard] [OK] Dashboard cleaned up after disconnect');
+
+            this.resetDashboardUI();
+            this.showNotification('Disconnected from wallet', 'info');
+            console.log('[Dashboard] [OK] Dashboard cleaned up after disconnect');
         });
         
         console.log('[Dashboard] [OK] Wallet event listeners registered');
@@ -268,193 +236,467 @@ class DashboardGame extends TSDGEMSGame {
                 connectBtn.style.cursor = 'pointer';
             }
             
-            this.showNotification('âŒ Failed to connect wallet: ' + error.message, 'error');}
+            this.showNotification('â Failed to connect wallet: ' + error.message, 'error');}
     }
 
     async loadBackendData(actor) {
-        try {
-            console.log('[Dashboard] ========================================');
-            console.log('[Dashboard] Loading backend data for actor:', actor);
-            
-            // Show loading state immediately with visual feedback
-            this.showLoadingState(true);
-
-            // Initialize player and get all data from backend (FAST mode)
-            console.log('[Dashboard] Calling backendService.initializeFast() for instant load...');
-            const startTime = performance.now();
-            
-            // Load dashboard and staking data in parallel
-            const [data, stakedData] = await Promise.all([
-                this.backendService.initializeFast(actor),
-                this.backendService.getStakedAssets(actor).catch(e => {
-                    console.warn('[Dashboard] Failed to load staking data:', e);
-                    return { stakingData: {} };
-                })
-            ]);
-            
-            // Store staked assets for worker count
-            this.stakedAssets = stakedData.stakingData || {};
-            
-            const loadTime = ((performance.now() - startTime) / 1000).toFixed(2);
-            
-            console.log('[Dashboard] Backend initialize response:', data);
-            console.log('[Dashboard] - dashboard:', data.dashboard);
-            console.log('[Dashboard] - cityMatrix:', data.cityMatrix);
-            console.log('[Dashboard] - basePrice:', data.basePrice);
-            
-            if (data.dashboard && data.dashboard.player) {
-                console.log('[Dashboard] Player data found:', data.dashboard.player);
-                console.log('[Dashboard] - Account:', data.dashboard.player.account);
-                console.log('[Dashboard] - Ingame $:', data.dashboard.player.ingameCurrency);
-                console.log('[Dashboard] - Balances:', data.dashboard.player.balances);
-                console.log('[Dashboard] - TSDM:', data.dashboard.player.balances?.TSDM);
-            } else {
-                console.error('[Dashboard] âŒ No player data in response!');
-            }            this.updateDashboardFromBackend(data.dashboard);
-            
-            // Hide loading state
-            this.showLoadingState(false);
-            
-            this.showNotification(`Loaded in ${loadTime}s!`, 'success');
-            console.log(`[Dashboard] [OK] Backend data loaded and UI updated in ${loadTime}s`);
-            console.log('[Dashboard] ========================================');
-            
-            // Start auto-refresh
-            this.startAutoRefresh();
-            
-        } catch (error) {
-            console.error('[Dashboard] âŒ Failed to load backend data:', error);
-            console.error('[Dashboard] Error details:', error.message);
-            console.error('[Dashboard] Stack:', error.stack);
-            this.showNotification('Failed to load game data: ' + error.message, 'error');}
-    }
-
-    updateDashboardFromBackend(dashboard) {
-        if (!dashboard || !dashboard.player) {
-            console.error('[Dashboard] âŒ No player data in backend response!');
-            console.log('[Dashboard] Received dashboard object:', dashboard);
-            this.showNotification('âš ï¸ No player data received from backend', 'warning');
+        // DISABLED: Manual data fetching removed - relying solely on realtime events
+        // All data loading is now handled via TSDRealtime events (realtime:live, realtime:profile, etc.)
+        
+        if (!actor) {
+            console.warn('[Dashboard] No actor provided, skipping realtime start');
             return;
         }
 
-        const player = dashboard.player;
-        console.log('[Dashboard] ========== UPDATING UI ==========');
-        console.log('[Dashboard] Player object:', player);
+        if (this.awaitingInitialRealtime && this.currentActor === actor && this.initialRealtimePromise) {
+            console.log('[Dashboard] Realtime load already in progress; waiting for first update');
+            return this.initialRealtimePromise;
+        }
 
-        // Ensure default values for missing fields
-        const rawCurrency = Number(player.ingameCurrency ?? player.ingame_currency ?? 0);
+        this.currentActor = actor;
+        this.isLoggedIn = true;
+
+        this.cleanupRealtimeSession();
+        this.prepareDashboardForRealtime();
+
+        this.realtimeData = this.getEmptyRealtimeState();
+        this.awaitingInitialRealtime = true;
+
+        this.resetInitialRealtimePromise();
+        this.initialRealtimePromise = new Promise((resolve, reject) => {
+            this.initialRealtimeResolver = resolve;
+            this.initialRealtimeReject = reject;
+        });
+
+        if (window.TSDRealtime && typeof window.TSDRealtime.start === 'function') {
+            try {
+                console.log('[Dashboard] Starting TSDRealtime for actor:', actor);
+                window.TSDRealtime.start(actor);
+            } catch (error) {
+                this.handleRealtimeStartFailure(error);
+                throw error;
+            }
+        } else {
+            const error = new Error('TSDRealtime is not available');
+            this.handleRealtimeStartFailure(error);
+            throw error;
+        }
+
+        return this.initialRealtimePromise;
+    }
+
+    updateDashboardFromProfile(profile) {
+        if (!profile) {
+            console.warn('[Dashboard] No profile data available; keeping loading state active');
+            return;
+        }
+
+        const rawCurrency = Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0);
         const previousCurrency = Number(this.currentGameDollars ?? 0);
         const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
         const effectiveCurrency = sanitizedCurrency <= 0 && previousCurrency > 0
             ? previousCurrency
             : sanitizedCurrency;
-        const balances = player.balances || { WAX: 0, TSDM: 0 };
-        const roughGems = player.roughGems || {};
-        const polishedGems = player.polishedGems || {};
-        
-        console.log('[Dashboard] Extracted values:');
-        console.log('[Dashboard] - ingameCurrency (raw):', rawCurrency);
-        console.log('[Dashboard] - ingameCurrency (effective):', effectiveCurrency);
-        console.log('[Dashboard] - balances:', balances);
-        console.log('[Dashboard] - TSDM:', balances.TSDM);
-        console.log('[Dashboard] - roughGems:', roughGems);
-        console.log('[Dashboard] - polishedGems:', polishedGems);
+        const balances = profile.balances || {};
+        const unlockedFromProfile = Number(profile.miningSlotsUnlocked ?? profile.mining_slots_unlocked ?? 0);
+        const unlockedFromSlots = Array.isArray(this.realtimeData.miningSlots) ? this.realtimeData.miningSlots.length : 0;
+        const unlocked = Math.max(unlockedFromProfile, unlockedFromSlots);
 
-        // Update header game dollars
         this.updateGameDollars(effectiveCurrency, false);
-        const displayCurrency = this.currentGameDollars;
+        const displayCurrency = this.currentGameDollars ?? effectiveCurrency;
 
-        // Update dashboard cards
         const tsdBalance = document.getElementById('tsd-balance');
         if (tsdBalance) {
-            tsdBalance.textContent = displayCurrency.toLocaleString(undefined, { 
-                minimumFractionDigits: 2, 
-                maximumFractionDigits: 2 
+            tsdBalance.textContent = displayCurrency.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
             });
-        }
-
-        const activeWorkers = document.getElementById('active-workers');
-        if (activeWorkers) {
-            // Count staked workers from mining slots
-            let totalWorkers = 0;
-            if (this.stakedAssets && this.stakedAssets.mining) {
-                Object.values(this.stakedAssets.mining).forEach(slot => {
-                    if (slot.workers && Array.isArray(slot.workers)) {
-                        totalWorkers += slot.workers.length;
-                    }
-                });
-            }
-            activeWorkers.textContent = totalWorkers;
-        }
-
-        const roughGemsCount = document.getElementById('rough-gems-count');
-        if (roughGemsCount) {
-            const totalRough = Object.values(roughGems).reduce((a, b) => a + b, 0);
-            roughGemsCount.textContent = totalRough;
-        }
-
-        const polishedGemsCount = document.getElementById('polished-gems-count');
-        if (polishedGemsCount) {
-            const totalPolished = Object.values(polishedGems).reduce((a, b) => a + b, 0);
-            polishedGemsCount.textContent = totalPolished;
         }
 
         const miningSlotsCount = document.getElementById('mining-slots-count');
         if (miningSlotsCount) {
-            const unlocked = player.miningSlotsUnlocked || 0;
-            miningSlotsCount.textContent = `${unlocked}/10`;
+            miningSlotsCount.textContent = `${Math.min(unlocked, 10)}/10`;
         }
 
         const tsdmBalance = document.getElementById('tsdm-balance');
         if (tsdmBalance) {
-            const tsdm = balances.TSDM || 0;
-            tsdmBalance.textContent = tsdm.toLocaleString(undefined, { 
-                minimumFractionDigits: 2, 
-                maximumFractionDigits: 2 
+            const tsdm = Number(balances.TSDM ?? balances.tsdm ?? 0);
+            tsdmBalance.textContent = tsdm.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
             });
         }
 
-        // Update wallet balance only (address is shown in button)
         const walletBalance = document.getElementById('wallet-balance');
         if (walletBalance) {
-            const tsdm = balances.TSDM || 0;
+            const tsdm = Number(balances.TSDM ?? balances.tsdm ?? 0);
             walletBalance.textContent = `${tsdm.toFixed(2)} TSDM`;
             walletBalance.classList.remove('hidden');
         }
+    }
 
-        // DON'T update button states here - wallet.js handles that
-        // This was causing conflicts with wallet.js
+    updateGemCountsFromRealtime(gemsData = {}, summaryData = null, profile = null) {
+        const roughGemsCount = document.getElementById('rough-gems-count');
+        const polishedGemsCount = document.getElementById('polished-gems-count');
 
-        console.log('[Dashboard] [OK] UI successfully updated!');
-        console.log('[Dashboard] Final values displayed:');
-        console.log('[Dashboard] - Account:', player.account);
-        console.log('[Dashboard] - Ingame $:', displayCurrency);
-        console.log('[Dashboard] - TSDM:', balances.TSDM);
-        console.log('[Dashboard] - Rough Gems types:', Object.keys(roughGems).length);
-        console.log('[Dashboard] - Polished Gems types:', Object.keys(polishedGems).length);
-        
-        // Console validation only (no notification)
-        if (balances.TSDM >= 400000000) {
-            console.log('[Dashboard] [SUCCESS] TSDM Balance is correct (>= 400M):', balances.TSDM.toLocaleString());
-        } else {
-            console.warn('[Dashboard] âš ï¸ TSDM Balance might be incorrect (<400M):', balances.TSDM);
+        if (!roughGemsCount && !polishedGemsCount) {
+            return;
         }
-        console.log('[Dashboard] ========================================');
+
+        const sumMatching = (source, predicate) => {
+            if (!source || typeof source !== 'object') {
+                return null;
+            }
+            let total = 0;
+            let hasValue = false;
+            Object.entries(source).forEach(([key, value]) => {
+                if (!predicate(key)) {
+                    return;
+                }
+                const amount = Number(value ?? 0);
+                if (!Number.isFinite(amount)) {
+                    return;
+                }
+                total += amount;
+                hasValue = true;
+            });
+            return hasValue ? total : null;
+        };
+
+        const sumValues = (source) => {
+            if (!source || typeof source !== 'object') {
+                return null;
+            }
+            let total = 0;
+            let hasValue = false;
+            Object.values(source).forEach((value) => {
+                const amount = Number(value ?? 0);
+                if (!Number.isFinite(amount)) {
+                    return;
+                }
+                total += amount;
+                hasValue = true;
+            });
+            return hasValue ? total : null;
+        };
+
+        const roughMatcher = (key) => typeof key === 'string' && key.toLowerCase().includes('rough');
+        const polishedMatcher = (key) => typeof key === 'string' && key.toLowerCase().includes('polished');
+
+        let totalRough = sumMatching(gemsData, roughMatcher);
+        let totalPolished = sumMatching(gemsData, polishedMatcher);
+
+        if (totalRough === null) {
+            totalRough = sumMatching(summaryData, roughMatcher);
+        }
+        if (totalPolished === null) {
+            totalPolished = sumMatching(summaryData, polishedMatcher);
+        }
+
+        if (summaryData && totalRough === null) {
+            const fallbackKeys = ['roughTotal', 'totalRough', 'rough_total', 'total_rough'];
+            fallbackKeys.some((key) => {
+                if (summaryData[key] !== undefined) {
+                    const amount = Number(summaryData[key]);
+                    if (Number.isFinite(amount)) {
+                        totalRough = amount;
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+
+        if (summaryData && totalPolished === null) {
+            const fallbackKeys = ['polishedTotal', 'totalPolished', 'polished_total', 'total_polished'];
+            fallbackKeys.some((key) => {
+                if (summaryData[key] !== undefined) {
+                    const amount = Number(summaryData[key]);
+                    if (Number.isFinite(amount)) {
+                        totalPolished = amount;
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+
+        if (totalRough === null && profile && profile.roughGems) {
+            totalRough = sumValues(profile.roughGems);
+        }
+        if (totalPolished === null && profile && profile.polishedGems) {
+            totalPolished = sumValues(profile.polishedGems);
+        }
+
+        if (roughGemsCount) {
+            roughGemsCount.textContent = Number.isFinite(totalRough) ? totalRough : 0;
+        }
+        if (polishedGemsCount) {
+            polishedGemsCount.textContent = Number.isFinite(totalPolished) ? totalPolished : 0;
+        }
+    }
+
+    updateActiveWorkersFromSlots(slots) {
+        const activeWorkers = document.getElementById('active-workers');
+        if (!activeWorkers) {
+            return;
+        }
+
+        if (!Array.isArray(slots)) {
+            activeWorkers.textContent = '0';
+            return;
+        }
+
+        const totalWorkers = slots.reduce((total, slot) => total + this.calculateWorkersForSlot(slot), 0);
+        activeWorkers.textContent = totalWorkers;
+    }
+
+    calculateWorkersForSlot(slot) {
+        if (!slot || !Array.isArray(slot.staked)) {
+            return 0;
+        }
+
+        let workers = 0;
+        slot.staked.forEach((item) => {
+            const type = String(item?.type ?? item?.category ?? '').toLowerCase();
+            if (type.includes('worker')) {
+                workers += 1;
+            }
+        });
+
+        if (workers === 0) {
+            workers = slot.staked.length;
+        }
+
+        return workers;
+    }
+
+    getEmptyRealtimeState() {
+        return {
+            live: null,
+            profile: null,
+            gems: null,
+            inventorySummary: null,
+            speedboost: null,
+            miningSlots: null,
+            polishingSlots: null,
+            basePrice: null,
+            cityBoosts: null,
+        };
+    }
+
+    setupRealtimeEventHandlers() {
+        if (this.realtimeHandlersRegistered) {
+            return;
+        }
+
+        this.realtimeHandlersRegistered = true;
+
+        this.onRealtimeLive = (event) => {
+            const { actor, live } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.mergeLiveData(live);
+            this.renderRealtimeDashboard();
+        };
+
+        this.onRealtimeProfile = (event) => {
+            const { actor, profile } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.profile = profile || null;
+            this.renderRealtimeDashboard();
+        };
+
+        this.onRealtimeGems = (event) => {
+            const { actor, gems } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.gems = gems || {};
+            this.renderRealtimeDashboard();
+        };
+
+        this.onRealtimeSummary = (event) => {
+            const { actor, summary } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.inventorySummary = summary || null;
+            this.renderRealtimeDashboard();
+        };
+
+        this.onRealtimeMiningSlots = (event) => {
+            const { actor, slots } = event.detail || {};
+            if (!this.isEventForCurrentActor(actor)) {
+                return;
+            }
+            this.realtimeData.miningSlots = Array.isArray(slots) ? slots : [];
+            this.renderRealtimeDashboard();
+        };
+
+        window.addEventListener('realtime:live', this.onRealtimeLive);
+        window.addEventListener('realtime:profile', this.onRealtimeProfile);
+        window.addEventListener('realtime:inventory-gems', this.onRealtimeGems);
+        window.addEventListener('realtime:inventory-summary', this.onRealtimeSummary);
+        window.addEventListener('realtime:mining-slots', this.onRealtimeMiningSlots);
+    }
+
+    prepareDashboardForRealtime() {
+        this.clearInitialRealtimeTimer();
+
+        const placeholders = {
+            'tsd-balance': '--',
+            'active-workers': '--',
+            'rough-gems-count': '--',
+            'polished-gems-count': '--',
+            'mining-slots-count': '--',
+            'tsdm-balance': '--'
+        };
+
+        Object.entries(placeholders).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        });
+
+        const walletBalance = document.getElementById('wallet-balance');
+        if (walletBalance && this.isLoggedIn) {
+            walletBalance.textContent = '-- TSDM';
+            walletBalance.classList.remove('hidden');
+        }
+
+        this.showLoadingState(true);
+
+        this.initialRealtimeTimer = setTimeout(() => {
+            if (this.awaitingInitialRealtime) {
+                this.showNotification('Waiting for realtime data...', 'info');
+            }
+        }, 4000);
+    }
+
+    clearInitialRealtimeTimer() {
+        if (this.initialRealtimeTimer) {
+            clearTimeout(this.initialRealtimeTimer);
+            this.initialRealtimeTimer = null;
+        }
+    }
+
+    handleRealtimeStartFailure(error) {
+        console.error('[Dashboard] Failed to start realtime:', error);
+        this.clearInitialRealtimeTimer();
+        this.awaitingInitialRealtime = false;
+        this.showLoadingState(false);
+        this.rejectInitialRealtime(error);
+        this.showNotification('Failed to start realtime: ' + error.message, 'error');
+    }
+
+    resolveInitialRealtime() {
+        if (!this.initialRealtimePromise) {
+            return;
+        }
+        if (this.initialRealtimeResolver) {
+            this.initialRealtimeResolver();
+        }
+        this.resetInitialRealtimePromise();
+    }
+
+    rejectInitialRealtime(error) {
+        if (!this.initialRealtimePromise) {
+            return;
+        }
+        if (this.initialRealtimeReject) {
+            this.initialRealtimeReject(error);
+        }
+        this.resetInitialRealtimePromise();
+    }
+
+    resetInitialRealtimePromise() {
+        this.initialRealtimePromise = null;
+        this.initialRealtimeResolver = null;
+        this.initialRealtimeReject = null;
+    }
+
+    mergeLiveData(live) {
+        if (!live || typeof live !== 'object') {
+            return;
+        }
+
+        this.realtimeData.live = live;
+
+        if (live.profile !== undefined) {
+            this.realtimeData.profile = live.profile;
+        }
+        if (live.gems !== undefined) {
+            this.realtimeData.gems = live.gems;
+        }
+        if (live.inventorySummary !== undefined) {
+            this.realtimeData.inventorySummary = live.inventorySummary;
+        }
+        if (live.speedboost !== undefined) {
+            this.realtimeData.speedboost = live.speedboost;
+        }
+        if (live.miningSlots !== undefined) {
+            this.realtimeData.miningSlots = Array.isArray(live.miningSlots) ? live.miningSlots : [];
+        }
+        if (live.polishingSlots !== undefined) {
+            this.realtimeData.polishingSlots = Array.isArray(live.polishingSlots) ? live.polishingSlots : [];
+        }
+        if (live.pricing !== undefined) {
+            this.realtimeData.basePrice = live.pricing;
+        }
+        if (live.boosts !== undefined) {
+            this.realtimeData.cityBoosts = live.boosts;
+        }
+    }
+
+    renderRealtimeDashboard() {
+        const { profile, gems, inventorySummary, miningSlots } = this.realtimeData;
+
+        if (this.awaitingInitialRealtime && (profile || gems || inventorySummary || miningSlots)) {
+            this.awaitingInitialRealtime = false;
+            this.clearInitialRealtimeTimer();
+            this.showLoadingState(false);
+            this.resolveInitialRealtime();
+        }
+
+        if (profile) {
+            this.updateDashboardFromProfile(profile);
+        }
+
+        if (profile || gems || inventorySummary) {
+            this.updateGemCountsFromRealtime(gems, inventorySummary, profile);
+        }
+
+        if (miningSlots) {
+            this.updateActiveWorkersFromSlots(miningSlots);
+        }
+    }
+
+    isEventForCurrentActor(actor) {
+        return Boolean(this.currentActor) && actor === this.currentActor;
+    }
+
+    cleanupRealtimeSession() {
+        this.clearInitialRealtimeTimer();
+        this.awaitingInitialRealtime = false;
+        this.realtimeData = this.getEmptyRealtimeState();
+        this.resetInitialRealtimePromise();
     }
 
     async disconnectWallet() {
         console.log('[Dashboard] Starting wallet disconnect...');
         
         try {
-            // Clean up realtime listeners
-            
-            // Stop polling
-            if (this.refreshInterval) {
-                clearInterval(this.refreshInterval);
-                this.refreshInterval = null;
+            if (window.TSDRealtime && typeof window.TSDRealtime.stop === 'function') {
+                window.TSDRealtime.stop();
             }
-            
-            // Reset state
+
+            this.cleanupRealtimeSession();
+
             this.currentActor = null;
             this.isLoggedIn = false;
             
@@ -521,117 +763,11 @@ class DashboardGame extends TSDGEMSGame {
             connectBtn.innerHTML = 'Connect Wallet';
             connectBtn.style.cursor = 'pointer';
         }
-        if (logoutBtn) logoutBtn.classList.add('hidden');    }
-
-    setupInventoryRealtimeListeners() {
-        console.log('[Dashboard] Setting up realtime inventory listeners...');
-
-        // Listen for inventory updates from dataManager
-        window.addEventListener('inventory:updated', (event) => {
-            const { type, data } = event.detail;
-            console.log('[Dashboard] 🔄 Realtime inventory update received:', type, data);
-
-            if (type === 'gems') {
-                // Update gem counts in dashboard
-                this.updateGemCountsFromRealtime(data);
-            }
-        });
+        if (logoutBtn) {
+            logoutBtn.classList.add('hidden');
+        }
     }
 
-    updateGemCountsFromRealtime(gemsData) {
-        // Extract rough and polished gems
-        const roughGems = {};
-        const polishedGems = {};
-
-        Object.entries(gemsData).forEach(([key, value]) => {
-            if (key.startsWith('rough_') || key === 'rough_gems') {
-                roughGems[key] = value;
-            } else if (key.startsWith('polished_')) {
-                polishedGems[key] = value;
-            }
-        });
-
-        // Update dashboard counters
-        const roughGemsCount = document.getElementById('rough-gems-count');
-        if (roughGemsCount) {
-            const totalRough = Object.values(roughGems).reduce((a, b) => a + b, 0);
-            roughGemsCount.textContent = totalRough;
-        }
-
-        const polishedGemsCount = document.getElementById('polished-gems-count');
-        if (polishedGemsCount) {
-            const totalPolished = Object.values(polishedGems).reduce((a, b) => a + b, 0);
-            polishedGemsCount.textContent = totalPolished;
-        }
-
-        console.log('[Dashboard] ✅ Updated gem counts from realtime data');
-    }
-
-    async startAutoRefresh() {
-        if (!this.currentActor) {
-            console.warn('[Dashboard] No actor set, cannot start auto-refresh');
-            return;
-        }
-
-        // Try to use TSDRealtime if available
-        if (window.TSDRealtime) {
-            try {
-                console.log('[Dashboard] 🎯 Starting TSDRealtime for dashboard data...');
-                window.TSDRealtime.start(this.currentActor);
-                console.log('[Dashboard] ✅ TSDRealtime active - instant updates enabled!');
-                return;
-            } catch (error) {
-                console.warn('[Dashboard] TSDRealtime failed, falling back to polling:', error);
-            }
-        } else {
-            console.warn('[Dashboard] TSDRealtime not available');
-        }
-
-        // Fallback: Polling method
-        this.setupPolling();
-    }
-
-
-    setupPolling() {
-        console.log('[Dashboard] [POLLING] Setting up polling (30s interval)...');
-
-        // Refresh dashboard every 30 seconds
-        this.refreshInterval = setInterval(async () => {
-            if (this.isLoggedIn && this.currentActor) {
-                try {
-                    const dashboard = await this.backendService.refreshDashboard();
-                    this.updateDashboardFromBackend(dashboard);
-                } catch (error) {
-                    console.error('[Dashboard] Auto-refresh failed:', error);
-                }
-            }
-        }, 30000);
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            if (this.refreshInterval) {
-                clearInterval(this.refreshInterval);
-            }
-        });
-
-        // Pause refresh when page is hidden, resume when visible
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                if (this.refreshInterval) {
-                    clearInterval(this.refreshInterval);
-                    this.refreshInterval = null;
-                    console.log('[Dashboard] Polling paused (page hidden)');
-                }
-            } else {
-                if (!this.refreshInterval && this.isLoggedIn && this.currentActor) {
-                    this.setupPolling();
-                    console.log('[Dashboard] Polling resumed (page visible)');
-                }
-            }
-        });
-    }
-
-    
     showLoadingState(isLoading) {
         const statCards = document.querySelectorAll('.stat-card');
         const statValues = document.querySelectorAll('.stat-value');
