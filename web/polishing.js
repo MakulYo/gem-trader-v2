@@ -133,7 +133,7 @@ class PolishingGame extends TSDGEMSGame {
             if (!this.isEventForCurrentActor(actor)) {
                 return;
             }
-            console.log('[Polishing] 🔄 realtime:live aggregate received');
+            console.log('[PolishingRealtime] live aggregate received, polishingSlots:', live?.polishingSlots?.length || 0);
             this.mergeLiveData(live);
         };
 
@@ -150,6 +150,11 @@ class PolishingGame extends TSDGEMSGame {
             if (!this.isEventForCurrentActor(actor)) {
                 return;
             }
+            console.log('[PolishingRealtime] polishing-slots update, slots:', slots?.map(slot => ({
+                id: slot.id,
+                state: slot.state,
+                hasTable: !!slot.staked?.find(s => s.type === 'table')
+            })));
             this.applyPolishingSlotsFromRealtime(slots);
         };
 
@@ -166,6 +171,7 @@ class PolishingGame extends TSDGEMSGame {
             if (!this.isEventForCurrentActor(actor)) {
                 return;
             }
+            console.log('[PolishingRealtime] inventory-gems update, roughGems:', gems?.rough_gems || 0, 'polishedTypes:', Object.keys(gems || {}).filter(k => k.startsWith('polished_')).length);
             this.applyGemsFromRealtime(gems);
         };
 
@@ -587,28 +593,6 @@ class PolishingGame extends TSDGEMSGame {
                 await this.disconnectWallet();
             });
         }
-        
-        // Refresh button
-        const refreshBtn = document.getElementById('refresh-polishing-btn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', async () => {
-                const icon = refreshBtn.querySelector('i');
-                if (icon) icon.classList.add('fa-spin');
-                
-                await this.refreshInventory();
-                
-                if (icon) icon.classList.remove('fa-spin');
-            });
-        }
-    }
-    
-    async refreshInventory() {
-        if (!this.currentActor) {
-            this.showNotification('Connect your wallet first!', 'warning');
-            return;
-        }
-
-        this.showNotification('Inventory aktualisiert sich automatisch über Realtime.', 'info');
     }
 
     async connectWallet() {
@@ -653,6 +637,10 @@ class PolishingGame extends TSDGEMSGame {
     }
 
     async loadPolishingData(actor) {
+        // LEGACY WRAPPER: Manual data fetching removed - relying solely on realtime events
+        // All polishing data loading is now handled via TSDRealtime events (realtime:polishing-slots, realtime:inventory-gems, etc.)
+        console.log('[PolishingLegacyLoader] loadPolishingData called - now just starts realtime for actor:', actor);
+        
         if (!actor) {
             console.warn('[Polishing] loadPolishingData called without actor');
             return;
@@ -1852,10 +1840,6 @@ class PolishingGame extends TSDGEMSGame {
         console.log('[Polishing] Disconnecting wallet...');
         
         try {
-            if (this.refreshInterval) {
-                clearInterval(this.refreshInterval);
-                this.refreshInterval = null;
-            }
             if (this.timerInterval) {
                 clearInterval(this.timerInterval);
                 this.timerInterval = null;
