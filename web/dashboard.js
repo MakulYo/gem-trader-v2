@@ -343,6 +343,7 @@ class DashboardGame extends TSDGEMSGame {
             miningSlotsCount.textContent = `${Math.min(unlocked, 10)}/10`;
         }
 
+        // Realtime: Get TSDM balance from live.profile.balances only
         const tsdmBalance = document.getElementById('tsdm-balance');
         if (tsdmBalance) {
             const tsdm = Number(balances.TSDM ?? balances.tsdm ?? 0);
@@ -350,6 +351,7 @@ class DashboardGame extends TSDGEMSGame {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
             });
+            console.log('[DashboardRealtime] Updated TSDM balance from live.profile.balances:', tsdm);
         }
 
         const walletBalance = document.getElementById('wallet-balance');
@@ -360,7 +362,8 @@ class DashboardGame extends TSDGEMSGame {
         }
     }
 
-    updateGemCountsFromRealtime(gemsData = {}, summaryData = null, profile = null) {
+    // Realtime: Get gem counts from live.gems only (consistent with polishing/trading)
+    updateGemCountsFromRealtime(gemsData = {}) {
         const roughGemsCount = document.getElementById('rough-gems-count');
         const polishedGemsCount = document.getElementById('polished-gems-count');
 
@@ -368,90 +371,19 @@ class DashboardGame extends TSDGEMSGame {
             return;
         }
 
-        const sumMatching = (source, predicate) => {
-            if (!source || typeof source !== 'object') {
-                return null;
+        // Realtime: Use live.gems as single source of truth
+        // Count rough gems (key: rough_gems)
+        const totalRough = Number(gemsData.rough_gems ?? 0);
+        
+        // Count polished gems (keys: polished_*)
+        let totalPolished = 0;
+        Object.entries(gemsData).forEach(([key, value]) => {
+            if (key.startsWith('polished_')) {
+                totalPolished += Number(value ?? 0);
             }
-            let total = 0;
-            let hasValue = false;
-            Object.entries(source).forEach(([key, value]) => {
-                if (!predicate(key)) {
-                    return;
-                }
-                const amount = Number(value ?? 0);
-                if (!Number.isFinite(amount)) {
-                    return;
-                }
-                total += amount;
-                hasValue = true;
-            });
-            return hasValue ? total : null;
-        };
+        });
 
-        const sumValues = (source) => {
-            if (!source || typeof source !== 'object') {
-                return null;
-            }
-            let total = 0;
-            let hasValue = false;
-            Object.values(source).forEach((value) => {
-                const amount = Number(value ?? 0);
-                if (!Number.isFinite(amount)) {
-                    return;
-                }
-                total += amount;
-                hasValue = true;
-            });
-            return hasValue ? total : null;
-        };
-
-        const roughMatcher = (key) => typeof key === 'string' && key.toLowerCase().includes('rough');
-        const polishedMatcher = (key) => typeof key === 'string' && key.toLowerCase().includes('polished');
-
-        let totalRough = sumMatching(gemsData, roughMatcher);
-        let totalPolished = sumMatching(gemsData, polishedMatcher);
-
-        if (totalRough === null) {
-            totalRough = sumMatching(summaryData, roughMatcher);
-        }
-        if (totalPolished === null) {
-            totalPolished = sumMatching(summaryData, polishedMatcher);
-        }
-
-        if (summaryData && totalRough === null) {
-            const fallbackKeys = ['roughTotal', 'totalRough', 'rough_total', 'total_rough'];
-            fallbackKeys.some((key) => {
-                if (summaryData[key] !== undefined) {
-                    const amount = Number(summaryData[key]);
-                    if (Number.isFinite(amount)) {
-                        totalRough = amount;
-                        return true;
-                    }
-                }
-                return false;
-            });
-        }
-
-        if (summaryData && totalPolished === null) {
-            const fallbackKeys = ['polishedTotal', 'totalPolished', 'polished_total', 'total_polished'];
-            fallbackKeys.some((key) => {
-                if (summaryData[key] !== undefined) {
-                    const amount = Number(summaryData[key]);
-                    if (Number.isFinite(amount)) {
-                        totalPolished = amount;
-                        return true;
-                    }
-                }
-                return false;
-            });
-        }
-
-        if (totalRough === null && profile && profile.roughGems) {
-            totalRough = sumValues(profile.roughGems);
-        }
-        if (totalPolished === null && profile && profile.polishedGems) {
-            totalPolished = sumValues(profile.polishedGems);
-        }
+        console.log('[DashboardRealtime] Updated gem counts from live.gems - rough:', totalRough, 'polished:', totalPolished);
 
         if (roughGemsCount) {
             roughGemsCount.textContent = Number.isFinite(totalRough) ? totalRough : 0;
@@ -693,7 +625,8 @@ class DashboardGame extends TSDGEMSGame {
         }
 
         if (profile || gems || inventorySummary) {
-            this.updateGemCountsFromRealtime(gems, inventorySummary, profile);
+            // Realtime: Update gem counts from live.gems only
+            this.updateGemCountsFromRealtime(gems);
         }
 
         if (miningSlots) {

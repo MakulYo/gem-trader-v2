@@ -354,23 +354,44 @@ class InventoryPage extends TSDGEMSGame {
         this.rebuildStakedAssetIds();
     }
 
+    // Realtime: Only update stats, not reload NFT list (NFT list comes from backend)
     renderRealtimeInventory() {
-        const assets = this.getRealtimeAssets();
         const hasSummary = !!(this.realtimeData.summary && Object.keys(this.realtimeData.summary).length);
-        const hasAssets = assets.length > 0;
         const hasGems = !!(this.realtimeData.gems && Object.keys(this.realtimeData.gems).length);
 
-        if (this.awaitingInitialRealtime && (hasSummary || hasAssets || hasGems)) {
+        if (this.awaitingInitialRealtime && (hasSummary || hasGems)) {
             this.awaitingInitialRealtime = false;
             this.clearInitialRealtimeTimer();
             this.resolveInitialRealtime();
+            console.log('[InventoryRealtime] Initial realtime data received, clearing loading state');
         }
 
-        this.inventoryData = this.buildInventoryDataFromRealtime(assets);
-        this.processInventoryData();
+        // Realtime: Only update stats from realtime data, don't rebuild NFT list
+        // NFT list should be loaded once from backend, not from realtime
+        if (this.inventoryData) {
+            // Update stats from realtime summary/gems
+            const summary = this.realtimeData.summary || {};
+            if (summary.polished !== undefined) this.inventoryData.polished = summary.polished;
+            if (summary.rough !== undefined) this.inventoryData.rough = summary.rough;
+            if (summary.equipment !== undefined) this.inventoryData.equipment = summary.equipment;
+            if (summary.total !== undefined) this.inventoryData.total = summary.total;
+            
+            // Update gems from realtime
+            if (this.realtimeData.gems) {
+                this.inventoryData.gems = this.realtimeData.gems;
+            }
+        }
+
+        // Rebuild staked asset IDs (for showing staked badges)
         this.rebuildStakedAssetIds();
+        
+        // Update stats display only
         this.updateStats();
-        this.filterNFTs();
+        
+        // Re-render NFTs only if staked status changed (to update badges)
+        if (this.allNFTs.length > 0) {
+            this.renderNFTs();
+        }
     }
 
     buildInventoryDataFromRealtime(assets = this.getRealtimeAssets()) {
@@ -582,9 +603,8 @@ class InventoryPage extends TSDGEMSGame {
     }
 
     async loadInventory(forceRefresh = false) {
-        // LEGACY WRAPPER: Manual data fetching removed - relying solely on realtime events
-        // All inventory data loading is now handled via TSDRealtime events (realtime:inventory-gems, realtime:inventory-summary, etc.)
-        console.log('[InventoryLegacyLoader] loadInventory called - now just starts realtime for actor:', this.currentActor);
+        // Realtime: NFT list comes from backend, stats come from realtime
+        console.log('[Inventory] loadInventory called - loading NFT list from backend for actor:', this.currentActor);
         
         if (!this.currentActor) {
             console.log('[Inventory] No actor connected, skipping inventory load');
@@ -593,11 +613,29 @@ class InventoryPage extends TSDGEMSGame {
             return;
         }
 
-        if (forceRefresh) {
-            this.showNotification('Realtime stream active - waiting for Firestore to update...', 'info');
-        }
+        // Start realtime for stats updates
+        this.startRealtimeForActor(this.currentActor);
 
-        return this.startRealtimeForActor(this.currentActor);
+        // Load NFT list from backend (only once, not from realtime)
+        try {
+            console.log('[Inventory] Loading NFT list from backend...');
+            const inventoryData = await this.backendService.getInventory(this.currentActor, forceRefresh);
+            
+            if (inventoryData && inventoryData.assets) {
+                this.inventoryData = inventoryData;
+                this.processInventoryData();
+                this.updateStats();
+                this.renderNFTs();
+                console.log('[InventoryRealtime] NFT list loaded from backend, count:', this.allNFTs.length);
+            } else {
+                console.warn('[Inventory] No assets in backend response');
+                this.showEmptyState('no-results');
+            }
+        } catch (error) {
+            console.error('[Inventory] Failed to load NFT list from backend:', error);
+            this.showNotification('Failed to load inventory: ' + error.message, 'error');
+            this.showEmptyState('error');
+        }
     }
 
     processInventoryData() {
@@ -643,7 +681,17 @@ class InventoryPage extends TSDGEMSGame {
             });
             
             console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
+            
+            // Realtime: Stable sort for NFTs to prevent shuffling
+            // Sort by template_id first, then asset_id for consistent ordering
+            this.allNFTs.sort((a, b) => {
+                const templateCompare = String(a.template_id || '').localeCompare(String(b.template_id || ''));
+                if (templateCompare !== 0) return templateCompare;
+                return String(a.asset_id || '').localeCompare(String(b.asset_id || ''));
+            });
+            
             this.filteredNFTs = [...this.allNFTs];
+            console.log('[InventoryRealtime] NFT list sorted and ready, count:', this.allNFTs.length);
         }
         // FALLBACK: Use old templateCounts method if assets array not available
         else if (this.inventoryData && this.inventoryData.templateCounts) {
@@ -697,7 +745,17 @@ class InventoryPage extends TSDGEMSGame {
             });
 
             console.log('[Inventory] Total NFTs created:', this.allNFTs.length);
+            
+            // Realtime: Stable sort for NFTs to prevent shuffling
+            // Sort by template_id first, then asset_id for consistent ordering
+            this.allNFTs.sort((a, b) => {
+                const templateCompare = String(a.template_id || '').localeCompare(String(b.template_id || ''));
+                if (templateCompare !== 0) return templateCompare;
+                return String(a.asset_id || '').localeCompare(String(b.asset_id || ''));
+            });
+            
             this.filteredNFTs = [...this.allNFTs];
+            console.log('[InventoryRealtime] NFT list sorted and ready, count:', this.allNFTs.length);
         }
         else {
             console.log('[Inventory] No inventory data available');

@@ -1681,6 +1681,7 @@ class TradingGame extends TSDGEMSGame {
         }
     }
 
+    // Realtime: Update polished gems from live.gems only
     updatePolishedGemsFromRealtime(gemsData) {
         // Update polished gems count from realtime data
         const newPolishedGemsCount = {};
@@ -1695,7 +1696,8 @@ class TradingGame extends TSDGEMSGame {
         });
 
         this.polishedGemsCount = newPolishedGemsCount;
-        console.log('[Trading] ✅ Updated polished gems count from realtime:', this.polishedGemsCount);
+        const totalPolished = Object.values(newPolishedGemsCount).reduce((sum, val) => sum + (val || 0), 0);
+        console.log('[TradingRealtime] Updated polished gems from live.gems - total:', totalPolished, 'types:', Object.keys(newPolishedGemsCount).length);
 
         // Refresh the trading interface if it's currently displayed
         this.updateSellControls();

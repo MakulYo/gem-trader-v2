@@ -364,7 +364,9 @@ class PolishingGame extends TSDGEMSGame {
         }
     }
 
+    // Realtime: Update profile data from realtime events
     applyProfileFromRealtime(profile) {
+        // Realtime: Get currency from live.profile only
         const rawCurrency = Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0);
         const previousCurrency = Number(this.currentGameDollars ?? 0);
         const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
@@ -372,6 +374,7 @@ class PolishingGame extends TSDGEMSGame {
             ? previousCurrency
             : sanitizedCurrency;
         this.updateGameDollars(effectiveCurrency, false);
+        console.log('[PolishingRealtime] Updated Game $ from live.profile:', effectiveCurrency);
 
         if (typeof profile.polishingSlotsUnlocked === 'number') {
             const unlocked = Math.max(0, Math.min(profile.polishingSlotsUnlocked, MAX_POLISHING_SLOTS));
@@ -1335,12 +1338,13 @@ class PolishingGame extends TSDGEMSGame {
         }
     }
 
+    // Realtime: Update gem counts from live.gems only
     updateGemCountsFromRealtime(gemsData) {
         // Update rough gems count from realtime data
         const roughGemsCount = gemsData.rough_gems || 0;
         this.roughGemsCount = roughGemsCount;
 
-        console.log('[Polishing] ✅ Updated rough gems count from realtime:', this.roughGemsCount);
+        console.log('[PolishingRealtime] Updated gem counts from live.gems - rough:', roughGemsCount);
 
         // Update the UI counters
         this.updatePolishingStats();

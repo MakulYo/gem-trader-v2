@@ -416,6 +416,7 @@ class MiningGame extends TSDGEMSGame {
         }
     }
 
+    // Realtime: Update profile data from realtime events
     applyProfileFromRealtime(profile) {
         if (!profile || typeof profile !== 'object') {
             return;
@@ -423,6 +424,7 @@ class MiningGame extends TSDGEMSGame {
 
         this.realtimeData.profile = profile;
 
+        // Realtime: Get currency from live.profile only
         const rawCurrency = Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0);
         const previousCurrency = Number(this.currentGameDollars ?? 0);
         const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
@@ -433,6 +435,7 @@ class MiningGame extends TSDGEMSGame {
 
         const tsdmBalance = document.getElementById('tsdm-balance-mining');
         if (tsdmBalance) {
+            // Realtime: Get TSDM balance from live.profile.balances only
             const tsdm = Number(profile.balances?.TSDM ?? profile.balances?.tsdm ?? 0);
             tsdmBalance.textContent = tsdm.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
@@ -440,9 +443,11 @@ class MiningGame extends TSDGEMSGame {
             });
         }
 
+        // Realtime: Get mining slots unlocked count from live.profile only
         const unlocked = Math.min(profile.miningSlotsUnlocked ?? 0, MAX_SLOTS);
         const previousSlots = this.effectiveSlots;
         this.effectiveSlots = unlocked;
+        console.log('[MiningRealtime] Updated mining slots unlocked from profile:', unlocked);
         if (unlocked !== previousSlots) {
             this.renderMiningSlots();
         }
@@ -450,10 +455,14 @@ class MiningGame extends TSDGEMSGame {
         this.markRealtimeInitialized();
     }
 
+    // Realtime: render mining slots from live.miningSlots only
     applyMiningSlotsFromRealtime(slots) {
         if (!Array.isArray(slots)) {
-            return;
+            console.warn('[MiningRealtime] applyMiningSlotsFromRealtime: slots is not an array:', slots);
+            // Use empty array as safe default
+            slots = [];
         }
+        console.log('[MiningRealtime] Applying mining slots from realtime, count:', slots.length);
         this.realtimeData.miningSlots = slots;
         this.updateMiningSlotsFromLive(slots);
         this.updateStakedAssetsFromLive(slots);
@@ -506,24 +515,24 @@ class MiningGame extends TSDGEMSGame {
         this.realtimeData.gems = gems;
     }
 
-    // 🔥 Update mining slots from live data (timing/state only)
+    // Realtime: Update mining slots from live data (timing/state only)
     updateMiningSlotsFromLive(slots) {
-        if (!slots || !Array.isArray(slots)) {
-            console.warn('[Mining] ⚠️ Invalid slots data in updateMiningSlotsFromLive:', slots);
-            return;
+        // Guard: ensure slots is a valid array
+        if (!Array.isArray(slots)) {
+            console.warn('[Mining] ⚠️ Invalid slots data in updateMiningSlotsFromLive, using empty array:', slots);
+            slots = [];
         }
 
-        console.log('[Mining] Updating mining slots timing/state from live data:', slots.map(slot => ({
-            id: slot.id,
-            state: slot.state,
-            startedAt: slot.startedAt,
-            finishAt: slot.finishAt,
-            power: slot.power
-        })));
+        console.log('[MiningRealtime] Updating mining slots timing/state from live data, slots count:', slots.length);
 
         // Convert live slots format to activeJobs format (timing/state only)
+        // Guard: filter out invalid slots and ensure slot.id exists
         const activeJobs = slots
-            .filter(slot => slot && (slot.state === 'active' || slot.state === 'running'))
+            .filter(slot => {
+                if (!slot || typeof slot !== 'object') return false;
+                if (slot.id === undefined || slot.id === null) return false;
+                return slot.state === 'active' || slot.state === 'running';
+            })
             .map(slot => ({
                 jobId: `job_slot_${slot.id}`,
                 slotId: `slot_${slot.id}`,
@@ -534,7 +543,7 @@ class MiningGame extends TSDGEMSGame {
             }));
 
         this.activeJobs = activeJobs;
-        console.log('[Mining] Active jobs from live data:', this.activeJobs.length);
+        console.log('[MiningRealtime] Active jobs from live data:', this.activeJobs.length);
 
         // Note: Asset updates are handled separately by updateStakedAssetsFromLive
         // Only re-render if we have valid data
@@ -543,17 +552,15 @@ class MiningGame extends TSDGEMSGame {
         }
     }
 
+    // Realtime: Update staked assets from live data
     updateStakedAssetsFromLive(slots) {
-        console.log('[Mining] Updating staked assets from live data:', slots?.map(slot => ({
-            id: slot.id,
-            stakedCount: slot.staked?.length || 0,
-            stakedTypes: slot.staked?.map(s => s.type) || []
-        })));
-
-        if (!slots || !Array.isArray(slots)) {
-            console.warn('[Mining] ⚠️ Invalid slots data in updateStakedAssetsFromLive:', slots);
-            return;
+        // Guard: ensure slots is a valid array
+        if (!Array.isArray(slots)) {
+            console.warn('[Mining] ⚠️ Invalid slots data in updateStakedAssetsFromLive, using empty array:', slots);
+            slots = [];
         }
+
+        console.log('[MiningRealtime] Updating staked assets from live data, slots count:', slots.length);
 
         // Reset staked assets
         this.stakedMines = {};
@@ -561,13 +568,21 @@ class MiningGame extends TSDGEMSGame {
         this.stakedSpeedboosts = {};
 
         slots.forEach(slot => {
-            if (!slot || !slot.staked || !Array.isArray(slot.staked)) {
-                return; // Guard: skip invalid slot data
+            // Guard: skip invalid slot data
+            if (!slot || typeof slot !== 'object') {
+                return;
             }
 
+            // Guard: ensure slot.id exists and is a valid number
             const slotNum = slot.id;
-            if (!slotNum || isNaN(slotNum)) {
-                console.warn('[Mining] ⚠️ Invalid slot ID:', slot);
+            if (slotNum === undefined || slotNum === null || isNaN(Number(slotNum))) {
+                console.warn('[Mining] ⚠️ Invalid slot ID, skipping slot:', slot);
+                return;
+            }
+
+            // Guard: ensure staked is an array
+            if (!slot.staked || !Array.isArray(slot.staked)) {
+                // Slot exists but has no staked items - this is valid, just skip
                 return;
             }
 
@@ -1133,9 +1148,15 @@ class MiningGame extends TSDGEMSGame {
             });
         }
 
+        // Realtime: render mining slots from live.miningSlots only
+        // Guard: ensure safe array access for unlock costs
         slotsGrid.innerHTML = slots.map(slot => {
             if (!slot.isUnlocked) {
-                const unlockCost = SLOT_UNLOCK_COSTS[slot.slotNum - 1] || 0;
+                // Guard: safe array access - slotNum is 1-based, array is 0-based
+                const slotIndex = slot.slotNum - 1;
+                const unlockCost = (slotIndex >= 0 && slotIndex < SLOT_UNLOCK_COSTS.length) 
+                    ? SLOT_UNLOCK_COSTS[slotIndex] 
+                    : 0;
                 return `
                     <div class="mining-slot locked">
                         <div class="slot-header">
