@@ -579,6 +579,23 @@ class MiningGame extends TSDGEMSGame {
         this.activeJobs = activeJobs;
         console.log('[MiningRealtime] Active jobs from live data:', this.activeJobs.length);
 
+        // Clean up any pending/completed job flags that no longer exist in live data
+        const activeJobIds = new Set(this.activeJobs.map(job => job.jobId).filter(Boolean));
+        if (this.pendingCompletionJobs && this.pendingCompletionJobs.size > 0) {
+            Array.from(this.pendingCompletionJobs).forEach(jobId => {
+                if (!activeJobIds.has(jobId)) {
+                    this.pendingCompletionJobs.delete(jobId);
+                }
+            });
+        }
+        if (this.completedJobsRendered && this.completedJobsRendered.size > 0) {
+            Array.from(this.completedJobsRendered).forEach(jobId => {
+                if (!activeJobIds.has(jobId)) {
+                    this.completedJobsRendered.delete(jobId);
+                }
+            });
+        }
+
         // Note: Asset updates are handled separately by updateStakedAssetsFromLive
         // Only re-render if we have valid data
         if (this.stakedMines !== undefined && this.stakedWorkers !== undefined) {
@@ -1243,6 +1260,7 @@ class MiningGame extends TSDGEMSGame {
             if (slot.activeJob) {
                 const job = slot.activeJob;
                 const now = Date.now();
+                const isPendingClaim = Boolean(job.jobId && this.pendingCompletionJobs && this.pendingCompletionJobs.has(job.jobId));
 
                 // Calculate effective duration with speedboost
                 const baseDurationMs = job.baseDurationMs || MINING_DURATION_MS;
@@ -1284,6 +1302,7 @@ class MiningGame extends TSDGEMSGame {
                     ? Math.min(100, Math.max(0, ((effectiveDurationMs - remaining) / effectiveDurationMs) * 100))
                     : 0;
                 const isComplete = remaining === 0;
+                const showClaimButton = isComplete && !isPendingClaim;
 
                 const slotMP = job.slotMiningPower || 0;
                 const expectedRewards = Math.max(1, Math.floor(slotMP / 20));
@@ -1293,9 +1312,9 @@ class MiningGame extends TSDGEMSGame {
                 return `
                     <div class="mining-slot active ${isComplete ? 'complete' : 'in-progress'}" data-job-id="${job.jobId}" style="border: 2px solid ${isComplete ? '#00ff64' : '#00d4ff'}; box-shadow: 0 0 20px ${isComplete ? 'rgba(0, 255, 100, 0.3)' : 'rgba(0, 212, 255, 0.3)'}; display: flex; flex-direction: column;">
                         <div class="slot-header">
-                            <h4>Slot ${slot.slotNum} ${isComplete ? '💎' : '⛏️'}</h4>
+                            <h4>Slot ${slot.slotNum} ${isComplete ? (isPendingClaim ? '⏳' : '💎') : '⛏️'}</h4>
                             <span class="slot-status ${isComplete ? 'complete' : 'active'}" style="background: ${isComplete ? '#00ff64' : '#00d4ff'}; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: bold;">
-                                ${isComplete ? '✅ Ready to Collect' : '⛏️ Mining in Progress'}
+                                ${isPendingClaim ? 'Processing claim...' : (isComplete ? '✅ Ready to Collect' : '⛏️ Mining in Progress')}
                             </span>
                         </div>
                         <div class="slot-info" style="padding: 30px 20px; text-align: center; display: flex; flex-direction: column; flex-grow: 1;">
@@ -1332,13 +1351,17 @@ class MiningGame extends TSDGEMSGame {
                                 </div>
                             ` : ''}
                             <p style="color: ${isComplete ? '#00ff64' : '#888'}; font-size: 1.2em; margin-top: 15px;">
-                                ${isComplete ? '✅ Mining Complete!' : `${Math.floor(progress)}% Complete`}
+                                ${isPendingClaim ? '⏳ Claim in progress...' : (isComplete ? '✅ Mining Complete!' : `${Math.floor(progress)}% Complete`)}
                             </p>
                         </div>
-                        ${isComplete ? `
+                        ${showClaimButton ? `
                             <button class="action-btn claim-btn mining-claim-btn" onclick="game.completeMining('${job.jobId}')">
                                 <i class="fas fa-gift"></i> CLAIM REWARDS
                             </button>
+                        ` : isPendingClaim ? `
+                            <div class="claiming-indicator" style="padding: 1rem; text-align: center; color: #ffd700;">
+                                <i class="fas fa-spinner fa-spin"></i> Finalizing rewards...
+                            </div>
                         ` : ''}
                     </div>
                 `;

@@ -9,6 +9,7 @@ try { admin.app(); } catch { admin.initializeApp(); }
 const db = getFirestore();
 
 const { getWaxBalance, getTsdmBalance, getOwnedNfts } = require('./chain');
+const { buildPlayerLiveData } = require('./live-aggregator');
 
 // Built-in CORS from v2 (no external 'cors' lib)
 const CORS = { cors: true, region: 'us-central1' };
@@ -40,27 +41,41 @@ const initPlayer = onRequest(CORS, async (req, res) => {
     ingameCurrency: 0,
     tsdmBalance: 0,
     miningSlotsUnlocked: 1,  // First slot is free and auto-unlocked
-    polishingSlotsUnlocked: 0,
+    polishingSlotsUnlocked: 1,  // First slot is free and auto-unlocked
     monthlyScore: 0,
     nfts: { count: 0, lastSyncAt: now },
     balances: { WAX: 0, TSDM: 0 }
   };
 
   if (!snap.exists) {
+    console.log(`[initPlayer] 🆕 Creating new player for actor: ${actor}`);
     await ref.set({ ...base, createdAt: now, lastSeenAt: now });
     // Create live doc synchronously for new players to ensure immediate availability
-    console.log(`[initPlayer] Creating live doc synchronously for new player ${actor}`);
+    console.log(`[initPlayer] Creating runtime/live doc synchronously for new player ${actor}`);
     await buildPlayerLiveData(actor, 'initPlayer');
+    console.log(`[initPlayer] ✅ Player and runtime/live created successfully for ${actor}`);
     // Return with profile data
     res.json({ ok: true, profile: { id: actor, ...base } });
     // Sync inventory in background (don't await)
     syncNowInternal(actor).catch(e => console.error('[initPlayer] Background sync failed:', e));
     return;
   } else {
-    // Ensure existing players have at least 1 mining slot
+    // Ensure existing players have at least 1 mining slot and 1 polishing slot
     const existingData = snap.data();
+    const updates = { lastSeenAt: now };
+    let needsUpdate = false;
+    
     if (!existingData.miningSlotsUnlocked || existingData.miningSlotsUnlocked < 1) {
-      await ref.update({ lastSeenAt: now, miningSlotsUnlocked: 1 });
+      updates.miningSlotsUnlocked = 1;
+      needsUpdate = true;
+    }
+    if (!existingData.polishingSlotsUnlocked || existingData.polishingSlotsUnlocked < 1) {
+      updates.polishingSlotsUnlocked = 1;
+      needsUpdate = true;
+    }
+    
+    if (needsUpdate) {
+      await ref.update(updates);
     } else {
       await ref.update({ lastSeenAt: now });
     }

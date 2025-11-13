@@ -118,9 +118,14 @@ window.walletConnect = async function walletConnect() {
   await updateUI(true)
 
   try {
-    await initPlayer(actor)
+    console.log('[Wallet] [PlayerInit] Initializing player for actor:', actor);
+    const result = await initPlayer(actor);
+    console.log('[Wallet] [PlayerInit] ✅ Player initialized successfully:', result);
   } catch (e) {
-    console.warn('[wallet] hydrate skipped:', e)
+    console.error('[Wallet] [PlayerInit] ❌ Failed to initialize player:', e);
+    // Don't silently fail - this is critical for new players
+    // The error will be visible in console, but we continue to allow realtime to start
+    // Realtime will handle empty state if player doesn't exist
   }
   setStatus(session.walletPlugin?.metadata?.name || session.walletPlugin?.id || '')
 
@@ -287,6 +292,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           };
           startGlobalRealtime();
+
+          // 🔴 CRITICAL: Initialize player if it doesn't exist (same as walletConnect)
+          try {
+            console.log('[Wallet] [PlayerInit] Initializing player for restored session:', actor);
+            const result = await initPlayer(actor);
+            console.log('[Wallet] [PlayerInit] ✅ Player initialized successfully for restored session:', result);
+          } catch (e) {
+            console.error('[Wallet] [PlayerInit] ❌ Failed to initialize player for restored session:', e);
+            // Don't silently fail - this is critical for new players
+          }
 
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('wallet-session-restored', { detail: { actor, session } }))

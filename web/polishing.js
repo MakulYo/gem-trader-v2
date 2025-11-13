@@ -491,7 +491,6 @@ class PolishingGame extends TSDGEMSGame {
                 }
                 if (this.pendingCompletionJobs.has(jobId)) {
                     updatedPending.add(jobId);
-                    return;
                 }
 
                 const startedAt = this.toMillis(slot.startedAt ?? previousJob.startedAt ?? null);
@@ -795,13 +794,15 @@ class PolishingGame extends TSDGEMSGame {
                 const remaining = Math.max(0, job.finishAt - now);
                 const progress = Math.min(100, ((POLISHING_DURATION_MS - remaining) / POLISHING_DURATION_MS) * 100);
                 const isComplete = remaining === 0;
+                const isPendingClaim = Boolean(job.jobId && this.pendingCompletionJobs && this.pendingCompletionJobs.has(job.jobId));
+                const showClaimButton = isComplete && !isPendingClaim;
                 
                 return `
                     <div class="polishing-slot active ${isComplete ? 'complete' : 'in-progress'}" data-job-id="${job.jobId}" style="border: 2px solid ${isComplete ? '#00ff64' : '#ff9500'}; box-shadow: 0 0 20px ${isComplete ? 'rgba(0, 255, 100, 0.3)' : 'rgba(255, 149, 0, 0.3)'};">
                         <div class="slot-header">
-                            <h4>Slot ${slot.slotNum} ${isComplete ? '💎' : '✨'}</h4>
+                            <h4>Slot ${slot.slotNum} ${isComplete ? (isPendingClaim ? '⏳' : '💎') : '✨'}</h4>
                             <span class="slot-status ${isComplete ? 'complete' : 'active'}" style="background: ${isComplete ? '#00ff64' : '#ff9500'}; color: #000; padding: 4px 12px; border-radius: 12px; font-weight: bold;">
-                                ${isComplete ? '✅ Ready to Collect' : '✨ Polishing'}
+                                ${isPendingClaim ? 'Processing claim...' : (isComplete ? '✅ Ready to Collect' : '✨ Polishing')}
                             </span>
                         </div>
                         <div class="slot-info" style="padding: 30px 20px; text-align: center;">
@@ -817,13 +818,17 @@ class PolishingGame extends TSDGEMSGame {
                                 <div class="progress-fill" style="width: ${progress}%; background: ${isComplete ? 'linear-gradient(90deg, #00ff64, #00aa44)' : 'linear-gradient(90deg, #ff9500, #ff6b00)'}; height: 100%; transition: width 1s linear;"></div>
                             </div>
                             <p style="color: ${isComplete ? '#00ff64' : '#888'}; font-size: 1.2em; margin-top: 15px;">
-                                ${isComplete ? '✅ Polishing Complete!' : `${Math.floor(progress)}% Complete`}
+                                ${isPendingClaim ? '⏳ Claim in progress...' : (isComplete ? '✅ Polishing Complete!' : `${Math.floor(progress)}% Complete`)}
                             </p>
                         </div>
-                        ${isComplete ? `
+                        ${showClaimButton ? `
                             <button class="action-btn claim-btn" onclick="game.completePolishing('${job.jobId}')">
                                 <i class="fas fa-gift"></i> CLAIM REWARDS
                             </button>
+                        ` : isPendingClaim ? `
+                            <div class="claiming-indicator" style="padding: 1rem; text-align: center; color: #ffd700;">
+                                <i class="fas fa-spinner fa-spin"></i> Finalizing rewards...
+                            </div>
                         ` : ''}
             </div>
                 `;
