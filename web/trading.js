@@ -8,7 +8,6 @@ class TradingGame extends TSDGEMSGame {
         this.cityMatrix = null;
         this.basePriceData = null;
         this.currentActor = null;
-        this.refreshInterval = null;
         this.boostsData = null;
         this.chartData = null;
         this.currentChartDays = 30;
@@ -1724,7 +1723,7 @@ class TradingGame extends TSDGEMSGame {
         // Refresh the city boost matrix if it's visible
         const matrixWrapper = document.getElementById('city-boost-matrix-wrapper');
         if (matrixWrapper && matrixWrapper.innerHTML && !matrixWrapper.innerHTML.includes('Loading')) {
-            this.renderCityBoostMatrix();
+            this.renderCityMatrix();
         }
     }
 
@@ -1762,7 +1761,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const { actor, gems } = event.detail || {};
         if (!game) return;
         if (game.currentActor && actor && actor !== game.currentActor) return;
-        console.log('[Trading] 🔄 Realtime inventory gems update received:', gems);
+        console.log('[TradingRealtime] inventory-gems update, polishedTypes:', Object.keys(gems || {}).filter(k => k.startsWith('polished_')).length);
         game.updatePolishedGemsFromRealtime(gems || {});
     });
 
@@ -1770,7 +1769,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const { actor, summary } = event.detail || {};
         if (!game) return;
         if (game.currentActor && actor && actor !== game.currentActor) return;
-        console.log('[Trading] 🔄 Realtime inventory summary update received:', summary);
+        console.log('[TradingRealtime] inventory-summary update, hasAssets:', !!summary?.assets);
         game.updateInventorySummaryFromRealtime(summary || null);
     });
 
@@ -1778,7 +1777,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const { actor, live } = event.detail || {};
         if (!game || !live) return;
         if (game.currentActor && actor && actor !== game.currentActor) return;
-        console.log('[Trading] 🔄 Realtime live aggregate update received');
+        console.log('[TradingRealtime] live aggregate received, hasStaking:', !!live?.staking?.gems, 'hasInventory:', !!live?.inventorySummary);
         game.updateStakedGemsFromRealtime(live);
         if (live.inventorySummary || live.inventoryAssets || live.inventory) {
             game.updateInventorySummaryFromRealtime(live.inventorySummary || null, live);
@@ -1788,7 +1787,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup realtime city boost listeners
     window.addEventListener('realtime:city-boosts', (event) => {
         const { boosts } = event.detail;
-        console.log('[Trading] 🔄 Realtime city boosts update received:', boosts);
+        console.log('[TradingRealtime] city-boosts update, cities:', Array.isArray(boosts) ? boosts.length : Object.keys(boosts || {}).length);
 
         if (game) {
             game.updateCityBoostsFromRealtime(boosts);
@@ -1798,7 +1797,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup realtime base price listeners
     window.addEventListener('realtime:base-price', (event) => {
         const { basePrice } = event.detail;
-        console.log('[Trading] 🔄 Realtime base price update received:', basePrice);
+        console.log('[TradingRealtime] base-price update, price:', basePrice?.basePrice || 0);
 
         if (game) {
             game.updateBasePriceFromRealtime(basePrice);
