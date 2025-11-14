@@ -1,5 +1,6 @@
 // functions/modules/staking.js
 // Staking persistence module for tracking staked NFTs across mining and polishing pages
+// Rewritten to use the new realtime structure under players/{actor}/runtime/live/staked
 
 const { onRequest } = require('firebase-functions/v2/https')
 const admin = require('firebase-admin')
@@ -9,7 +10,7 @@ const corsLib = require('cors')
 // Node 20+ has native fetch
 const fetch = globalThis.fetch || require('node-fetch')
 
-const db = getFirestore();
+const db = getFirestore()
 
 const RAW_ALLOW = process.env.CORS_ALLOW || ''
 const ALLOWLIST = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean)
@@ -62,21 +63,33 @@ const GEM_TYPE_MAP = {
 
 // Gem Bonus Multipliers from reference.js
 const GEM_BONUS_MULTIPLIERS = {
-  'Amethyst': { polished: 0.05, unpolished: 0.025 },
-  'Topaz': { polished: 0.10, unpolished: 0.05 },
-  'Aquamarine': { polished: 0.15, unpolished: 0.075 },
-  'Opal': { polished: 0.20, unpolished: 0.10 },
-  'Tanzanite': { polished: 0.25, unpolished: 0.125 },
-  'Jade': { polished: 0.30, unpolished: 0.15 },
-  'Emerald': { polished: 0.35, unpolished: 0.175 },
-  'Sapphire': { polished: 0.40, unpolished: 0.20 },
-  'Ruby': { polished: 0.50, unpolished: 0.25 },
-  'Diamond': { polished: 1.00, unpolished: 0.50 }
+  Amethyst:   { polished: 0.05,  unpolished: 0.025 },
+  Topaz:      { polished: 0.10,  unpolished: 0.05 },
+  Aquamarine: { polished: 0.15,  unpolished: 0.075 },
+  Opal:       { polished: 0.20,  unpolished: 0.10 },
+  Tanzanite:  { polished: 0.25,  unpolished: 0.125 },
+  Jade:       { polished: 0.30,  unpolished: 0.15 },
+  Emerald:    { polished: 0.35,  unpolished: 0.175 },
+  Sapphire:   { polished: 0.40,  unpolished: 0.20 },
+  Ruby:       { polished: 0.50,  unpolished: 0.25 },
+  Diamond:    { polished: 1.00,  unpolished: 0.50 },
 }
 
+/**
+ * All realtime player state lives under:
+ *   players/{actor}/runtime/live
+ * Staking data is stored in the `staked` field of that document:
+ *   live.staked = { mining: {...}, polishing: {...}, gems: {...}, ... }
+ */
 function refs(actor) {
+  const runtimeDoc = db
+    .collection('players')
+    .doc(actor)
+    .collection('runtime')
+    .doc('live')
+
   return {
-    staking: db.collection('staking').doc(actor)
+    runtimeDoc,
   }
 }
 
@@ -94,23 +107,22 @@ async function validateAssetOwnership(actor, assetIds) {
 
   const idsParam = assetIds.join(',')
   console.log(`[Staking] Validating ownership for ${actor}:`, assetIds)
-  
-  // Create promises for all APIs in parallel
+
   const apiPromises = ATOMIC_APIS.map(async (apiBase, index) => {
     const url = `${apiBase}/assets?owner=${actor}&collection_name=${COLLECTION_NAME}&ids=${idsParam}`
-    
+
     try {
       const startTime = Date.now()
       console.log(`[Staking] Testing API ${index + 1}/${ATOMIC_APIS.length}: ${apiBase}`)
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
-        timeout: 5000 // Reduced timeout to 5 seconds per API
+        timeout: 5000,
       })
-      
+
       const duration = Date.now() - startTime
-      
+
       if (!response.ok) {
         console.warn(`[Staking] API ${index + 1} returned ${response.status} (${duration}ms)`)
         throw new Error(`HTTP ${response.status}`)
@@ -118,87 +130,54 @@ async function validateAssetOwnership(actor, assetIds) {
 
       const data = await response.json()
       const ownedAssets = data.data || []
-      
-      // Check if all requested assets are owned
+
       const ownedAssetIds = new Set(ownedAssets.map(asset => asset.asset_id))
       const allOwned = assetIds.every(id => ownedAssetIds.has(id))
-      
+
       console.log(`[Staking] ✅ Fastest response from API ${index + 1}: ${apiBase} (${duration}ms)`)
-      console.log(`[Staking] Validation result: ${allOwned ? 'VALID' : 'INVALID'} (${ownedAssets.length}/${assetIds.length} owned)`)
-      
+      console.log(
+        `[Staking] Validation result: ${allOwned ? 'VALID' : 'INVALID'} (${ownedAssets.length}/${assetIds.length} owned)`
+      )
+
       return {
         valid: allOwned,
-        ownedAssets: ownedAssets,
-        duration: duration,
-        apiIndex: index
+        ownedAssets,
+        duration,
+        apiIndex: index,
       }
     } catch (error) {
       console.warn(`[Staking] API ${index + 1} error:`, error.message)
-      // Return error result instead of throwing
       return {
         valid: false,
         ownedAssets: [],
         error: error.message,
-        apiIndex: index
+        apiIndex: index,
       }
     }
   })
-  
-  // Wait for all API calls to complete
+
   const results = await Promise.all(apiPromises)
-  
-  // Find the first successful result (fastest valid response)
   const successfulResult = results.find(r => r.valid !== undefined && !r.error)
-  
+
   if (successfulResult) {
     return {
       valid: successfulResult.valid,
-      ownedAssets: successfulResult.ownedAssets
+      ownedAssets: successfulResult.ownedAssets,
     }
   }
-  
-  // All APIs failed
+
   console.warn('[Staking] ⚠️ All AtomicAssets APIs failed - Skipping validation (dev mode)')
-  // In development, allow staking even if all APIs are down
-  // TODO: Make this stricter in production
   return { valid: true, ownedAssets: [], apiError: true }
 }
 
 /**
- * Get current staking data for an actor
- * @param {string} actor - WAX account name
- * @returns {Promise<any>}
- */
-async function getStakingData(actor) {
-  const { staking } = refs(actor)
-  const snap = await staking.get()
-  
-  if (!snap.exists) {
-    return normalizeStakingData({
-      mining: {},
-      polishing: {},
-      updatedAt: FieldValue.serverTimestamp()
-    })
-  }
-  
-  const data = snap.data() || { mining: {}, polishing: {} }
-  return normalizeStakingData(data)
-}
-
-/**
  * Normalize a raw speedboost entry into the canonical single-slot structure.
- * @param {object} entry
- * @returns {object|null}
  */
 function normalizeSpeedboostEntry(entry) {
-  if (!entry || typeof entry !== 'object') {
-    return null
-  }
+  if (!entry || typeof entry !== 'object') return null
 
   const assetId = entry.asset_id || entry.assetId
-  if (!assetId) {
-    return null
-  }
+  if (!assetId) return null
 
   const templateId = entry.template_id ?? entry.templateId ?? null
   const templateMint = entry.template_mint ?? entry.templateMint ?? null
@@ -232,7 +211,7 @@ function normalizeSpeedboostEntry(entry) {
     asset_id: assetId,
     type: 'speedboost',
     boost,
-    multiplier
+    multiplier,
   }
 
   if (templateId) normalized.template_id = templateId
@@ -246,12 +225,9 @@ function normalizeSpeedboostEntry(entry) {
 
 /**
  * Normalize legacy speedboost arrays into a single speedboost entry per slot.
- * @param {object} slotData
  */
 function normalizeSlotSpeedboost(slotData) {
-  if (!slotData || typeof slotData !== 'object') {
-    return
-  }
+  if (!slotData || typeof slotData !== 'object') return
 
   let normalized = null
 
@@ -283,13 +259,21 @@ function normalizeSlotSpeedboost(slotData) {
 
 /**
  * Normalize staking data structure for backward compatibility.
- * @param {object} stakingData
- * @returns {object}
+ * We keep the same internal structure as before, but it's now stored
+ * under live.staked instead of a separate /staking collection.
  */
 function normalizeStakingData(stakingData) {
   if (!stakingData || typeof stakingData !== 'object') {
-    return stakingData
+    return {
+      mining: {},
+      polishing: {},
+      gems: {},
+    }
   }
+
+  if (!stakingData.mining) stakingData.mining = {}
+  if (!stakingData.polishing) stakingData.polishing = {}
+  if (!stakingData.gems) stakingData.gems = {}
 
   if (stakingData.mining && typeof stakingData.mining === 'object') {
     Object.values(stakingData.mining).forEach(slotData => normalizeSlotSpeedboost(slotData))
@@ -299,15 +283,54 @@ function normalizeStakingData(stakingData) {
 }
 
 /**
+ * Get current staking data for an actor from runtime/live.staked
+ */
+async function getStakingData(actor) {
+  const { runtimeDoc } = refs(actor)
+  const snap = await runtimeDoc.get()
+
+  if (!snap.exists) {
+    const empty = normalizeStakingData({
+      mining: {},
+      polishing: {},
+      gems: {},
+    })
+    console.log(`[Staking] No runtime doc for ${actor}, returning empty staking`)
+    return empty
+  }
+
+  const live = snap.data() || {}
+  const staked = normalizeStakingData(live.staked || {})
+
+  return staked
+}
+
+/**
+ * Update staking data in runtime/live.staked
+ */
+async function updateStakingData(actor, stakingData) {
+  const { runtimeDoc } = refs(actor)
+
+  const normalized = normalizeStakingData(stakingData)
+  normalized.updatedAt = FieldValue.serverTimestamp()
+
+  await runtimeDoc.set(
+    {
+      staked: normalized,
+    },
+    { merge: true }
+  )
+
+  console.log(`[Staking] Updated realtime staking data for ${actor}`)
+}
+
+/**
  * Get all staked asset IDs for an actor (across all pages and slots)
- * @param {string} actor - WAX account name
- * @returns {Promise<Set<string>>}
  */
 async function getAllStakedAssetIds(actor) {
   const stakingData = await getStakingData(actor)
   const allStakedAssetIds = new Set()
-  
-  // Check mining page
+
   if (stakingData.mining) {
     Object.values(stakingData.mining).forEach(slotData => {
       if (slotData.mine?.asset_id) {
@@ -328,8 +351,7 @@ async function getAllStakedAssetIds(actor) {
       }
     })
   }
-  
-  // Check polishing page
+
   if (stakingData.polishing) {
     Object.values(stakingData.polishing).forEach(slotData => {
       if (slotData.table?.asset_id) {
@@ -337,8 +359,7 @@ async function getAllStakedAssetIds(actor) {
       }
     })
   }
-  
-  // Check gems page
+
   if (stakingData.gems) {
     Object.values(stakingData.gems).forEach(slotData => {
       if (slotData.gem?.asset_id) {
@@ -346,110 +367,41 @@ async function getAllStakedAssetIds(actor) {
       }
     })
   }
-  
+
   console.log(`[Staking] Found ${allStakedAssetIds.size} staked assets for ${actor}`)
   return allStakedAssetIds
 }
 
 /**
- * Update staking data in Firestore
- * @param {string} actor - WAX account name
- * @param {any} stakingData - Staking data object
- * @returns {Promise<void>}
- */
-async function updateStakingData(actor, stakingData) {
-  const { staking } = refs(actor)
-  
-  stakingData.updatedAt = FieldValue.serverTimestamp()
-  
-  // Use .set() without merge to completely replace the document
-  // This ensures deleted workers are actually removed from Firestore
-  await staking.set(stakingData)
-  console.log(`[Staking] Updated staking data for ${actor}`)
-}
-
-/**
  * Stake an asset to a specific slot
- * @param {string} actor - WAX account name
- * @param {string} page - Page type ('mining' or 'polishing')
- * @param {number} slotNum - Slot number
- * @param {string} assetType - Asset type ('mine', 'worker', 'table')
- * @param {any} assetData - Asset data including asset_id
- * @returns {Promise<any>}
  */
 async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
   console.log(`[Staking] Staking ${assetType} to ${page} slot ${slotNum} for ${actor}`)
-  
-  // Validate asset ownership
+
   const validation = await validateAssetOwnership(actor, [assetData.asset_id])
   if (!validation.valid && !validation.apiError) {
     throw new Error(`Asset ${assetData.asset_id} is not owned by ${actor}`)
   }
-  
   if (validation.apiError) {
     console.warn(`[Staking] ⚠️ Staking without validation (API error) - asset ${assetData.asset_id}`)
   }
-  
-  // Get current staking data
+
   const stakingData = await getStakingData(actor)
-  
-  // Check if this asset_id is already staked anywhere (prevent duplicate staking)
-  const allStakedAssetIds = new Set()
-  
-  // Check mining page
-  if (stakingData.mining) {
-    Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
-      if (slotData.mine?.asset_id) {
-        allStakedAssetIds.add(slotData.mine.asset_id)
-      }
-      if (slotData.workers) {
-        slotData.workers.forEach(w => {
-          if (w.asset_id) allStakedAssetIds.add(w.asset_id)
-        })
-      }
-      if (slotData.speedboost?.asset_id) {
-        allStakedAssetIds.add(slotData.speedboost.asset_id)
-      }
-      if (Array.isArray(slotData.speedboosts)) {
-        slotData.speedboosts.forEach(sb => {
-          if (sb?.asset_id) allStakedAssetIds.add(sb.asset_id)
-        })
-      }
-    })
-  }
-  
-  // Check polishing page
-  if (stakingData.polishing) {
-    Object.entries(stakingData.polishing).forEach(([slotKey, slotData]) => {
-      if (slotData.table?.asset_id) {
-        allStakedAssetIds.add(slotData.table.asset_id)
-      }
-    })
-  }
-  
-  // Verify this asset is not already staked
+
+  // prevent duplicates across all slots/pages
+  const allStakedAssetIds = await getAllStakedAssetIds(actor)
   if (allStakedAssetIds.has(assetData.asset_id)) {
     throw new Error(`Asset ${assetData.asset_id} is already staked. Each asset can only be staked once.`)
   }
-  
-  console.log(`[Staking] ✅ Asset ${assetData.asset_id} validation passed - not currently staked`)
-  
-  // Initialize page data if needed
-  if (!stakingData[page]) {
-    stakingData[page] = {}
-  }
-  
-  // Initialize slot data if needed
-  if (!stakingData[page][`slot${slotNum}`]) {
-    stakingData[page][`slot${slotNum}`] = {}
-  }
-  
-  const slot = stakingData[page][`slot${slotNum}`]
+
+  if (!stakingData[page]) stakingData[page] = {}
+  const slotKey = `slot${slotNum}`
+  if (!stakingData[page][slotKey]) stakingData[page][slotKey] = {}
+
+  const slot = stakingData[page][slotKey]
   normalizeSlotSpeedboost(slot)
-  
-  // Handle different asset types
+
   if (assetType === 'mine' || assetType === 'table') {
-    // Single asset per slot
     if (slot[assetType]) {
       throw new Error(`${assetType} already staked in slot ${slotNum}`)
     }
@@ -457,64 +409,53 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
       asset_id: assetData.asset_id,
       template_id: assetData.template_id,
       name: assetData.name,
-      mp: assetData.mp || 0
+      mp: assetData.mp || 0,
     }
   } else if (assetType === 'worker') {
-    // Multiple workers per slot
-    if (!slot.workers) {
-      slot.workers = []
-    }
-    
-    // Check if this worker is already staked in this slot
+    if (!slot.workers) slot.workers = []
     if (slot.workers.some(w => w.asset_id === assetData.asset_id)) {
       throw new Error(`Worker ${assetData.asset_id} already staked in slot ${slotNum}`)
     }
-    
     slot.workers.push({
       asset_id: assetData.asset_id,
       template_id: assetData.template_id,
       name: assetData.name,
-      mp: assetData.mp || 0
+      mp: assetData.mp || 0,
     })
   } else if (assetType === 'gem') {
-    // Gem staking - single gem per slot
     if (slot.gem) {
       throw new Error(`Gem already staked in slot ${slotNum}`)
     }
-    
-    // Validate gem template ID
+
     const templateId = assetData.template_id
     if (!TEMPLATES_POLISHED.has(templateId) && !TEMPLATES_ROUGH.has(templateId)) {
       throw new Error(`Invalid gem template ID: ${templateId}`)
     }
-    
-    // Extract gem type and determine if polished
+
     const gemType = GEM_TYPE_MAP[templateId]
     const isPolished = TEMPLATES_POLISHED.has(templateId)
-    
-    if (!gemType) {
-      throw new Error(`Unknown gem type for template ID: ${templateId}`)
-    }
-    
-    // Get bonus multiplier
+    if (!gemType) throw new Error(`Unknown gem type for template ID: ${templateId}`)
+
     const bonusMultipliers = GEM_BONUS_MULTIPLIERS[gemType]
-    if (!bonusMultipliers) {
-      throw new Error(`No bonus multipliers found for gem type: ${gemType}`)
-    }
-    
+    if (!bonusMultipliers) throw new Error(`No bonus multipliers found for gem type: ${gemType}`)
+
     const bonus = isPolished ? bonusMultipliers.polished : bonusMultipliers.unpolished
-    
+
     slot.gem = {
       asset_id: assetData.asset_id,
       template_id: templateId,
       name: assetData.name,
-      gemType: gemType,
-      isPolished: isPolished,
-      bonus: bonus,
-      imagePath: assetData.imagePath || ''
+      gemType,
+      isPolished,
+      bonus,
+      imagePath: assetData.imagePath || '',
     }
-    
-    console.log(`[Staking] Staked ${gemType} gem (${isPolished ? 'polished' : 'rough'}) with ${bonus * 100}% bonus`)
+
+    console.log(
+      `[Staking] Staked ${gemType} gem (${isPolished ? 'polished' : 'rough'}) with ${(bonus * 100).toFixed(
+        2
+      )}% bonus`
+    )
   } else if (assetType === 'speedboost') {
     const boost = assetData.boost !== undefined ? Number(assetData.boost) : null
     const multiplier = assetData.multiplier !== undefined ? Number(assetData.multiplier) : null
@@ -527,7 +468,7 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
       boost,
       multiplier,
       rarity: assetData.rarity,
-      imagePath: assetData.imagePath
+      imagePath: assetData.imagePath,
     })
 
     if (!normalizedSpeedboost) {
@@ -539,7 +480,9 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
       console.log(`[Staking] Refreshed speedboost ${assetData.asset_id} in slot ${slotNum}`)
     } else {
       if (slot.speedboost?.asset_id) {
-        console.log(`[Staking] Replacing speedboost ${slot.speedboost.asset_id} with ${assetData.asset_id} in slot ${slotNum}`)
+        console.log(
+          `[Staking] Replacing speedboost ${slot.speedboost.asset_id} with ${assetData.asset_id} in slot ${slotNum}`
+        )
       }
       slot.speedboost = normalizedSpeedboost
       console.log(`[Staking] Staked speedboost ${assetData.asset_id} to slot ${slotNum}`)
@@ -547,159 +490,92 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
 
     const boostPct = Number(normalizedSpeedboost.boost || 0)
     const multiplierVal = Number(normalizedSpeedboost.multiplier || 1)
-    console.log(`[Staking] Speedboost ${assetData.asset_id} provides ${(boostPct * 100).toFixed(2)}% speed (×${multiplierVal.toFixed(3)})`)
+    console.log(
+      `[Staking] Speedboost ${assetData.asset_id} provides ${(boostPct * 100).toFixed(
+        2
+      )}% speed (×${multiplierVal.toFixed(3)})`
+    )
 
     delete slot.speedboosts
   } else {
     throw new Error(`Invalid asset type: ${assetType}`)
   }
-  
-  // Save updated staking data
+
   await updateStakingData(actor, stakingData)
-  
   return stakingData
 }
 
 /**
- * Batch stake multiple workers to a slot (optimized for performance)
- * @param {string} actor - WAX account name
- * @param {string} page - Page type ('mining' or 'polishing')
- * @param {number} slotNum - Slot number
- * @param {any[]} workers - Array of worker objects { asset_id, template_id, name, mp }
- * @returns {Promise<any>}
+ * Batch stake multiple workers to a slot
  */
 async function stakeWorkersBatch(actor, page, slotNum, workers) {
   console.log(`[Staking] Batch staking ${workers.length} workers to ${page} slot ${slotNum} for ${actor}`)
-  
-  // Validate all workers at once
+
   const assetIds = workers.map(w => w.asset_id)
   const validation = await validateAssetOwnership(actor, assetIds)
-  
+
   if (!validation.valid && !validation.apiError) {
     throw new Error(`Some assets are not owned by ${actor}`)
   }
-  
   if (validation.apiError) {
-    console.warn(`[Staking] ⚠️ Staking without validation (API error) - batch workers`)
+    console.warn('[Staking] ⚠️ Staking without validation (API error) - batch workers')
   }
-  
-  // Get current staking data ONCE
+
   const stakingData = await getStakingData(actor)
-  
-  // Check if any asset_id is already staked anywhere
-  const allStakedAssetIds = new Set()
-  
-  // Check mining page
-  if (stakingData.mining) {
-    Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
-      if (slotData.mine?.asset_id) {
-        allStakedAssetIds.add(slotData.mine.asset_id)
-      }
-      if (slotData.workers) {
-        slotData.workers.forEach(w => {
-          if (w.asset_id) allStakedAssetIds.add(w.asset_id)
-        })
-      }
-      if (slotData.speedboost?.asset_id) {
-        allStakedAssetIds.add(slotData.speedboost.asset_id)
-      }
-      if (Array.isArray(slotData.speedboosts)) {
-        slotData.speedboosts.forEach(sb => {
-          if (sb?.asset_id) allStakedAssetIds.add(sb.asset_id)
-        })
-      }
-    })
-  }
-  
-  // Check polishing page
-  if (stakingData.polishing) {
-    Object.entries(stakingData.polishing).forEach(([slotKey, slotData]) => {
-      if (slotData.table?.asset_id) {
-        allStakedAssetIds.add(slotData.table.asset_id)
-      }
-    })
-  }
-  
-  // Verify all workers are not already staked
+  const allStakedAssetIds = await getAllStakedAssetIds(actor)
   const alreadyStaked = assetIds.filter(id => allStakedAssetIds.has(id))
   if (alreadyStaked.length > 0) {
     throw new Error(`Assets already staked: ${alreadyStaked.join(', ')}`)
   }
-  
-  console.log(`[Staking] ✅ All ${workers.length} workers validation passed`)
-  
-  // Initialize page data if needed
-  if (!stakingData[page]) {
-    stakingData[page] = {}
-  }
-  
-  // Initialize slot data if needed
-  if (!stakingData[page][`slot${slotNum}`]) {
-    stakingData[page][`slot${slotNum}`] = {}
-  }
-  
-  const slot = stakingData[page][`slot${slotNum}`]
-  
-  // Initialize workers array if needed
-  if (!slot.workers) {
-    slot.workers = []
-  }
-  
-  // Add all workers at once
+
+  if (!stakingData[page]) stakingData[page] = {}
+  const slotKey = `slot${slotNum}`
+  if (!stakingData[page][slotKey]) stakingData[page][slotKey] = {}
+
+  const slot = stakingData[page][slotKey]
+  if (!slot.workers) slot.workers = []
+
   workers.forEach(worker => {
-    // Check if this worker is already staked in this slot
     if (slot.workers.some(w => w.asset_id === worker.asset_id)) {
       console.warn(`[Staking] Worker ${worker.asset_id} already in slot ${slotNum}, skipping`)
       return
     }
-    
+
     slot.workers.push({
       asset_id: worker.asset_id,
       template_id: worker.template_id,
       name: worker.name,
-      mp: worker.mp || 0
+      mp: worker.mp || 0,
     })
   })
-  
-  console.log(`[Staking] ✅ Added ${workers.length} workers to slot ${slotNum}`)
-  
-  // Save updated staking data ONCE
+
   await updateStakingData(actor, stakingData)
-  
   return stakingData
 }
 
 /**
  * Unstake an asset from a specific slot
- * @param {string} actor - WAX account name
- * @param {string} page - Page type ('mining' or 'polishing')
- * @param {number} slotNum - Slot number
- * @param {string} assetType - Asset type ('mine', 'worker', 'table')
- * @param {string} assetId - Asset ID to unstake
- * @returns {Promise<any>}
+ * Uses a transaction on runtime/live to keep consistency.
  */
 async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
   console.log(`[Staking] Unstaking ${assetType} ${assetId} from ${page} slot ${slotNum} for ${actor}`)
 
-  const { staking } = refs(actor)
+  const { runtimeDoc } = refs(actor)
 
-  // Use transaction to ensure atomicity when multiple unstakes happen simultaneously
-  return await db.runTransaction(async (transaction) => {
-    const stakingDoc = await transaction.get(staking)
+  return await db.runTransaction(async transaction => {
+    const snap = await transaction.get(runtimeDoc)
 
-    if (!stakingDoc.exists) {
-      throw new Error(`No staking data found for ${actor}`)
+    if (!snap.exists) {
+      throw new Error(`No runtime data found for ${actor}`)
     }
 
-    const stakingData = normalizeStakingData(stakingDoc.data())
-    console.log(`[Staking] Current staking data before unstake:`, JSON.stringify(stakingData, null, 2))
+    const live = snap.data() || {}
+    const stakingData = normalizeStakingData(live.staked || {})
 
-    // Check if page exists
     if (!stakingData[page]) {
       throw new Error(`No ${page} staking data found`)
     }
 
-    // Check if slot exists
     const slotKey = `slot${slotNum}`
     if (!stakingData[page][slotKey]) {
       throw new Error(`No assets staked in ${page} slot ${slotNum}`)
@@ -707,63 +583,42 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
 
     const slot = stakingData[page][slotKey]
     normalizeSlotSpeedboost(slot)
-    console.log(`[Staking] Current slot data:`, JSON.stringify(slot, null, 2))
 
-    // Handle different asset types
     if (assetType === 'mine' || assetType === 'table') {
-      // Single asset per slot
       if (!slot[assetType] || slot[assetType].asset_id !== assetId) {
         throw new Error(`${assetType} ${assetId} not found in slot ${slotNum}`)
       }
       delete slot[assetType]
     } else if (assetType === 'worker') {
-      // Multiple workers per slot
       if (!slot.workers || slot.workers.length === 0) {
-        console.log(`[Staking] ERROR: No workers found in slot ${slotNum}. Slot data:`, slot)
         throw new Error(`No workers staked in slot ${slotNum}`)
       }
 
-      console.log(`[Staking] Workers before unstake:`, slot.workers.map(w => w.asset_id))
       const initialLength = slot.workers.length
       slot.workers = slot.workers.filter(w => w.asset_id !== assetId)
-      console.log(`[Staking] Workers after unstake:`, slot.workers.map(w => w.asset_id))
 
       if (slot.workers.length === initialLength) {
-        console.log(`[Staking] ERROR: Worker ${assetId} not found in slot. Available workers:`, slot.workers.map(w => w.asset_id))
         throw new Error(`Worker ${assetId} not found in slot ${slotNum}`)
       }
 
-      // Clean up empty workers array
       if (slot.workers.length === 0) {
-        console.log(`[Staking] No workers left, deleting workers array`)
         delete slot.workers
       }
     } else if (assetType === 'gem') {
-      // Remove gem from slot
       if (!slot.gem || slot.gem.asset_id !== assetId) {
         throw new Error(`Gem ${assetId} not found in slot ${slotNum}`)
       }
-
-      console.log(`[Staking] Unstaking ${slot.gem.gemType} gem from slot ${slotNum}`)
       delete slot.gem
     } else if (assetType === 'speedboost') {
       if (slot.speedboost?.asset_id === assetId) {
-        console.log(`[Staking] Unstaking speedboost ${assetId} from slot ${slotNum}`)
         delete slot.speedboost
       } else if (Array.isArray(slot.speedboosts) && slot.speedboosts.length > 0) {
-        console.log(`[Staking] Speedboosts before legacy unstake:`, slot.speedboosts.map(sb => sb.asset_id))
         const initialLength = slot.speedboosts.length
         slot.speedboosts = slot.speedboosts.filter(sb => sb.asset_id !== assetId)
-        console.log(`[Staking] Speedboosts after legacy unstake:`, slot.speedboosts.map(sb => sb.asset_id))
-
         if (slot.speedboosts.length === initialLength) {
           throw new Error(`Speedboost ${assetId} not found in slot ${slotNum}`)
         }
-
-        if (slot.speedboosts.length === 0) {
-          console.log(`[Staking] No speedboosts left, deleting legacy speedboosts array`)
-          delete slot.speedboosts
-        }
+        if (slot.speedboosts.length === 0) delete slot.speedboosts
       } else {
         throw new Error(`No speedboost staked in slot ${slotNum}`)
       }
@@ -771,37 +626,29 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
       throw new Error(`Invalid asset type: ${assetType}`)
     }
 
-    // Clean up empty slot
     if (Object.keys(slot).length === 0) {
-      console.log(`[Staking] Slot is now empty, deleting slot ${slotKey}`)
       delete stakingData[page][slotKey]
     }
-
-    // Clean up empty page
     if (Object.keys(stakingData[page]).length === 0) {
-      console.log(`[Staking] Page is now empty, deleting ${page} page`)
       delete stakingData[page]
     }
 
-    console.log(`[Staking] Updated staking data after unstake:`, JSON.stringify(stakingData, null, 2))
-
-    // Update timestamp
     stakingData.updatedAt = FieldValue.serverTimestamp()
 
-    // Save updated staking data within transaction
-    transaction.set(staking, stakingData)
+    transaction.set(
+      runtimeDoc,
+      {
+        staked: stakingData,
+      },
+      { merge: true }
+    )
 
     return stakingData
   })
 }
 
 /**
- * Automatically unstake assets that are no longer owned
- * @param {string} actor - WAX account name
- * @param {string} page - Page type ('mining' or 'polishing')
- * @param {number} slotNum - Slot number
- * @param {Array} missingAssets - Array of missing assets: [{asset_id, type, name, ...}]
- * @returns {Promise<{unstaked: Array, errors: Array}>}
+ * Auto-unstake assets that are no longer owned
  */
 async function autoUnstakeMissingAssets(actor, page, slotNum, missingAssets) {
   if (!missingAssets || missingAssets.length === 0) {
@@ -809,22 +656,16 @@ async function autoUnstakeMissingAssets(actor, page, slotNum, missingAssets) {
   }
 
   console.log(`[Staking] Auto-unstaking ${missingAssets.length} missing assets from ${page} slot ${slotNum} for ${actor}`)
-  
+
   const unstaked = []
   const errors = []
 
   for (const missingAsset of missingAssets) {
     const { asset_id, type } = missingAsset
-    
-    try {
-      // Determine assetType from type field or infer from context
-      let assetType = type
-      if (!assetType) {
-        // Try to infer from asset_id context (this is a fallback)
-        assetType = 'worker' // Default assumption, but should be provided
-      }
 
-      // Map type to assetType for unstakeAssetFromSlot
+    try {
+      let assetType = type || 'worker'
+
       if (type === 'mine') assetType = 'mine'
       else if (type === 'worker') assetType = 'worker'
       else if (type === 'table') assetType = 'table'
@@ -840,7 +681,7 @@ async function autoUnstakeMissingAssets(actor, page, slotNum, missingAssets) {
       unstaked.push({
         asset_id,
         type: assetType,
-        name: missingAsset.name || `${assetType} ${asset_id}`
+        name: missingAsset.name || `${assetType} ${asset_id}`,
       })
       console.log(`[Staking] ✅ Auto-unstaked ${assetType} ${asset_id} from ${page} slot ${slotNum}`)
     } catch (error) {
@@ -848,7 +689,7 @@ async function autoUnstakeMissingAssets(actor, page, slotNum, missingAssets) {
       errors.push({
         asset_id,
         type: missingAsset.type,
-        error: error.message
+        error: error.message,
       })
     }
   }
@@ -861,7 +702,9 @@ async function autoUnstakeMissingAssets(actor, page, slotNum, missingAssets) {
 // ========================================
 
 function requireActor(req, res) {
-  const actor = (req.method === 'GET' ? req.query.actor : req.body?.actor) || ''
+  const actor =
+    (req.method === 'GET' ? req.query.actor : req.body?.actor) ||
+    ''
   if (!actor || typeof actor !== 'string') {
     res.status(400).json({ error: 'actor required' })
     return null
@@ -870,31 +713,28 @@ function requireActor(req, res) {
 }
 
 /**
- * Stake an asset to a slot
  * POST /stakeAsset
- * Body: { actor, page, slotNum, assetType, assetData }
  */
 exports.stakeAsset = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'POST only' })
     }
-    
+
     const actor = requireActor(req, res)
     if (!actor) return
-    
+
     const { page, slotNum, assetType, assetData } = req.body
-    
+
     if (!page || !slotNum || !assetType || !assetData || !assetData.asset_id) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
-    
+
     try {
       const stakingData = await stakeAssetToSlot(actor, page, slotNum, assetType, assetData)
-      
       return res.status(200).json({
         success: true,
-        stakingData: stakingData
+        stakingData,
       })
     } catch (error) {
       console.error('[Staking] stakeAsset error:', error)
@@ -904,31 +744,28 @@ exports.stakeAsset = onRequest((req, res) =>
 )
 
 /**
- * Batch stake multiple workers to a slot (optimized for performance)
  * POST /stakeWorkersBatch
- * Body: { actor, page, slotNum, workers }
  */
 exports.stakeWorkersBatch = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'POST only' })
     }
-    
+
     const actor = requireActor(req, res)
     if (!actor) return
-    
+
     const { page, slotNum, workers } = req.body
-    
+
     if (!page || !slotNum || !workers || !Array.isArray(workers) || workers.length === 0) {
       return res.status(400).json({ error: 'Missing required fields or empty workers array' })
     }
-    
+
     try {
       const stakingData = await stakeWorkersBatch(actor, page, slotNum, workers)
-      
       return res.status(200).json({
         success: true,
-        stakingData: stakingData
+        stakingData,
       })
     } catch (error) {
       console.error('[Staking] stakeWorkersBatch error:', error)
@@ -938,31 +775,28 @@ exports.stakeWorkersBatch = onRequest((req, res) =>
 )
 
 /**
- * Unstake an asset from a slot
  * POST /unstakeAsset
- * Body: { actor, page, slotNum, assetType, assetId }
  */
 exports.unstakeAsset = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'POST only' })
     }
-    
+
     const actor = requireActor(req, res)
     if (!actor) return
-    
+
     const { page, slotNum, assetType, assetId } = req.body
-    
+
     if (!page || !slotNum || !assetType || !assetId) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
-    
+
     try {
       const stakingData = await unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId)
-      
       return res.status(200).json({
         success: true,
-        stakingData: stakingData
+        stakingData,
       })
     } catch (error) {
       console.error('[Staking] unstakeAsset error:', error)
@@ -972,24 +806,23 @@ exports.unstakeAsset = onRequest((req, res) =>
 )
 
 /**
- * Get all staked assets for an actor
  * GET /getStakedAssets?actor={actor}
+ * Returns the staked section of runtime/live
  */
 exports.getStakedAssets = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'GET') {
       return res.status(405).json({ error: 'GET only' })
     }
-    
+
     const actor = requireActor(req, res)
     if (!actor) return
-    
+
     try {
       const stakingData = await getStakingData(actor)
-      
       return res.status(200).json({
         success: true,
-        stakingData: stakingData
+        stakingData,
       })
     } catch (error) {
       console.error('[Staking] getStakedAssets error:', error)
@@ -999,32 +832,24 @@ exports.getStakedAssets = onRequest((req, res) =>
 )
 
 /**
- * Get gem boost bonus for a specific gem type from staked gems
- * @param {string} actor - WAX account name
- * @param {string} gemType - Gem type (e.g., 'Diamond', 'Ruby')
- * @returns {Promise<number>} Bonus multiplier (e.g., 1.00 = 100% boost)
+ * Gem boost helper for other modules
  */
 async function getGemsBoostForType(actor, gemType) {
   console.log(`[Staking] Getting gem boost for ${gemType} for ${actor}`)
-  
+
   const stakingData = await getStakingData(actor)
-  if (!stakingData.gems) {
-    return 0
-  }
-  
-  // Search through all gem slots for the requested gem type
+  if (!stakingData.gems) return 0
+
   for (const [slotKey, slotData] of Object.entries(stakingData.gems)) {
     if (slotData.gem && slotData.gem.gemType === gemType) {
       const bonus = slotData.gem.bonus || 0
-      console.log(`[Staking] Found staked ${gemType} gem with ${bonus * 100}% boost`)
+      console.log(`[Staking] Found staked ${gemType} gem with ${(bonus * 100).toFixed(2)}% boost`)
       return bonus
     }
   }
-  
+
   console.log(`[Staking] No staked ${gemType} gem found`)
   return 0
 }
 
-// Export helper function for use by other modules (Cloud Functions are auto-exported via exports.xxx)
-module.exports.getGemsBoostForType = getGemsBoostForType;
-
+module.exports.getGemsBoostForType = getGemsBoostForType
