@@ -164,6 +164,18 @@ class TradingGame extends TSDGEMSGame {
         this.showNotification('Waiting for realtime trading data...', 'info');
         console.log('[Trading] Init complete, waiting for realtime data...');
         
+        // Initialize chart automatically when page loads
+        setTimeout(() => {
+            // Check if pricing subpage is visible or will be shown
+            const pricingSubpage = document.getElementById('trading-subpage-pricing');
+            if (pricingSubpage && (pricingSubpage.classList.contains('active') || !document.querySelector('.trading-subpage.active'))) {
+                console.log('[Trading] Auto-initializing chart on page load');
+                this.initializeGemPriceChart().catch(err => {
+                    console.error('[Trading] Failed to auto-initialize chart:', err);
+                });
+            }
+        }, 500);
+        
         // Realtime: Check if global realtime is already running and has cached data
         setTimeout(() => {
             if (this.currentActor) {
@@ -1034,34 +1046,9 @@ class TradingGame extends TSDGEMSGame {
             });
         }
 
+        // Remove refresh button - chart loads automatically
         if (refreshBtn) {
-            refreshBtn.addEventListener('click', async () => {
-                console.log('[Trading] Refreshing chart data...');
-                const icon = refreshBtn.querySelector('i');
-                if (icon) {
-                    icon.classList.add('fa-spin');
-                }
-                
-                try {
-                    await this.updateChartTimeframe(this.currentChartDays);
-                    this.showNotification('Chart refreshed successfully!', 'success');
-                } catch (error) {
-                    console.error('[Trading] Failed to refresh chart:', error);
-                    this.showNotification('Failed to refresh chart: ' + error.message, 'error');
-                } finally {
-                    if (icon) {
-                        icon.classList.remove('fa-spin');
-                    }
-                }
-            });
-
-            // Hover effect
-            refreshBtn.addEventListener('mouseenter', () => {
-                refreshBtn.style.background = '#00a8cc';
-            });
-            refreshBtn.addEventListener('mouseleave', () => {
-                refreshBtn.style.background = '#00d4ff';
-            });
+            refreshBtn.style.display = 'none';
         }
     }
 
@@ -1082,6 +1069,16 @@ class TradingGame extends TSDGEMSGame {
             document.querySelectorAll('.trading-subpage').forEach(section => {
                 section.classList.toggle('active', section.id === `trading-subpage-${target}`);
             });
+            
+            // Auto-initialize chart when switching to pricing subpage
+            if (target === 'pricing') {
+                console.log('[Trading] Switching to pricing subpage, initializing chart');
+                setTimeout(() => {
+                    this.initializeGemPriceChart().catch(err => {
+                        console.error('[Trading] Failed to initialize chart on subpage switch:', err);
+                    });
+                }, 100);
+            }
 
             // Load specific data when switching to staking page
             if (target === 'staking') {

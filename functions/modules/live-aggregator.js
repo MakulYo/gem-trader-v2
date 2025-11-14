@@ -3,6 +3,8 @@
 
 const admin = require('firebase-admin');
 const { getFirestore, Timestamp } = require('firebase-admin/firestore');
+const { onRequest } = require('firebase-functions/v2/https');
+const { getWaxBalance, getTsdmBalance } = require('./chain');
 
 try { admin.app(); } catch { admin.initializeApp(); }
 const db = getFirestore();
@@ -126,19 +128,7 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       ? polishingSlotsUnlockedFromProfile
       : defaultPolishingSlots;
 
-    const liveProfile = {
-      ingameCurrency: profile
-        ? Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0) || 0
-        : 0,
-      level: profile?.level || 1,
-      name: profile?.account || actor,
-      balances: {
-        TSDM: Number(balances.TSDM ?? balances.tsdm ?? 0) || 0,
-        WAX: Number(balances.WAX ?? balances.wax ?? 0) || 0,
-      },
-      miningSlotsUnlocked,
-      polishingSlotsUnlocked,
-    };
+    // Note: liveProfile will be created later with chain balances (see step 10)
 
     // 7. Build mining slots from active jobs + staking
     const miningSlots = [];
@@ -550,7 +540,42 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
     const boostsSnap = await boostsRef.get();
     const boosts = boostsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // 10. Ensure at least 1 slot exists if unlocked
+    // 9. Fetch balances directly from chain to ensure they're always up-to-date
+    let waxBalance, tsdmBalance;
+    try {
+      [waxBalance, tsdmBalance] = await Promise.all([
+        getWaxBalance(actor).catch(() => null),
+        getTsdmBalance(actor).catch(() => null)
+      ]);
+    } catch (e) {
+      console.warn(`[LiveAggregator] Failed to fetch chain balances for ${actor}:`, e);
+      waxBalance = null;
+      tsdmBalance = null;
+    }
+
+    // Use chain balances if available (even if 0), otherwise fall back to profile balances
+    const profileBalances = profile?.balances || {};
+    const finalBalances = {
+      WAX: waxBalance !== null && waxBalance !== undefined ? Number(waxBalance) : (Number(profileBalances.WAX ?? profileBalances.wax ?? 0) || 0),
+      TSDM: tsdmBalance !== null && tsdmBalance !== undefined ? Number(tsdmBalance) : (Number(profileBalances.TSDM ?? profileBalances.tsdm ?? 0) || 0)
+    };
+
+    console.log(`[LiveAggregator] 💰 Balances for ${actor}: Chain (WAX: ${waxBalance}, TSDM: ${tsdmBalance}), Profile (WAX: ${profileBalances.WAX}, TSDM: ${profileBalances.TSDM}), Final (WAX: ${finalBalances.WAX}, TSDM: ${finalBalances.TSDM})`);
+
+    // 10. Build minimal profile data (now using precomputed limits)
+    const liveProfile = {
+      ingameCurrency: profile ? (Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0) || 0) : 0,
+      level: profile?.level || 1,
+      name: profile?.account || actor,
+      balances: {
+        TSDM: finalBalances.TSDM,
+        WAX: finalBalances.WAX
+      },
+      miningSlotsUnlocked: miningSlotsUnlocked,
+      polishingSlotsUnlocked: polishingSlotsUnlocked,
+    };
+
+    // 11. Ensure new accounts have at least one slot if unlocked but arrays empty
     if (liveProfile.miningSlotsUnlocked >= 1 && miningSlots.length === 0) {
       console.log(
         `[LiveAggregator] ⚠️ New account: miningSlotsUnlocked=${liveProfile.miningSlotsUnlocked} but no slots exist. Creating default slot 1.`
@@ -586,7 +611,7 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       });
     }
 
-    // 11. Build final live data structure
+    // 12. Build final live data structure
     const liveData = {
       profile: liveProfile,
       gems,
@@ -637,7 +662,6 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 /**
  * HTTP function to rebuild live data (admin/debug use)
  */
-const { onRequest } = require('firebase-functions/v2/https');
 const rebuildPlayerLive = onRequest(
   { cors: true, region: 'us-central1' },
   async (req, res) => {

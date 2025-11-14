@@ -430,7 +430,8 @@ class BackendService {
    */
   async rebuildPlayerLive(actor) {
     console.log(`[Backend] Rebuilding live data for ${actor}`);
-    return await this.post('/rebuildPlayerLive', { actor });
+    // Firebase Functions v2 URLs are lowercase
+    return await this.post('/rebuildplayerlive', { actor });
   }
 
   // ----------------------------- Staking ---------------------

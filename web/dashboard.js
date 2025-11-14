@@ -358,6 +358,14 @@ class DashboardGame extends TSDGEMSGame {
         const polishedGemsCount = document.getElementById('polished-gems-count');
 
         if (!roughGemsCount && !polishedGemsCount) {
+            console.warn('[Dashboard] updateGemCountsFromRealtime: DOM elements not found');
+            return;
+        }
+
+        if (!gemsData || typeof gemsData !== 'object') {
+            console.warn('[Dashboard] updateGemCountsFromRealtime: invalid gemsData:', gemsData);
+            if (roughGemsCount) roughGemsCount.textContent = '0';
+            if (polishedGemsCount) polishedGemsCount.textContent = '0';
             return;
         }
 
@@ -366,12 +374,23 @@ class DashboardGame extends TSDGEMSGame {
         let totalRough = 0;
         let totalPolished = 0;
 
+        console.log('[Dashboard] updateGemCountsFromRealtime: processing gemsData:', {
+            hasRough: !!gemsData.rough,
+            hasPolished: !!gemsData.polished,
+            hasRoughGems: gemsData.rough_gems !== undefined,
+            roughType: typeof gemsData.rough,
+            polishedType: typeof gemsData.polished,
+            allKeys: Object.keys(gemsData)
+        });
+
         if (gemsData.rough && typeof gemsData.rough === 'object') {
             // Nested structure: live.gems.rough = { rough_diamond: X, rough_ruby: Y, ... }
             totalRough = Object.values(gemsData.rough).reduce((sum, val) => sum + Number(val || 0), 0);
+            console.log('[Dashboard] updateGemCountsFromRealtime: using nested rough structure, total:', totalRough, 'values:', Object.values(gemsData.rough));
         } else if (gemsData.rough_gems !== undefined) {
             // Flat structure: live.gems.rough_gems = number
             totalRough = Number(gemsData.rough_gems || 0);
+            console.log('[Dashboard] updateGemCountsFromRealtime: using flat rough_gems, total:', totalRough);
         } else {
             // Fallback: sum all rough_* keys
             Object.entries(gemsData).forEach(([key, value]) => {
@@ -379,11 +398,13 @@ class DashboardGame extends TSDGEMSGame {
                     totalRough += Number(value || 0);
                 }
             });
+            console.log('[Dashboard] updateGemCountsFromRealtime: using fallback for rough, total:', totalRough);
         }
 
         if (gemsData.polished && typeof gemsData.polished === 'object') {
             // Nested structure: live.gems.polished = { polished_diamond: X, polished_ruby: Y, ... }
             totalPolished = Object.values(gemsData.polished).reduce((sum, val) => sum + Number(val || 0), 0);
+            console.log('[Dashboard] updateGemCountsFromRealtime: using nested polished structure, total:', totalPolished, 'values:', Object.values(gemsData.polished));
         } else {
             // Flat structure: sum all polished_* keys
             Object.entries(gemsData).forEach(([key, value]) => {
@@ -391,6 +412,7 @@ class DashboardGame extends TSDGEMSGame {
                     totalPolished += Number(value || 0);
                 }
             });
+            console.log('[Dashboard] updateGemCountsFromRealtime: using fallback for polished, total:', totalPolished);
         }
 
         const gameCurrency = this.realtimeData.profile?.ingameCurrency ?? this.realtimeData.profile?.ingame_currency ?? 0;
@@ -399,10 +421,14 @@ class DashboardGame extends TSDGEMSGame {
         console.log('[DashboardRealtime] Updated from live: rough=' + totalRough + ', polished=' + totalPolished + ', game$=' + gameCurrency + ', TSDM=' + tsdm);
 
         if (roughGemsCount) {
-            roughGemsCount.textContent = Number.isFinite(totalRough) ? totalRough : 0;
+            const displayRough = Number.isFinite(totalRough) ? totalRough : 0;
+            roughGemsCount.textContent = displayRough.toLocaleString();
+            console.log('[Dashboard] Updated rough-gems-count element to:', displayRough);
         }
         if (polishedGemsCount) {
-            polishedGemsCount.textContent = Number.isFinite(totalPolished) ? totalPolished : 0;
+            const displayPolished = Number.isFinite(totalPolished) ? totalPolished : 0;
+            polishedGemsCount.textContent = displayPolished.toLocaleString();
+            console.log('[Dashboard] Updated polished-gems-count element to:', displayPolished);
         }
     }
 
@@ -695,7 +721,8 @@ class DashboardGame extends TSDGEMSGame {
 
         if (profile || gems || inventorySummary) {
             // Realtime: Update gem counts from live.gems only
-            this.updateGemCountsFromRealtime(gems);
+            console.log('[Dashboard] renderRealtimeDashboard: gems data:', gems, 'type:', typeof gems, 'isObject:', typeof gems === 'object', 'hasRough:', !!gems?.rough, 'hasPolished:', !!gems?.polished, 'hasRoughGems:', gems?.rough_gems !== undefined);
+            this.updateGemCountsFromRealtime(gems || {});
         }
 
         if (miningSlots) {
