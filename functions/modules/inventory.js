@@ -176,6 +176,7 @@ async function fetchAllAssetsForOwner(owner, collection = COLLECTION) {
   return all
 }
 
+// --- Classification ---
 function classifyAssets(assets) {
   let polished = 0
   let rough = 0
@@ -187,7 +188,7 @@ function classifyAssets(assets) {
   const roughDetails = {}
   const equipmentDetails = {}
   const speedboostDetails = {}
-  const assetsList = [] // NEW: Store individual assets with their IDs
+  const assetsList = [] // Store individual assets with their IDs
 
   for (const a of assets) {
     const tid = Number(a.template?.template_id || a.template_id || a.template_id_num || 0)
@@ -200,24 +201,32 @@ function classifyAssets(assets) {
       continue
     }
 
-    // NEW: Extract asset_id and store individual asset data
+    // Extract asset_id and other metadata
     const assetId = a.asset_id || a.id || null
     const assetName = a.name || a.data?.name || ''
     const templateMint = a.template_mint || 'unknown'
-    
+
+    // Count per-template
     byTemplate[tid] = (byTemplate[tid] || 0) + 1
 
     if (TEMPLATES_POLISHED.has(tid)) {
       polished++
+
       const info = TEMPLATES_POLISHED_DETAILS.get(tid)
       if (info) {
         if (!polishedDetails[tid]) {
-          polishedDetails[tid] = { name: info.name, image: info.image, imagePath: info.imagePath, count: 0, assets: [] }
+          polishedDetails[tid] = {
+            name: info.name,
+            image: info.image,
+            imagePath: info.imagePath,
+            count: 0,
+            assets: []
+          }
         }
-        polishedDetails[tid].count = byTemplate[tid]
-        polishedDetails[tid].assets.push(assetId) // Store asset ID
+        polishedDetails[tid].count += 1
+        if (assetId) polishedDetails[tid].assets.push(assetId)
       }
-      // NEW: Add to assets list
+
       assetsList.push({
         asset_id: assetId,
         template_id: tid,
@@ -228,17 +237,25 @@ function classifyAssets(assets) {
         imagePath: info?.imagePath || null,
         category: 'polished'
       })
+
     } else if (TEMPLATES_ROUGH.has(tid)) {
       rough++
+
       const info = TEMPLATES_ROUGH_DETAILS.get(tid)
       if (info) {
         if (!roughDetails[tid]) {
-          roughDetails[tid] = { name: info.name, image: info.image, imagePath: info.imagePath, count: 0, assets: [] }
+          roughDetails[tid] = {
+            name: info.name,
+            image: info.image,
+            imagePath: info.imagePath,
+            count: 0,
+            assets: []
+          }
         }
-        roughDetails[tid].count = byTemplate[tid]
-        roughDetails[tid].assets.push(assetId) // Store asset ID
+        roughDetails[tid].count += 1
+        if (assetId) roughDetails[tid].assets.push(assetId)
       }
-      // NEW: Add to assets list
+
       assetsList.push({
         asset_id: assetId,
         template_id: tid,
@@ -249,38 +266,58 @@ function classifyAssets(assets) {
         imagePath: info?.imagePath || null,
         category: 'rough'
       })
+
     } else if (TEMPLATES_EQUIPMENT.has(tid)) {
       equipment++
+
       const info = TEMPLATES_EQUIPMENT.get(tid)
-      const count = byTemplate[tid]
-      totalMiningPower += info.mp * count
+
+      // ✅ Correct: add MP per asset, not per cumulative template count
+      totalMiningPower += info.mp
 
       if (!equipmentDetails[tid]) {
-        equipmentDetails[tid] = { name: info.name, mp: info.mp, image: info.image, imagePath: info.imagePath, count: 0, assets: [] }
+        equipmentDetails[tid] = {
+          name: info.name,
+          mp: info.mp,
+          image: info.image,
+          imagePath: info.imagePath,
+          count: 0,
+          assets: []
+        }
       }
-      equipmentDetails[tid].count = count
-      equipmentDetails[tid].assets.push(assetId) // Store asset ID
-      
-      // NEW: Add to assets list
+      equipmentDetails[tid].count += 1
+      if (assetId) equipmentDetails[tid].assets.push(assetId)
+
       const schema = Number(tid) === TABLE_ID ? 'tools' : 'equipment'
+
       assetsList.push({
         asset_id: assetId,
         template_id: tid,
         template_mint: templateMint,
         name: info?.name || assetName,
-        schema: schema,
+        schema,
         image: info?.image || null,
         imagePath: info?.imagePath || null,
         mp: info.mp,
         category: schema
       })
+
     } else if (TEMPLATES_SPEEDBOOST.has(tid)) {
-      speedboosts += byTemplate[tid]
+      // ✅ Count speedboosts per asset, not cumulative
+      speedboosts++
+
       const info = TEMPLATES_SPEEDBOOST.get(tid)
       if (!speedboostDetails[tid]) {
-        speedboostDetails[tid] = { name: info.name, boost: info.boost, image: info.image, imagePath: info.imagePath, count: 0, assets: [] }
+        speedboostDetails[tid] = {
+          name: info.name,
+          boost: info.boost,
+          image: info.image,
+          imagePath: info.imagePath,
+          count: 0,
+          assets: []
+        }
       }
-      speedboostDetails[tid].count = byTemplate[tid]
+      speedboostDetails[tid].count += 1
       if (assetId) speedboostDetails[tid].assets.push(assetId)
 
       assetsList.push({
@@ -289,13 +326,13 @@ function classifyAssets(assets) {
         template_mint: templateMint,
         name: info?.name || assetName,
         schema: 'speedboost',
-        image: info?.imagePath || null,
+        image: info?.image || null,
         imagePath: info?.imagePath || null,
         boost: info?.boost || 0,
         category: 'speedboost'
       })
     }
-    // else ignore
+    // else ignore other templates
   }
 
   // Create templateCounts structure for compatibility with existing API
@@ -307,20 +344,32 @@ function classifyAssets(assets) {
   for (const [tid, details] of Object.entries(polishedDetails)) {
     const key = `${tid}_${details.name}`
     templateCounts[key] = {
-      template_id: Number(tid), name: details.name, schema: 'gems',
-      count: details.count, total_mining_power: 0, image: details.image, imagePath: details.imagePath
+      template_id: Number(tid),
+      name: details.name,
+      schema: 'gems',
+      count: details.count,
+      total_mining_power: 0,
+      image: details.image,
+      imagePath: details.imagePath
     }
-    total += details.count; uniqueTemplates++
+    total += details.count
+    uniqueTemplates++
   }
 
   // rough -> templateCounts
   for (const [tid, details] of Object.entries(roughDetails)) {
     const key = `${tid}_${details.name}`
     templateCounts[key] = {
-      template_id: Number(tid), name: details.name, schema: 'gems',
-      count: details.count, total_mining_power: 0, image: details.image, imagePath: details.imagePath
+      template_id: Number(tid),
+      name: details.name,
+      schema: 'gems',
+      count: details.count,
+      total_mining_power: 0,
+      image: details.image,
+      imagePath: details.imagePath
     }
-    total += details.count; uniqueTemplates++
+    total += details.count
+    uniqueTemplates++
   }
 
   // equipment -> templateCounts
@@ -330,24 +379,39 @@ function classifyAssets(assets) {
     let schema = 'equipment'
     if (Number(tid) === TABLE_ID) schema = 'tools'
     templateCounts[key] = {
-      template_id: Number(tid), name: details.name, schema,
-      count: details.count, total_mining_power: totalMp, image: details.image, imagePath: details.imagePath, mp: details.mp
+      template_id: Number(tid),
+      name: details.name,
+      schema,
+      count: details.count,
+      total_mining_power: totalMp,
+      image: details.image,
+      imagePath: details.imagePath,
+      mp: details.mp
     }
-    total += details.count; uniqueTemplates++
+    total += details.count
+    uniqueTemplates++
   }
 
+  // speedboosts -> templateCounts
   for (const [tid, details] of Object.entries(speedboostDetails)) {
     const key = `${tid}_${details.name}`
     templateCounts[key] = {
-      template_id: Number(tid), name: details.name, schema: 'speedboost',
-      count: details.count, total_mining_power: 0, image: details.image, imagePath: details.imagePath, boost: details.boost
+      template_id: Number(tid),
+      name: details.name,
+      schema: 'speedboost',
+      count: details.count,
+      total_mining_power: 0,
+      image: details.image,
+      imagePath: details.imagePath,
+      boost: details.boost
     }
-    total += details.count; uniqueTemplates++
+    total += details.count
+    uniqueTemplates++
   }
 
-  // --- NEW: workers/mines/tables counts and derived slots ---
+  // --- workers/mines/tables counts and derived slots ---
   let workersCount = 0
-  let minesCount   = 0
+  let minesCount = 0
   const tablesCount = byTemplate[TABLE_ID] || 0
 
   for (const [tidStr, details] of Object.entries(equipmentDetails)) {
@@ -379,9 +443,9 @@ function classifyAssets(assets) {
     roughDetails,
     equipmentDetails,
     speedboostDetails,
-    assets: assetsList, // NEW: Array of individual assets with their asset_ids
+    assets: assetsList,
 
-    // NEW fields
+    // NEW fields / slots
     workersCount,
     minesCount,
     tablesCount,
