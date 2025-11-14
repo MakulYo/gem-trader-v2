@@ -88,12 +88,20 @@ const initPlayer = onRequest(CORS, async (req, res) => {
   const base = {
     account: actor,
     ingameCurrency: 0,
+
+    // Legacy flat balance fields
+    waxBalance: 0,
     tsdmBalance: 0,
-    miningSlotsUnlocked: 1, // First slot is free and auto-unlocked
+    wax_balance: 0,
+    tsdm_balance: 0,
+
+    // New nested balances object
+    balances: { WAX: 0, TSDM: 0 },
+
+    miningSlotsUnlocked: 1,  // First slot is free and auto-unlocked
     polishingSlotsUnlocked: 1, // First slot is free and auto-unlocked
     monthlyScore: 0,
     nfts: { count: 0, lastSyncAt: now },
-    balances: { WAX: 0, TSDM: 0 },
   };
 
   if (!snap.exists) {
@@ -190,6 +198,26 @@ const getDashboard = onRequest(CORS, async (req, res) => {
   if (!data.balances) data.balances = { WAX: 0, TSDM: 0 };
   if (data.ingameCurrency == null) data.ingameCurrency = 0;
 
+  // Backwards compatibility: if flat fields exist but balances missing, sync them
+  if (data.waxBalance != null && data.balances.WAX == null) {
+    data.balances.WAX = Number(data.waxBalance) || 0;
+  }
+  if (data.tsdmBalance != null && data.balances.TSDM == null) {
+    data.balances.TSDM = Number(data.tsdmBalance) || 0;
+  }
+  if (data.wax_balance != null && data.balances.WAX == null) {
+    data.balances.WAX = Number(data.wax_balance) || data.balances.WAX || 0;
+  }
+  if (data.tsdm_balance != null && data.balances.TSDM == null) {
+    data.balances.TSDM = Number(data.tsdm_balance) || data.balances.TSDM || 0;
+  }
+
+  // Also mirror balances back to flat fields on the response so UI can just read profile.tsdmBalance
+  data.waxBalance  = data.waxBalance  != null ? data.waxBalance  : (data.balances.WAX  || 0);
+  data.tsdmBalance = data.tsdmBalance != null ? data.tsdmBalance : (data.balances.TSDM || 0);
+  data.wax_balance  = data.wax_balance  != null ? data.wax_balance  : data.waxBalance;
+  data.tsdm_balance = data.tsdm_balance != null ? data.tsdm_balance : data.tsdmBalance;
+
   // Load gems from inventory/gems subcollection
   const gemsSnap = await ref.collection('inventory').doc('gems').get();
   const gemsData = gemsSnap.exists ? gemsSnap.data() : {};
@@ -228,18 +256,36 @@ async function syncNowInternal(actor) {
     getTsdmBalance(actor).catch(() => 0),
     getOwnedNfts(actor, process.env.ATOMIC_COLLECTION).catch(() => []),
   ]);
+
+  const safeWax  = Number(wax)  || 0;
+  const safeTsdm = Number(tsdm) || 0;
   const now = Timestamp.now();
+
   await db
     .collection('players')
     .doc(actor)
     .set(
       {
-        balances: { WAX: wax, TSDM: tsdm },
+        // New nested balances
+        balances: { WAX: safeWax, TSDM: safeTsdm },
+
+        // Legacy flat fields for old UI / queries
+        waxBalance: safeWax,
+        tsdmBalance: safeTsdm,
+        wax_balance: safeWax,
+        tsdm_balance: safeTsdm,
+
         nfts: { count: Number(nfts.length || 0), lastSyncAt: now },
+        lastSyncAt: now,
         lastSeenAt: now,
       },
       { merge: true }
     );
+
+  console.log('[syncNowInternal]', actor, 'balances updated:', {
+    WAX: safeWax,
+    TSDM: safeTsdm,
+  });
 }
 
 // ========================================
