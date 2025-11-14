@@ -5,6 +5,9 @@ const admin          = require('firebase-admin')
 const { getFirestore } = require('firebase-admin/firestore')
 const corsLib        = require('cors')
 
+// Ensure app is initialized safely (in case index.js didn't do it yet)
+try { admin.app() } catch { admin.initializeApp() }
+
 const db = getFirestore();
 
 const RAW_ALLOW  = process.env.CORS_ALLOW || ''
@@ -32,14 +35,14 @@ function refs(actor) {
   }
 }
 
-// Payment types and their unlock costs
+// Payment types and their meanings
 const PAYMENT_TYPES = {
   mining_slot_unlock: {
     name: 'Mining Slot Unlock',
     description: 'Unlock additional mining slot'
   },
   polishing_slot_unlock: {
-    name: 'Polishing Slot Unlock', 
+    name: 'Polishing Slot Unlock',
     description: 'Unlock additional polishing slot'
   },
   mining_start: {
@@ -60,7 +63,7 @@ const createPaymentRequest = onRequest((req, res) =>
       return res.status(400).json({ error: 'invalid payment type' })
     }
     
-    if (!amount || !Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: 'invalid amount' })
     }
 
@@ -73,12 +76,12 @@ const createPaymentRequest = onRequest((req, res) =>
         paymentId,
         actor,
         type,
-        amount,
+        amount,                           // numeric amount (e.g. 50.0000)
         destination: PAYMENT_DESTINATION,
         status: 'pending',
         metadata,
         createdAt: now,
-        memo: `payment:${paymentId}`
+        memo: `payment:${paymentId}`      // this is what must go into the TSDM transfer memo
       }
 
       await pendingPayments.doc(paymentId).set(paymentData)
@@ -103,7 +106,9 @@ const getPendingPayments = onRequest((req, res) =>
 
     try {
       const { pendingPayments } = refs(actor)
-      const snap = await pendingPayments.where('status', 'in', ['pending', 'verifying']).get()
+      const snap = await pendingPayments
+        .where('status', 'in', ['pending', 'verifying'])
+        .get()
       
       const payments = snap.docs.map(d => d.data())
       res.json({ ok: true, payments })
@@ -144,36 +149,40 @@ const verifyPayment = onRequest((req, res) =>
       const verification = await verifyTsdmTransfer(
         actor,
         PAYMENT_DESTINATION,
-        payment.amount,
+        Number(payment.amount),
         payment.memo,
         10 * 60 * 1000 // 10 minutes window
       )
 
-      // Nur im lokalen Emulator Mock-Verifikation verwenden
+      // Emulator / dev shortcut
       const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'development'
       
       if (isEmulator) {
         console.log('[verifyPayment] Emulator detected - using mock verification')
-        // Mock-Verifikation für Emulator
+
+        const mockTxId = 'mock-tx-' + Date.now()
+        const mockTime = new Date().toISOString()
+
         await paymentRef.update({
           status: 'completed',
           completedAt: Date.now(),
-          txId: 'mock-tx-' + Date.now(),
-          blockTime: new Date().toISOString(),
+          txId: mockTxId,
+          blockTime: mockTime,
           mock: true
         })
 
-        // Unlock the feature based on payment type
         await unlockFeature(actor, payment.type, payment.metadata)
 
-        res.json({ 
+        return res.json({ 
           ok: true, 
           verified: true,
-          txId: 'mock-tx-' + Date.now(),
-          blockTime: new Date().toISOString(),
+          txId: mockTxId,
+          blockTime: mockTime,
           mock: true
         })
-      } else if (verification.verified) {
+      }
+
+      if (verification.verified) {
         // Payment verified - unlock feature
         await paymentRef.update({
           status: 'completed',
@@ -182,10 +191,9 @@ const verifyPayment = onRequest((req, res) =>
           blockTime: verification.blockTime
         })
 
-        // Unlock the feature based on payment type
         await unlockFeature(actor, payment.type, payment.metadata)
 
-        res.json({ 
+        return res.json({ 
           ok: true, 
           verified: true,
           txId: verification.txId,
@@ -197,11 +205,11 @@ const verifyPayment = onRequest((req, res) =>
         const timeoutMs = 10 * 60 * 1000 // 10 minutes
         if (now - payment.createdAt > timeoutMs) {
           await paymentRef.update({ status: 'failed' })
-          res.json({ ok: true, verified: false, status: 'timeout' })
+          return res.json({ ok: true, verified: false, status: 'timeout' })
         } else {
           // Still within timeout window
           await paymentRef.update({ status: 'pending' })
-          res.json({ ok: true, verified: false, status: 'pending' })
+          return res.json({ ok: true, verified: false, status: 'pending' })
         }
       }
     } catch (e) {
@@ -243,24 +251,26 @@ const cancelPayment = onRequest((req, res) =>
   })
 )
 
-// Helper function to unlock features after successful payment
+// Helper: unlock features after successful payment
 async function unlockFeature(actor, type, metadata) {
   const { root } = refs(actor)
   
   switch (type) {
-    case 'mining_slot_unlock':
+    case 'mining_slot_unlock': {
       const currentSlots = await getCurrentMiningSlots(actor)
-      const newSlots = currentSlots + 1
+      const newSlots = Math.min(currentSlots + 1, 10)
       await root.update({ miningSlotsUnlocked: newSlots })
       console.log(`[unlockFeature] Unlocked mining slot ${newSlots} for ${actor}`)
       break
+    }
       
-    case 'polishing_slot_unlock':
+    case 'polishing_slot_unlock': {
       const currentPolishingSlots = await getCurrentPolishingSlots(actor)
-      const newPolishingSlots = currentPolishingSlots + 1
+      const newPolishingSlots = Math.min(currentPolishingSlots + 1, 10)
       await root.update({ polishingSlotsUnlocked: newPolishingSlots })
       console.log(`[unlockFeature] Unlocked polishing slot ${newPolishingSlots} for ${actor}`)
       break
+    }
       
     case 'mining_start':
       // Mining start payment - no unlock needed, just record
@@ -272,19 +282,37 @@ async function unlockFeature(actor, type, metadata) {
   }
 }
 
-// Helper functions to get current slot counts
+// Helper: current mining slots (mirror live-aggregator + mining.js semantics)
+// - if field is missing/0, treat as 1 (slot 1 is free baseline)
 async function getCurrentMiningSlots(actor) {
   const { root } = refs(actor)
   const snap = await root.get()
   const profile = snap.exists ? (snap.data() || {}) : {}
-  return Number(profile.miningSlotsUnlocked || 0)
+
+  const raw =
+    Number(profile.miningSlotsUnlocked ??
+           profile.mining_slots_unlocked ??
+           0) || 0
+
+  const effective = raw > 0 ? raw : 1
+  console.log(`[payments/getCurrentMiningSlots] actor=${actor} raw=${raw} effective=${effective}`)
+  return effective
 }
 
+// Helper: current polishing slots (same semantics: default 1)
 async function getCurrentPolishingSlots(actor) {
   const { root } = refs(actor)
   const snap = await root.get()
   const profile = snap.exists ? (snap.data() || {}) : {}
-  return Number(profile.polishingSlotsUnlocked || 0)
+
+  const raw =
+    Number(profile.polishingSlotsUnlocked ??
+           profile.polishing_slots_unlocked ??
+           0) || 0
+
+  const effective = raw > 0 ? raw : 1
+  console.log(`[payments/getCurrentPolishingSlots] actor=${actor} raw=${raw} effective=${effective}`)
+  return effective
 }
 
 module.exports = { 
