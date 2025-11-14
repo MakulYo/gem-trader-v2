@@ -25,6 +25,40 @@ function requireActor(req, res) {
   return actor;
 }
 
+// --- Helper: ensure runtime/live is present and not too stale ---
+async function ensureLiveUpToDate(actor, cause = 'players_init') {
+  try {
+    const liveRef = db.collection('players').doc(actor).collection('runtime').doc('live');
+    const snap = await liveRef.get();
+
+    // If no live doc -> build immediately
+    if (!snap.exists) {
+      console.log(`[ensureLiveUpToDate] No live doc for ${actor}, rebuilding (cause: ${cause}_missing)`);
+      await buildPlayerLiveData(actor, `${cause}_missing`);
+      return;
+    }
+
+    const data = snap.data() || {};
+    const lastUpdatedAt = data.lastUpdatedAt;
+    const lastMs = lastUpdatedAt && typeof lastUpdatedAt.toMillis === 'function'
+      ? lastUpdatedAt.toMillis()
+      : 0;
+
+    const ageMs = Date.now() - lastMs;
+    const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+    if (!lastMs || ageMs > MAX_AGE_MS) {
+      console.log(`[ensureLiveUpToDate] Live doc stale for ${actor} (age: ${Math.floor(ageMs / 1000)}s), rebuilding (cause: ${cause}_stale)`);
+      await buildPlayerLiveData(actor, `${cause}_stale`);
+    } else {
+      console.log(`[ensureLiveUpToDate] Live doc fresh for ${actor} (age: ${Math.floor(ageMs / 1000)}s), no rebuild needed`);
+    }
+  } catch (e) {
+    console.error('[ensureLiveUpToDate] Failed to ensure live data for', actor, e);
+    // Do not throw – failure to refresh live should not break player init/sync
+  }
+}
+
 // POST /initPlayer { actor }
 const initPlayer = onRequest(CORS, async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -52,7 +86,7 @@ const initPlayer = onRequest(CORS, async (req, res) => {
     await ref.set({ ...base, createdAt: now, lastSeenAt: now });
     // Create live doc synchronously for new players to ensure immediate availability
     console.log(`[initPlayer] Creating runtime/live doc synchronously for new player ${actor}`);
-    await buildPlayerLiveData(actor, 'initPlayer');
+    await buildPlayerLiveData(actor, 'initPlayer_new');
     console.log(`[initPlayer] ✅ Player and runtime/live created successfully for ${actor}`);
     // Return with profile data
     res.json({ ok: true, profile: { id: actor, ...base } });
@@ -89,6 +123,8 @@ const initPlayer = onRequest(CORS, async (req, res) => {
   // If synced within last 15 minutes, skip sync and return cached data
   if (syncAge < 15 * 60 * 1000) {
     console.log(`[initPlayer] Using cached data for ${actor} (synced ${Math.floor(syncAge / 1000)}s ago)`);
+    // Make sure live runtime doc is fresh enough
+    await ensureLiveUpToDate(actor, 'initPlayer_cached');
     res.json({ ok: true, profile: { id: snap.id, ...existingData } });
     return;
   }
@@ -96,6 +132,8 @@ const initPlayer = onRequest(CORS, async (req, res) => {
   // Otherwise sync and return fresh data
   await syncNowInternal(actor);
   const fresh = await ref.get();
+  // Ensure live doc is also fresh
+  await ensureLiveUpToDate(actor, 'initPlayer_resynced');
   res.json({ ok: true, profile: { id: fresh.id, ...fresh.data() } });
 });
 
@@ -141,6 +179,7 @@ const syncNow = onRequest(CORS, async (req, res) => {
 
   const actor = requireActor(req, res); if (!actor) return;
   await syncNowInternal(actor);
+  await ensureLiveUpToDate(actor, 'syncNow_manual');
   res.json({ ok: true });
 });
 
