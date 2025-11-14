@@ -5,6 +5,9 @@ const admin          = require('firebase-admin')
 const { getFirestore } = require('firebase-admin/firestore')
 const corsLib        = require('cors')
 
+// Ensure app is initialized (safe even if done elsewhere)
+try { admin.app() } catch { admin.initializeApp() }
+
 // Node 20+ has native fetch
 const fetch = globalThis.fetch || require('node-fetch')
 
@@ -105,7 +108,10 @@ async function validateOwnership(actor, assetIds) {
     })
 
     const valid = missingIds.length === 0
-    console.log(`[Mining] Ownership validation: ${valid ? 'VALID' : 'INVALID'} (${ownedAssets.length}/${assetIds.length} owned, ${missingIds.length} missing)`)
+    console.log(
+      `[Mining] Ownership validation: ${valid ? 'VALID' : 'INVALID'} ` +
+      `(${ownedAssets.length}/${assetIds.length} owned, ${missingIds.length} missing)`
+    )
 
     return { valid, ownedAssets, missingAssets }
   } catch (error) {
@@ -119,7 +125,7 @@ async function validateOwnership(actor, assetIds) {
  * Get staked assets for a mining slot with full details
  * @param {string} actor - WAX account name
  * @param {number} slotNum - Slot number
- * @returns {Promise<{assets: any[], totalMP: number}>}
+ * @returns {Promise<{assets: any[], totalMP: number, speedboost: any | null}>}
  */
 async function getStakedAssetsForSlot(actor, slotNum) {
   const stakingRef = db.collection('staking').doc(actor)
@@ -130,12 +136,15 @@ async function getStakedAssetsForSlot(actor, slotNum) {
   let speedboost = null
 
   if (stakingSnap.exists) {
-    const stakingData = stakingSnap.data()
-    const slotKey = `slot${slotNum}`
+    const stakingData = stakingSnap.data() || {}
+    const slotKey1 = `slot${slotNum}`
+    const slotKey2 = `slot_${slotNum}`
 
-    if (stakingData.mining && stakingData.mining[slotKey]) {
-      const slotData = stakingData.mining[slotKey]
+    const slotData =
+      (stakingData.mining && (stakingData.mining[slotKey1] || stakingData.mining[slotKey2])) ||
+      null
 
+    if (slotData) {
       // Add mine if staked
       if (slotData.mine) {
         const mine = slotData.mine
@@ -170,8 +179,15 @@ async function getStakedAssetsForSlot(actor, slotNum) {
           : null)
 
       if (slotSpeedboost && slotSpeedboost.asset_id) {
-        const boost = Number(slotSpeedboost.boost ?? (slotSpeedboost.multiplier ? slotSpeedboost.multiplier - 1 : 0)) || 0
-        const multiplier = Number(slotSpeedboost.multiplier ?? (1 + boost)) || (1 + boost)
+        const boost = Number(
+          slotSpeedboost.boost ??
+          (slotSpeedboost.multiplier ? slotSpeedboost.multiplier - 1 : 0)
+        ) || 0
+
+        const multiplier = Number(
+          slotSpeedboost.multiplier ??
+          (1 + boost)
+        ) || (1 + boost)
 
         speedboost = {
           asset_id: slotSpeedboost.asset_id,
@@ -192,7 +208,10 @@ async function getStakedAssetsForSlot(actor, slotNum) {
     }
   }
 
-  console.log(`[Mining] Slot ${slotNum} staked assets: ${assets.length} assets, total MP: ${totalMP}, speedboost: ${speedboost ? speedboost.asset_id : 'none'}`)
+  console.log(
+    `[Mining] Slot ${slotNum} staked assets: ${assets.length} assets, ` +
+    `total MP: ${totalMP}, speedboost: ${speedboost ? speedboost.asset_id : 'none'}`
+  )
   return { assets, totalMP, speedboost }
 }
 
@@ -216,9 +235,14 @@ async function ensureSeasonActiveOrThrow() {
 }
 
 // Detect dev environment by project ID
-const isDevProject = admin.app().options.projectId === 'tsdm-6896d';
-const MINING_DURATION_MS = isDevProject ? 1 * 60 * 1000 : 3 * 60 * 60 * 1000; // 1 min on dev, 3 hours on prod
-const MINING_COST_TSDM   = 50          // recorded only (no debit yet)
+const projectId = (admin.app().options.projectId || '').toString()
+const isDevProject = projectId === 'tsdm-6896d'
+
+const MINING_DURATION_MS = isDevProject
+  ? 1 * 60 * 1000                   // 1 min on dev
+  : 3 * 60 * 60 * 1000              // 3 hours on prod
+
+const MINING_COST_TSDM   = 50       // recorded only (no debit yet)
 const MAX_SLOTS          = 10
 
 // Slot unlock costs (slot 1 is free, already unlocked)
@@ -236,12 +260,7 @@ const SLOT_UNLOCK_COSTS = [
 ]
 
 // ---------- Speedboost integration ----------
-// Inventory doc path: players/{actor}/inventory/speedboost
-// Expected shape per slot:
-//   slot1: { rarity: 'Rare', boost: 0.25, template_id: <TBD> }
-// One cart per slot; highest rarity logic should be handled by the UI/assignment flow.
 
-// Rarity table kept for reference / validation (template_ids are placeholders)
 const SPEEDBOOST_RARITIES = {
   Common:    { boost: 0.0625, template_ids: ['TBD_COMMON'] },
   Uncommon:  { boost: 0.125,  template_ids: ['TBD_UNCOMMON'] },
@@ -263,7 +282,6 @@ async function getSpeedboostForSlot(actor, slotNum) {
 
     if (!sb || typeof sb.boost !== 'number') return { boost: 0, rarity: null, template_id: null }
 
-    // optional sanity clamp (e.g., avoid crazy numbers)
     const safeBoost = Math.max(0, Math.min(2, Number(sb.boost) || 0)) // cap 200% just in case
     const rarity = typeof sb.rarity === 'string' ? sb.rarity : null
     const template_id = sb.template_id ?? null
@@ -287,17 +305,24 @@ function refs(actor) {
   }
 }
 
+// --- CRITICAL: slot count is now driven ONLY by profile.miningSlotsUnlocked ---
+// NFTs still gate mining in practice because you must have mine + workers
 async function getEffectiveMiningSlots(actor) {
-  const { root, invSummary } = refs(actor)
-  const [invSnap, profSnap] = await Promise.all([invSummary.get(), root.get()])
-
-  const inv = invSnap.exists ? (invSnap.data() || {}) : {}
-  const nftSlots = Math.min(Number(inv.miningSlots || 0) || 0, MAX_SLOTS)
+  const { root } = refs(actor)
+  const profSnap = await root.get()
 
   const prof = profSnap.exists ? (profSnap.data() || {}) : {}
-  const unlockedSlots = Number(prof.miningSlotsUnlocked || 0)
+  const rawUnlocked =
+    Number(prof.miningSlotsUnlocked ??
+           prof.mining_slots_unlocked ??
+           0) || 0
 
-  return Math.min(Math.max(nftSlots, unlockedSlots), MAX_SLOTS)
+  // default 1 for new accounts
+  const unlockedSlots = rawUnlocked > 0 ? rawUnlocked : 1
+
+  const effective = Math.max(1, Math.min(unlockedSlots, MAX_SLOTS))
+  console.log(`[Mining] getEffectiveMiningSlots(${actor}) -> ${effective} (rawUnlocked=${rawUnlocked})`)
+  return effective
 }
 
 async function getActiveCount(actor) {
@@ -339,7 +364,9 @@ const startMining = onRequest((req, res) =>
         slotNum = Number(requestedSlotNum)
         const isSlotInUse = existingJobs.some(job => job.slotNum === slotNum)
         if (isSlotInUse) return res.status(400).json({ error: `slot ${slotNum} is already in use` })
-        if (slotNum < 1 || slotNum > slots) return res.status(400).json({ error: `slot ${slotNum} is out of range (1-${slots})` })
+        if (slotNum < 1 || slotNum > slots) {
+          return res.status(400).json({ error: `slot ${slotNum} is out of range (1-${slots})` })
+        }
       } else {
         slotNum = getNextAvailableSlot(existingJobs, slots)
         if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
@@ -365,12 +392,10 @@ const startMining = onRequest((req, res) =>
       }
 
       // Validate ownership of all staked assets
-      // Error format: { error: "ownership_missing: AssetName (template 123, mint #456); ...", details: [{asset_id, template_id, template_mint, type, name}] }
       const assetIds = stakedAssets.map(a => a.asset_id)
       const ownershipValidation = await validateOwnership(actor, assetIds)
 
       if (!ownershipValidation.valid && !ownershipValidation.apiError) {
-        // Get full asset details including template_mint for missing assets
         const missingDetails = []
         for (const missing of ownershipValidation.missingAssets) {
           const stakedAsset = stakedAssets.find(a => a.asset_id === missing.asset_id)
@@ -378,14 +403,13 @@ const startMining = onRequest((req, res) =>
             missingDetails.push({
               asset_id: stakedAsset.asset_id,
               template_id: stakedAsset.template_id,
-              template_mint: 'unknown', // Will be filled from AtomicAssets data if available
+              template_mint: 'unknown',
               type: stakedAsset.type,
               name: stakedAsset.name
             })
           }
         }
 
-        // Try to get template_mint from owned assets that match template_id
         for (const detail of missingDetails) {
           const ownedAsset = ownershipValidation.ownedAssets.find(a =>
             a.template?.template_id === detail.template_id ||
@@ -407,24 +431,32 @@ const startMining = onRequest((req, res) =>
       }
 
       if (ownershipValidation.apiError) {
-        console.warn(`[startMining] ⚠️ Starting mining without ownership validation (API error) for slot ${slotNum}`)
+        console.warn(
+          `[startMining] ⚠️ Starting mining without ownership validation (API error) for slot ${slotNum}`
+        )
       }
 
       const now = Date.now()
       const jobId = `job_${now}_${Math.floor(Math.random()*1e6)}`
       const slotId = `slot_${slotNum}`
       const boostPct = slotSpeedboost ? Number(slotSpeedboost.boost || 0) : 0
-      const speedMultiplier = boostPct > 0 ? (slotSpeedboost?.multiplier || (1 + boostPct)) : 1
+      const speedMultiplier = boostPct > 0
+        ? (slotSpeedboost?.multiplier || (1 + boostPct))
+        : 1
+
       const effectiveDurationMs = Math.max(1, Math.round(MINING_DURATION_MS / speedMultiplier))
       const finishAt = now + effectiveDurationMs
-      console.log(`[startMining] Slot ${slotNum} speedboost ${boostPct * 100}% -> effective duration ${effectiveDurationMs}ms (base ${MINING_DURATION_MS}ms)`)
+
+      console.log(
+        `[startMining] Slot ${slotNum} speedboost ${boostPct * 100}% -> ` +
+        `effective duration ${effectiveDurationMs}ms (base ${MINING_DURATION_MS}ms)`
+      )
 
       // Create assets snapshot for ownership validation at completion
-      // assetsSnapshot: [{asset_id, template_id, template_mint, name, mp, type}] - used in completeMining to verify continued ownership
       const assetsSnapshot = stakedAssets.map(asset => ({
         asset_id: asset.asset_id,
         template_id: asset.template_id,
-        template_mint: 'unknown', // Will be filled from AtomicAssets data
+        template_mint: 'unknown',
         name: asset.name,
         mp: asset.mp,
         type: asset.type
@@ -467,6 +499,7 @@ const startMining = onRequest((req, res) =>
             }
           : null
       })
+
       res.json({
         ok: true,
         jobId,
@@ -524,7 +557,6 @@ const completeMining = onRequest((req, res) =>
       if (now < job.finishAt) return res.status(400).json({ error: 'job still in progress' })
 
       // Validate ownership of assets that were staked at start time
-      // If assets are no longer owned, deduct their MP from rewards
       let effectiveMP = Number(job.slotMiningPower) || 0
       let deductedMP = 0
       const missingAssets = []
@@ -535,12 +567,10 @@ const completeMining = onRequest((req, res) =>
         const ownershipValidation = await validateOwnership(actor, assetIds)
 
         if (!ownershipValidation.valid && !ownershipValidation.apiError) {
-          // Calculate effective MP by subtracting MP from missing assets
           const ownedAssetIds = new Set(ownershipValidation.ownedAssets.map(a => a.asset_id))
 
           for (const snapshotAsset of job.assetsSnapshot) {
             if (!ownedAssetIds.has(snapshotAsset.asset_id)) {
-              // Asset is no longer owned - deduct its MP
               const mpToDeduct = Number(snapshotAsset.mp) || 0
               deductedMP += mpToDeduct
               missingAssets.push({
@@ -557,9 +587,14 @@ const completeMining = onRequest((req, res) =>
           }
 
           effectiveMP = Math.max(0, effectiveMP - deductedMP)
-          console.log(`[completeMining] Ownership validation: deducted ${deductedMP} MP from ${missingAssets.length} missing assets, effective MP: ${effectiveMP}`)
+          console.log(
+            `[completeMining] Ownership validation: deducted ${deductedMP} MP from ` +
+            `${missingAssets.length} missing assets, effective MP: ${effectiveMP}`
+          )
         } else if (ownershipValidation.apiError) {
-          console.warn(`[completeMining] ⚠️ Completing mining without ownership validation (API error) for job ${jobId}`)
+          console.warn(
+            `[completeMining] ⚠️ Completing mining without ownership validation (API error) for job ${jobId}`
+          )
         }
       }
 
@@ -568,7 +603,9 @@ const completeMining = onRequest((req, res) =>
 
       // Determine speedboost effect captured at job start, fallback to current slot assignment
       let boostPct = typeof job.slotSpeedBoostPct === 'number' ? job.slotSpeedBoostPct : null
-      let boostMultiplier = typeof job.slotSpeedBoostMultiplier === 'number' ? job.slotSpeedBoostMultiplier : null
+      let boostMultiplier = typeof job.slotSpeedBoostMultiplier === 'number'
+        ? job.slotSpeedBoostMultiplier
+        : null
       let boostMeta = job.speedboostPreview || null
 
       if (boostPct === null || boostMultiplier === null) {
@@ -583,9 +620,10 @@ const completeMining = onRequest((req, res) =>
         }
       }
 
-      // Ensure sane defaults
       boostPct = Number.isFinite(boostPct) ? boostPct : 0
-      boostMultiplier = Number.isFinite(boostMultiplier) && boostMultiplier > 0 ? boostMultiplier : (1 + boostPct)
+      boostMultiplier = Number.isFinite(boostMultiplier) && boostMultiplier > 0
+        ? boostMultiplier
+        : (1 + boostPct)
 
       const amt = Math.max(1, Math.floor(baseYield * boostMultiplier))
 
@@ -596,8 +634,6 @@ const completeMining = onRequest((req, res) =>
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
         const have = Number(cur[key] || 0)
         tx.set(gems, { ...cur, [key]: have + amt }, { merge: true })
-        // Save completion data to history
-        // New fields: effectiveMiningPower, ownershipAtCompletion: {missingAssets[], ownedAssets[], deductedMp, effectiveMp}
         tx.set(history.doc(jobId), {
           ...job,
           status: 'done',
@@ -608,10 +644,10 @@ const completeMining = onRequest((req, res) =>
           slotMiningPower: job.slotMiningPower || 0,
           effectiveMiningPower: effectiveMP,
           ownershipAtCompletion: {
-            missingAssets,  // Assets no longer owned at completion
-            ownedAssets,    // Assets still owned at completion
-            deductedMp: deductedMP,    // Total MP deducted from missing assets
-            effectiveMp: effectiveMP   // MP used for reward calculation
+            missingAssets,
+            ownedAssets,
+            deductedMp: deductedMP,
+            effectiveMp: effectiveMP
           },
           speedboostApplied: {
             boost: boostPct,
@@ -624,7 +660,6 @@ const completeMining = onRequest((req, res) =>
         tx.delete(jobRef)
       })
 
-      // Response format includes new ownership validation fields
       res.json({
         ok: true,
         result: {
@@ -633,13 +668,13 @@ const completeMining = onRequest((req, res) =>
           yieldAmt: amt,
           multiplier: boostMultiplier,
           completedAt: now,
-          slotMiningPower: job.slotMiningPower || 0,          // Original MP from staking
-          effectiveMiningPower: effectiveMP, // MP after ownership validation
-          ownershipAtCompletion: {          // Ownership check results
-            missingAssets,  // [{asset_id, template_id, template_mint, type, name, mp}]
-            ownedAssets,    // [{asset_id, template_id, template_mint, type, name, mp}]
-            deductedMp: deductedMP,    // Total MP removed due to missing assets
-            effectiveMp: effectiveMP   // Final MP used for rewards
+          slotMiningPower: job.slotMiningPower || 0,
+          effectiveMiningPower: effectiveMP,
+          ownershipAtCompletion: {
+            missingAssets,
+            ownedAssets,
+            deductedMp: deductedMP,
+            effectiveMp: effectiveMP
           },
           speedboost: {
             boost: boostPct,
@@ -671,12 +706,21 @@ const unlockMiningSlot = onRequest((req, res) =>
       if (!snap.exists) return res.status(404).json({ error: 'player not found' })
 
       const profile = snap.data() || {}
-      const currentSlots = Number(profile.miningSlotsUnlocked || 0)
-      if (currentSlots >= MAX_SLOTS) return res.status(400).json({ error: 'maximum slots already unlocked' })
+      const currentSlots = Number(
+        profile.miningSlotsUnlocked ??
+        profile.mining_slots_unlocked ??
+        0
+      )
 
-      const nextSlotToUnlock = currentSlots + 1
+      if (currentSlots >= MAX_SLOTS) {
+        return res.status(400).json({ error: 'maximum slots already unlocked' })
+      }
+
+      const nextSlotToUnlock = (currentSlots || 0) + 1
       if (targetSlot !== nextSlotToUnlock) {
-        return res.status(400).json({ error: `Please unlock slots in order. Next available slot is ${nextSlotToUnlock}` })
+        return res.status(400).json({
+          error: `Please unlock slots in order. Next available slot is ${nextSlotToUnlock}`
+        })
       }
 
       const unlockCost = SLOT_UNLOCK_COSTS[targetSlot - 1] || 0
@@ -696,7 +740,13 @@ const unlockMiningSlot = onRequest((req, res) =>
 
       await pendingPayments.doc(paymentId).set(paymentData)
 
-      res.json({ ok: true, paymentId, unlockCost, slotNumber: targetSlot, message: 'Payment request created. Please complete payment to unlock slot.' })
+      res.json({
+        ok: true,
+        paymentId,
+        unlockCost,
+        slotNumber: targetSlot,
+        message: 'Payment request created. Please complete payment to unlock slot.'
+      })
     } catch (e) {
       console.error('[unlockMiningSlot]', e)
       res.status(500).json({ error: e.message })
@@ -705,7 +755,6 @@ const unlockMiningSlot = onRequest((req, res) =>
 )
 
 // POST /validateOwnership { actor, assetIds: string[] }
-// Returns { valid: boolean, ownedAssets: Asset[], apiError?: boolean }
 const validateOwnershipEndpoint = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
@@ -746,9 +795,7 @@ module.exports = {
   completeMining,
   unlockMiningSlot,
   validateOwnershipEndpoint,
-  getSpeedboost,          // optional UI helper
-  // exported for possible external reference
+  getSpeedboost,
   SPEEDBOOST_RARITIES,
   getSpeedboostForSlot
 }
-
