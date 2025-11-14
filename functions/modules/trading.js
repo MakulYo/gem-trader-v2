@@ -6,8 +6,8 @@ const admin = require('firebase-admin')
 const { getFirestore, FieldValue } = require('firebase-admin/firestore')
 const corsLib = require('cors')
 
-try { admin.app(); } catch { admin.initializeApp(); }
-const db = getFirestore();
+try { admin.app() } catch { admin.initializeApp() }
+const db = getFirestore()
 
 const RAW_ALLOW = process.env.CORS_ALLOW || ''
 const ALLOWLIST = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean)
@@ -15,6 +15,8 @@ const cors = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, credentials:
 
 // Import staking module for gem boost calculations
 const { getGemsBoostForType } = require('./staking')
+// Import live aggregator to keep runtime/live in sync after trades
+const { buildPlayerLiveData } = require('./live-aggregator')
 
 // Rate limiting configuration
 const RATE_LIMITS = {
@@ -45,7 +47,9 @@ async function checkRateLimit(actor, action, req) {
 
     // Check if under limit
     if (requests.length >= RATE_LIMITS[action].requests) {
-      console.log(`[RateLimit] BLOCKED: ${rateKey} exceeded ${RATE_LIMITS[action].requests} requests in ${RATE_LIMITS[action].windowMs}ms`)
+      console.log(
+        `[RateLimit] BLOCKED: ${rateKey} exceeded ${RATE_LIMITS[action].requests} requests in ${RATE_LIMITS[action].windowMs}ms`
+      )
       return false
     }
 
@@ -63,7 +67,6 @@ async function checkRateLimit(actor, action, req) {
 
     console.log(`[RateLimit] ALLOWED: ${rateKey} (${requests.length}/${RATE_LIMITS[action].requests})`)
     return true
-
   } catch (error) {
     console.error('[RateLimit] Error checking rate limit:', error)
     // Allow request on error to avoid blocking legitimate users
@@ -84,16 +87,16 @@ async function ensureSeasonActiveOrThrow() {
 
 // Gem type mapping for inventory keys (lowercase)
 const GEM_TYPE_INVENTORY_MAP = {
-  'Diamond': 'diamond',
-  'Ruby': 'ruby', 
-  'Sapphire': 'sapphire',
-  'Emerald': 'emerald',
-  'Jade': 'jade',
-  'Tanzanite': 'tanzanite',
-  'Opal': 'opal',
-  'Aquamarine': 'aquamarine',
-  'Topaz': 'topaz',
-  'Amethyst': 'amethyst'
+  Diamond: 'diamond',
+  Ruby: 'ruby',
+  Sapphire: 'sapphire',
+  Emerald: 'emerald',
+  Jade: 'jade',
+  Tanzanite: 'tanzanite',
+  Opal: 'opal',
+  Aquamarine: 'aquamarine',
+  Topaz: 'topaz',
+  Amethyst: 'amethyst'
 }
 
 function requireActor(req, res) {
@@ -116,12 +119,13 @@ function refs(actor) {
 
 /**
  * Sell gems with city boost and gem staking boost
- * POST /sellGems { actor, gemType, amount, cityId }
+ * POST /sellGems { actor, gemType, amount, cityId, expected? }
  */
 const sellGems = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
-    const actor = requireActor(req, res); if (!actor) return
+    const actor = requireActor(req, res)
+    if (!actor) return
 
     // Rate limiting check
     const rateLimitAllowed = await checkRateLimit(actor, 'sellGems', req)
@@ -131,82 +135,100 @@ const sellGems = onRequest((req, res) =>
         retryAfter: Math.ceil(RATE_LIMITS.sellGems.windowMs / 1000)
       })
     }
-    
-    let { gemType, amount, cityId } = req.body
-    
-    // Validate input
-    if (!gemType || !amount || !cityId) {
+
+    let { gemType, amount, cityId } = req.body || {}
+
+    // Validate input presence
+    if (!gemType || amount == null || !cityId) {
       return res.status(400).json({ error: 'gemType, amount, and cityId required' })
     }
-    if (!Number.isInteger(amount) || amount <= 0) {
+
+    // Coerce amount to number before integer check
+    amount = Number(amount)
+    if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
       return res.status(400).json({ error: 'amount must be a positive integer' })
     }
-    
-    let cleanGemType = gemType.replace('polished_', '').replace('rough_', '')
+
+    let cleanGemType = String(gemType)
+      .replace('polished_', '')
+      .replace('rough_', '')
     cleanGemType = cleanGemType.charAt(0).toUpperCase() + cleanGemType.slice(1).toLowerCase()
-    
+
     if (!GEM_TYPE_INVENTORY_MAP[cleanGemType]) {
       return res.status(400).json({ error: `Invalid gem type: ${gemType}` })
     }
-    
+
     try {
       await ensureSeasonActiveOrThrow()
 
-      console.log(`[Trading] Selling ${amount}x ${gemType} (${cleanGemType}) in ${cityId} for ${actor}`)
-      
+      console.log(
+        `[Trading] Selling ${amount}x ${gemType} (${cleanGemType}) in ${cityId} for ${actor}`
+      )
+
       const { gems, salesHistory, root } = refs(actor)
       const inventoryKey = 'polished_' + GEM_TYPE_INVENTORY_MAP[cleanGemType]
-      
+
       // Get player's gem inventory
       const gemsSnap = await gems.get()
       if (!gemsSnap.exists) {
         return res.status(400).json({ error: 'No gems inventory found' })
       }
-      
+
       const gemsData = gemsSnap.data()
       const availableGems = Number(gemsData[inventoryKey] || 0)
       if (availableGems < amount) {
-        return res.status(400).json({ 
-          error: `Insufficient gems. Available: ${availableGems}, Requested: ${amount}` 
+        return res.status(400).json({
+          error: `Insufficient gems. Available: ${availableGems}, Requested: ${amount}`
         })
       }
-      
+
       // Get city boost
       const cityBoostRef = db.doc(`city_boosts/${cityId}`)
       const cityBoostSnap = await cityBoostRef.get()
       const cityBoostData = cityBoostSnap.exists ? cityBoostSnap.data() : {}
       const cityBoostDecimal = cityBoostData.bonuses?.[inventoryKey] || 0
-      
+
       // Gem staking boost
       const gemBoost = await getGemsBoostForType(actor, cleanGemType)
-      
+
       // Base price
       const basePriceRef = db.doc('runtime/pricing')
       const basePriceSnap = await basePriceRef.get()
       if (!basePriceSnap.exists) throw new Error('Base price not available')
-      
+
       const basePriceData = basePriceSnap.data()
       const basePrice = Number(basePriceData.basePrice || 0)
       if (!basePrice || basePrice <= 0) throw new Error('Invalid base price data')
-      
-      console.log(`[Trading] Using dynamic base price: ${basePrice} (BTC: ${basePriceData.btcUsd})`)
-      
+
+      console.log(
+        `[Trading] Using dynamic base price: ${basePrice} (BTC: ${basePriceData.btcUsd})`
+      )
+
       const cityMultiplier = 1 + cityBoostDecimal
       const gemMultiplier = 1 + gemBoost
-      const totalPayout = Math.floor(basePrice * amount * cityMultiplier * gemMultiplier)
-      
-      console.log(`[Trading] Calculation: ${basePrice} * ${amount} * ${cityMultiplier} * ${gemMultiplier} = ${totalPayout}`)
-      console.log(`[Trading] City boost: ${(cityBoostDecimal * 100).toFixed(1)}%, Gem boost: ${(gemBoost * 100).toFixed(0)}%`)
-      
+      const totalPayout = Math.floor(
+        basePrice * amount * cityMultiplier * gemMultiplier
+      )
+
+      console.log(
+        `[Trading] Calculation: ${basePrice} * ${amount} * ${cityMultiplier} * ${gemMultiplier} = ${totalPayout}`
+      )
+      console.log(
+        `[Trading] City boost: ${(cityBoostDecimal * 100).toFixed(
+          1
+        )}%, Gem boost: ${(gemBoost * 100).toFixed(0)}%`
+      )
+
       // Optional client expectation check to prevent race-condition sells
       const expected = req.body?.expected
       if (expected) {
         const expBase = Number(expected.basePrice ?? expected.base ?? 0)
         const expCity = Number(expected.cityBoost ?? expected.cityBoostDecimal ?? 0)
-        const expGem  = Number(expected.gemBoost ?? 0)
-        const expTotal = typeof expected.totalPayout === 'number'
-          ? Math.floor(expected.totalPayout)
-          : Math.floor(expBase * amount * (1 + expCity) * (1 + expGem))
+        const expGem = Number(expected.gemBoost ?? 0)
+        const expTotal =
+          typeof expected.totalPayout === 'number'
+            ? Math.floor(expected.totalPayout)
+            : Math.floor(expBase * amount * (1 + expCity) * (1 + expGem))
 
         const mismatch = expTotal !== totalPayout
         if (mismatch) {
@@ -214,19 +236,24 @@ const sellGems = onRequest((req, res) =>
             error: 'price_changed',
             message: 'Quote changed before execution',
             server: { basePrice, cityBoostDecimal, gemBoost, totalPayout },
-            client: { basePrice: expBase, cityBoostDecimal: expCity, gemBoost: expGem, totalPayout: expTotal }
+            client: {
+              basePrice: expBase,
+              cityBoostDecimal: expCity,
+              gemBoost: expGem,
+              totalPayout: expTotal
+            }
           })
         }
       }
 
       // Execute transaction
-      await db.runTransaction(async (tx) => {
+      await db.runTransaction(async tx => {
         const playerSnap = await tx.get(root)
         const currentCurrency = Number(playerSnap.data()?.ingameCurrency || 0)
-        
+
         tx.update(gems, { [inventoryKey]: availableGems - amount })
         tx.update(root, { ingameCurrency: currentCurrency + totalPayout })
-        
+
         const saleId = `sale_${Date.now()}_${Math.floor(Math.random() * 1e6)}`
         tx.set(salesHistory.doc(saleId), {
           saleId,
@@ -239,10 +266,15 @@ const sellGems = onRequest((req, res) =>
           cityBoostDecimal,
           gemBoost,
           totalPayout,
-          soldAt: Date.now()
+          soldAt: FieldValue.serverTimestamp()
         })
       })
-      
+
+      // Refresh live runtime doc in the background (do not block response)
+      buildPlayerLiveData(actor, 'sellGems').catch(err =>
+        console.error('[Trading] Failed to rebuild live data after sellGems:', err)
+      )
+
       res.json({
         success: true,
         gemType: cleanGemType,
@@ -254,7 +286,6 @@ const sellGems = onRequest((req, res) =>
         totalPayout,
         remainingGems: availableGems - amount
       })
-      
     } catch (error) {
       if (error.status === 403)
         return res.status(403).json({ error: 'season-locked' })
@@ -271,8 +302,9 @@ const sellGems = onRequest((req, res) =>
 const getSalesHistory = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' })
-    const actor = requireActor(req, res); if (!actor) return
-    
+    const actor = requireActor(req, res)
+    if (!actor) return
+
     try {
       const { salesHistory } = refs(actor)
       const snap = await salesHistory.orderBy('soldAt', 'desc').limit(50).get()
