@@ -5,7 +5,10 @@ const admin          = require('firebase-admin')
 const { getFirestore } = require('firebase-admin/firestore')
 const corsLib        = require('cors')
 
-const db = getFirestore();
+// Ensure app is initialized (safe even if done elsewhere)
+try { admin.app() } catch { admin.initializeApp() }
+
+const db = getFirestore()
 
 const RAW_ALLOW  = process.env.CORS_ALLOW || ''
 const ALLOWLIST  = RAW_ALLOW.split(',').map(s => s.trim()).filter(Boolean)
@@ -13,9 +16,8 @@ const cors       = corsLib({ origin: ALLOWLIST.length ? ALLOWLIST : true, creden
 
 // Rate limiting configuration
 const RATE_LIMITS = {
-  completeMining: { requests: 10, windowMs: 10000 }, // 10 requests per 10 seconds (one per slot)
-  completePolishing: { requests: 10, windowMs: 10000 }, // 10 requests per 10 seconds (one per slot)
-  // Add other rate limits as needed
+  completeMining: { requests: 10, windowMs: 10000 },     // 10 requests per 10 seconds (one per slot)
+  completePolishing: { requests: 10, windowMs: 10000 },  // 10 requests per 10 seconds (one per slot)
 }
 
 // Rate limiting function
@@ -41,7 +43,10 @@ async function checkRateLimit(actor, action, req) {
 
     // Check if under limit
     if (requests.length >= RATE_LIMITS[action].requests) {
-      console.log(`[RateLimit] BLOCKED: ${rateKey} exceeded ${RATE_LIMITS[action].requests} requests in ${RATE_LIMITS[action].windowMs}ms`)
+      console.log(
+        `[RateLimit] BLOCKED: ${rateKey} exceeded ${RATE_LIMITS[action].requests}` +
+        ` requests in ${RATE_LIMITS[action].windowMs}ms`
+      )
       return false
     }
 
@@ -50,14 +55,16 @@ async function checkRateLimit(actor, action, req) {
 
     // Save updated rate limit data
     await rateDocRef.set({
-      requests: requests,
+      requests,
       lastRequest: now,
-      action: action,
-      actor: actor,
+      action,
+      actor,
       ip: clientIP
     })
 
-    console.log(`[RateLimit] ALLOWED: ${rateKey} (${requests.length}/${RATE_LIMITS[action].requests})`)
+    console.log(
+      `[RateLimit] ALLOWED: ${rateKey} (${requests.length}/${RATE_LIMITS[action].requests})`
+    )
     return true
 
   } catch (error) {
@@ -70,7 +77,8 @@ async function checkRateLimit(actor, action, req) {
 function requireActor(req, res) {
   const actor = (req.method === 'GET' ? req.query.actor : req.body?.actor) || ''
   if (!actor || typeof actor !== 'string') {
-    res.status(400).json({ error: 'actor required' }); return null
+    res.status(400).json({ error: 'actor required' })
+    return null
   }
   return actor
 }
@@ -87,8 +95,8 @@ async function ensureSeasonActiveOrThrow() {
 }
 
 const POLISHING_DURATION_MS = 1 * 60 * 60 * 1000  // 1 hour
-const MAX_SLOTS = 10
-const MAX_AMOUNT_PER_SLOT = 500
+const MAX_SLOTS             = 10
+const MAX_AMOUNT_PER_SLOT   = 500
 
 // Slot unlock costs (slot 1 is free, already unlocked)
 const POLISHING_SLOT_UNLOCK_COSTS = [
@@ -114,22 +122,22 @@ const POLISHED_TYPES = [
   'polished_topaz','polished_amethyst'
 ]
 const WEIGHTS = {
-  polished_diamond: 0.03,
-  polished_ruby: 0.05,
-  polished_sapphire: 0.10,
-  polished_emerald: 0.10,
-  polished_jade: 0.1166,
-  polished_tanzanite: 0.1166,
-  polished_opal: 0.1166,
+  polished_diamond:    0.03,
+  polished_ruby:       0.05,
+  polished_sapphire:   0.10,
+  polished_emerald:    0.10,
+  polished_jade:       0.1166,
+  polished_tanzanite:  0.1166,
+  polished_opal:       0.1166,
   polished_aquamarine: 0.1166,
-  polished_topaz: 0.1166,
-  polished_amethyst: 0.1166
+  polished_topaz:      0.1166,
+  polished_amethyst:   0.1166
 }
 
 function pickPolishedType() {
   const r = Math.random()
   let a = 0
-  for (const [k, w] of Object.entries(WEIGHTS)) { 
+  for (const [k, w] of Object.entries(WEIGHTS)) {
     a += w
     if (r <= a) return k
   }
@@ -140,7 +148,6 @@ function refs(actor) {
   const root = db.collection('players').doc(actor)
   return {
     root,
-    invSummary: root.collection('meta').doc('inventory_summary'),
     gems: root.collection('inventory').doc('gems'),
     active: root.collection('polishing_active'),
     history: root.collection('polishing_history'),
@@ -148,17 +155,29 @@ function refs(actor) {
   }
 }
 
+// --- CRITICAL: slot count is now driven ONLY by profile.polishingSlotsUnlocked ---
+// default to 1 slot for new accounts, max 10
 async function getEffectivePolishingSlots(actor) {
-  const { root, invSummary } = refs(actor)
-  const [invSnap, profSnap] = await Promise.all([invSummary.get(), root.get()])
-
-  const inv = invSnap.exists ? (invSnap.data() || {}) : {}
-  const nftSlots = Math.min(Number(inv.polishingSlots || 0) || 0, MAX_SLOTS)
+  const { root } = refs(actor)
+  const profSnap = await root.get()
 
   const prof = profSnap.exists ? (profSnap.data() || {}) : {}
-  const unlockedSlots = Number(prof.polishingSlotsUnlocked || 0)
+  const rawUnlocked =
+    Number(
+      prof.polishingSlotsUnlocked ??
+      prof.polishing_slots_unlocked ??
+      0
+    ) || 0
 
-  return Math.min(Math.max(nftSlots, unlockedSlots), MAX_SLOTS)
+  const unlockedSlots = rawUnlocked > 0 ? rawUnlocked : 1
+  const effective = Math.max(1, Math.min(unlockedSlots, MAX_SLOTS))
+
+  console.log(
+    `[Polishing] getEffectivePolishingSlots(${actor}) -> ${effective} ` +
+    `(rawUnlocked=${rawUnlocked})`
+  )
+
+  return effective
 }
 
 async function getActiveCount(actor) {
@@ -182,8 +201,12 @@ const startPolishing = onRequest((req, res) =>
     const actor = requireActor(req, res); if (!actor) return
 
     const amount = Math.max(1, Number(req.body?.amount || 0) | 0)
-    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'invalid amount' })
-    if (amount > MAX_AMOUNT_PER_SLOT) return res.status(400).json({ error: `maximum ${MAX_AMOUNT_PER_SLOT} gems per slot` })
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'invalid amount' })
+    }
+    if (amount > MAX_AMOUNT_PER_SLOT) {
+      return res.status(400).json({ error: `maximum ${MAX_AMOUNT_PER_SLOT} gems per slot` })
+    }
 
     try {
       await ensureSeasonActiveOrThrow()
@@ -196,17 +219,25 @@ const startPolishing = onRequest((req, res) =>
 
       const slots = await getEffectivePolishingSlots(actor)
       const activeCount = existingJobs.length
-      if (activeCount >= slots) return res.status(400).json({ error: 'no available polishing slots' })
+      if (activeCount >= slots) {
+        return res.status(400).json({ error: 'no available polishing slots' })
+      }
 
       let slotNum
       if (requestedSlotNum !== undefined && requestedSlotNum !== null) {
         slotNum = Number(requestedSlotNum)
         const isSlotInUse = existingJobs.some(job => job.slotNum === slotNum)
-        if (isSlotInUse) return res.status(400).json({ error: `slot ${slotNum} is already in use` })
-        if (slotNum < 1 || slotNum > slots) return res.status(400).json({ error: `slot ${slotNum} is out of range (1-${slots})` })
+        if (isSlotInUse) {
+          return res.status(400).json({ error: `slot ${slotNum} is already in use` })
+        }
+        if (slotNum < 1 || slotNum > slots) {
+          return res.status(400).json({ error: `slot ${slotNum} is out of range (1-${slots})` })
+        }
       } else {
         slotNum = getNextAvailableSlot(existingJobs, slots)
-        if (!slotNum) return res.status(400).json({ error: 'no available slot number' })
+        if (!slotNum) {
+          return res.status(400).json({ error: 'no available slot number' })
+        }
       }
 
       const now = Date.now()
@@ -218,18 +249,32 @@ const startPolishing = onRequest((req, res) =>
         const gSnap = await tx.get(gems)
         const cur = gSnap.exists ? (gSnap.data() || {}) : {}
         const have = Number(cur[ROUGH_GEM_KEY] || 0)
-        if (have < amount) throw new Error(`insufficient rough gems: have ${have}, need ${amount}`)
-        tx.set(gems, { ...cur, [ROUGH_GEM_KEY]: have - amount }, { merge: true })
+        if (have < amount) {
+          throw new Error(`insufficient rough gems: have ${have}, need ${amount}`)
+        }
+        tx.set(
+          gems,
+          { ...cur, [ROUGH_GEM_KEY]: have - amount },
+          { merge: true }
+        )
 
         tx.set(active.doc(jobId), {
-          jobId, slotId, slotNum, actor, amountIn: amount,
-          startedAt: now, finishAt, status: 'active'
+          jobId,
+          slotId,
+          slotNum,
+          actor,
+          amountIn: amount,
+          startedAt: now,
+          finishAt,
+          status: 'active'
         })
       })
 
       res.json({ ok: true, jobId, slotId, slotNum, finishAt })
     } catch (e) {
-      if (e.status === 403) return res.status(403).json({ error: 'season-locked' })
+      if (e.status === 403) {
+        return res.status(403).json({ error: 'season-locked' })
+      }
       console.error('[startPolishing]', e)
       res.status(400).json({ error: e.message })
     }
@@ -346,12 +391,21 @@ const unlockPolishingSlot = onRequest((req, res) =>
       if (!snap.exists) return res.status(404).json({ error: 'player not found' })
 
       const profile = snap.data() || {}
-      const currentSlots = Number(profile.polishingSlotsUnlocked || 0)
-      if (currentSlots >= MAX_SLOTS) return res.status(400).json({ error: 'maximum slots already unlocked' })
+      const currentSlots = Number(
+        profile.polishingSlotsUnlocked ??
+        profile.polishing_slots_unlocked ??
+        0
+      )
 
-      const nextSlotToUnlock = currentSlots + 1
+      if (currentSlots >= MAX_SLOTS) {
+        return res.status(400).json({ error: 'maximum slots already unlocked' })
+      }
+
+      const nextSlotToUnlock = (currentSlots || 0) + 1
       if (targetSlot !== nextSlotToUnlock) {
-        return res.status(400).json({ error: `Please unlock slots in order. Next available slot is ${nextSlotToUnlock}` })
+        return res.status(400).json({
+          error: `Please unlock slots in order. Next available slot is ${nextSlotToUnlock}`
+        })
       }
 
       const unlockCost = POLISHING_SLOT_UNLOCK_COSTS[targetSlot - 1] || 0
@@ -371,7 +425,13 @@ const unlockPolishingSlot = onRequest((req, res) =>
 
       await pendingPayments.doc(paymentId).set(paymentData)
 
-      res.json({ ok: true, paymentId, unlockCost, slotNumber: targetSlot, message: 'Payment request created. Please complete payment to unlock slot.' })
+      res.json({
+        ok: true,
+        paymentId,
+        unlockCost,
+        slotNumber: targetSlot,
+        message: 'Payment request created. Please complete payment to unlock slot.'
+      })
     } catch (e) {
       console.error('[unlockPolishingSlot]', e)
       res.status(500).json({ error: e.message })
@@ -379,4 +439,9 @@ const unlockPolishingSlot = onRequest((req, res) =>
   })
 )
 
-module.exports = { startPolishing, getActivePolishing, completePolishing, unlockPolishingSlot }
+module.exports = {
+  startPolishing,
+  getActivePolishing,
+  completePolishing,
+  unlockPolishingSlot
+}
