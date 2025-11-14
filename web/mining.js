@@ -403,7 +403,7 @@ class MiningGame extends TSDGEMSGame {
             return;
         }
 
-        console.log('[MiningInit] live.miningSlots =', live.miningSlots?.length ?? 0, ', miningSlotsUnlocked =', live.profile?.miningSlotsUnlocked ?? 0);
+        console.log('[MiningInit] live.miningSlots =', live.miningSlots?.length ?? 0, ', miningSlotsUnlocked =', live.profile?.miningSlotsUnlocked ?? 0, ', hasStaked =', !!live.staked?.mining);
         this.realtimeData.live = live;
 
         // Realtime: Always apply profile (even if empty) to set miningSlotsUnlocked
@@ -418,12 +418,20 @@ class MiningGame extends TSDGEMSGame {
         }
         
         // Realtime: Handle miningSlots - treat undefined as empty array
+        // New backend structure: staking data is in live.staked.mining, but slots should already have staked items
         if (live.miningSlots) {
             this.applyMiningSlotsFromRealtime(live.miningSlots);
         } else {
             // New account - no mining slots yet
             console.log('[MiningInit] No miningSlots in live data, using empty array');
             this.applyMiningSlotsFromRealtime([]);
+        }
+        
+        // New backend structure: Also check live.staked.mining as fallback if slots don't have staked data
+        if (live.staked?.mining && typeof live.staked.mining === 'object') {
+            console.log('[MiningInit] Found live.staked.mining, ensuring staking data is applied');
+            // The staking data should already be in the slots, but we can use this as a fallback
+            // updateStakedAssetsFromLive will handle the actual staking data from slots
         }
         
         if (live.inventory) {
@@ -1719,7 +1727,30 @@ class MiningGame extends TSDGEMSGame {
                     // If response isn't valid JSON, try to get text
                     const errorText = await response.text().catch(() => 'Unknown error');
                     console.log('[Mining] Error response text:', errorText);
+                    
+                    // Handle season-locked errors
+                    if (response.status === 403 && (errorText.includes('season-locked') || errorText === 'season-locked')) {
+                        console.warn('[Mining] Season locked - cannot start mining');
+                        this.showNotification('⏸️ Season is locked. Mining cannot be started until the season unlocks.', 'error');
+                        if (button) {
+                            button.disabled = false;
+                            button.innerHTML = originalText;
+                        }
+                        return;
+                    }
+                    
                     throw new Error(`Failed to start mining: ${response.status} ${response.statusText} - ${errorText}`);
+                }
+
+                // Handle season-locked errors (403)
+                if (response.status === 403 && (errorData.error === 'season-locked' || errorData.error?.includes('season-locked'))) {
+                    console.warn('[Mining] Season locked - cannot start mining');
+                    this.showNotification('⏸️ Season is locked. Mining cannot be started until the season unlocks.', 'error');
+                    if (button) {
+                        button.disabled = false;
+                        button.innerHTML = originalText;
+                    }
+                    return;
                 }
 
                 // Handle ownership validation errors specifically
@@ -1730,10 +1761,18 @@ class MiningGame extends TSDGEMSGame {
 
                     // Show persistent modal requiring manual action
                     this.showMissingWorkersModal(missingList, missingDetails, slotNum);
+                    if (button) {
+                        button.disabled = false;
+                        button.innerHTML = originalText;
+                    }
                     return;
                 }
 
                 console.log('[Mining] Error not ownership_missing, throwing generic error');
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                }
                 throw new Error(errorData.error || 'Failed to start mining');
             }
             
@@ -1924,6 +1963,19 @@ class MiningGame extends TSDGEMSGame {
                 const errorData = await response.json().catch(() => ({}));
                 const errorMsg = errorData.error || `HTTP ${response.status}`;
                 
+                // Handle season-locked errors (403)
+                if (response.status === 403 && (errorData.error === 'season-locked' || errorMsg.includes('season-locked'))) {
+                    console.warn('[Mining] Season locked - cannot complete mining');
+                    this.showNotification('⏸️ Season is locked. Mining cannot be completed until the season unlocks.', 'error');
+                    if (claimButton) {
+                        claimButton.disabled = false;
+                        claimButton.innerHTML = '<i class="fas fa-check"></i> Claim';
+                        claimButton.style.opacity = '1';
+                    }
+                    this.pendingCompletionJobs.delete(jobId);
+                    return;
+                }
+                
                 // Realtime: On error, revert optimistic UI and wait for realtime update
                 if (response.status === 404 || errorMsg.includes('not found') || errorMsg.includes('already completed')) {
                     console.log('[MiningAction] Job not found or already completed, reverting optimistic UI');
@@ -1933,6 +1985,12 @@ class MiningGame extends TSDGEMSGame {
                     this.renderMiningSlots();
                     this.showNotification('Job already completed or not found. Waiting for realtime update...', 'info');
                 } else {
+                    if (claimButton) {
+                        claimButton.disabled = false;
+                        claimButton.innerHTML = '<i class="fas fa-check"></i> Claim';
+                        claimButton.style.opacity = '1';
+                    }
+                    this.pendingCompletionJobs.delete(jobId);
                     throw new Error(errorMsg);
                 }
                 return;

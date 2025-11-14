@@ -37,9 +37,15 @@
         { "source": "/cancelPayment", "function": "cancelPayment" },
 
         { "source": "/stakeAsset", "function": "stakeAsset" },
+        { "source": "/stakeWorkersBatch", "function": "stakeWorkersBatch" },
         { "source": "/unstakeAsset", "function": "unstakeAsset" },
         { "source": "/getStakedAssets", "function": "getStakedAssets" },
 
+        { "source": "/sellGems", "function": "sellGems" },
+        { "source": "/getSalesHistory", "function": "getSalesHistory" },
+
+        { "source": "/getLeaderboard", "function": "getLeaderboard" },
+        { "source": "/triggerLeaderboardRefresh", "function": "triggerLeaderboardRefresh" },
         { "source": "/prepareLeaderboardPayout", "function": "prepareLeaderboardPayout" },
         { "source": "/markSeasonPaid", "function": "markSeasonPaid" },
 
@@ -84,9 +90,15 @@
         { "source": "/cancelPayment", "function": "cancelPayment" },
 
         { "source": "/stakeAsset", "function": "stakeAsset" },
+        { "source": "/stakeWorkersBatch", "function": "stakeWorkersBatch" },
         { "source": "/unstakeAsset", "function": "unstakeAsset" },
         { "source": "/getStakedAssets", "function": "getStakedAssets" },
 
+        { "source": "/sellGems", "function": "sellGems" },
+        { "source": "/getSalesHistory", "function": "getSalesHistory" },
+
+        { "source": "/getLeaderboard", "function": "getLeaderboard" },
+        { "source": "/triggerLeaderboardRefresh", "function": "triggerLeaderboardRefresh" },
         { "source": "/prepareLeaderboardPayout", "function": "prepareLeaderboardPayout" },
         { "source": "/markSeasonPaid", "function": "markSeasonPaid" },
 

@@ -53,7 +53,36 @@ class BackendService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`GET ${endpoint} failed: ${response.status} - ${errorText}`);
+        let errorData = null;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (_) {
+          // Not JSON, use text as error message
+        }
+
+        // Handle season-locked errors (403)
+        if (response.status === 403) {
+          const errorMessage = errorData?.error || errorText || 'season-locked';
+          if (errorMessage.includes('season-locked') || errorMessage === 'season-locked') {
+            console.warn(`[Backend] Season locked error on GET ${endpoint}`);
+            // Emit custom event for season lock
+            window.dispatchEvent(new CustomEvent('season-locked', {
+              detail: { endpoint, method: 'GET', error: errorMessage }
+            }));
+            const err = new Error(errorMessage);
+            err.status = 403;
+            err.error = 'season-locked';
+            err.data = errorData;
+            this.hideLoadingIndicator(endpoint);
+            throw err;
+          }
+        }
+
+        const err = new Error(`GET ${endpoint} failed: ${response.status} - ${errorText}`);
+        err.status = response.status;
+        err.data = errorData;
+        this.hideLoadingIndicator(endpoint);
+        throw err;
       }
 
       const data = await response.json();
@@ -87,7 +116,36 @@ class BackendService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`POST ${endpoint} failed: ${response.status} - ${errorText}`);
+        let errorData = null;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (_) {
+          // Not JSON, use text as error message
+        }
+
+        // Handle season-locked errors (403)
+        if (response.status === 403) {
+          const errorMessage = errorData?.error || errorText || 'season-locked';
+          if (errorMessage.includes('season-locked') || errorMessage === 'season-locked') {
+            console.warn(`[Backend] Season locked error on POST ${endpoint}`);
+            // Emit custom event for season lock
+            window.dispatchEvent(new CustomEvent('season-locked', {
+              detail: { endpoint, method: 'POST', error: errorMessage }
+            }));
+            const err = new Error(errorMessage);
+            err.status = 403;
+            err.error = 'season-locked';
+            err.data = errorData;
+            this.hideLoadingIndicator(endpoint);
+            throw err;
+          }
+        }
+
+        const err = new Error(`POST ${endpoint} failed: ${response.status} - ${errorText}`);
+        err.status = response.status;
+        err.data = errorData;
+        this.hideLoadingIndicator(endpoint);
+        throw err;
       }
 
       const result = await response.json();
@@ -365,6 +423,15 @@ class BackendService {
   }
   async refreshCityMatrix() { return await this.getCityMatrix(); }
   async refreshBasePrice() { return await this.getBasePrice(); }
+
+  /**
+   * Rebuild player live data (forces refresh of live aggregate including chain balances)
+   * @param {string} actor
+   */
+  async rebuildPlayerLive(actor) {
+    console.log(`[Backend] Rebuilding live data for ${actor}`);
+    return await this.post('/rebuildPlayerLive', { actor });
+  }
 
   // ----------------------------- Staking ---------------------
 

@@ -359,6 +359,7 @@ class PolishingGame extends TSDGEMSGame {
             return;
         }
 
+        console.log('[PolishingInit] live.polishingSlots =', live.polishingSlots?.length ?? 0, ', hasStaked =', !!live.staked?.polishing);
         this.realtimeData.live = live;
 
         if (live.profile) {
@@ -366,6 +367,12 @@ class PolishingGame extends TSDGEMSGame {
         }
         if (live.polishingSlots) {
             this.applyPolishingSlotsFromRealtime(live.polishingSlots);
+        }
+        // New backend structure: Also check live.staked.polishing as fallback if slots don't have staked data
+        if (live.staked?.polishing && typeof live.staked.polishing === 'object') {
+            console.log('[PolishingInit] Found live.staked.polishing, ensuring staking data is applied');
+            // The staking data should already be in the slots, but we can use this as a fallback
+            // updatePolishingSlotsFromLive will handle the actual staking data from slots
         }
         if (live.inventory) {
             this.applyInventoryFromRealtime(live.inventory);
@@ -1286,6 +1293,13 @@ class PolishingGame extends TSDGEMSGame {
                 const errorData = await response.json().catch(() => ({}));
                 const errorMsg = errorData.error || `HTTP ${response.status}`;
                 
+                // Handle season-locked errors (403)
+                if (response.status === 403 && (errorData.error === 'season-locked' || errorMsg.includes('season-locked'))) {
+                    console.warn('[Polishing] Season locked - cannot start polishing');
+                    this.showNotification('⏸️ Season is locked. Polishing cannot be started until the season unlocks.', 'error');
+                    return;
+                }
+                
                 // Realtime: On error, show message and don't modify local state
                 if (response.status === 400 && (errorMsg.includes('already in use') || errorMsg.includes('slot'))) {
                     this.showNotification('Slot is already in use. Waiting for realtime update...', 'warning');
@@ -1364,6 +1378,19 @@ class PolishingGame extends TSDGEMSGame {
                 const errorData = await response.json().catch(() => ({}));
                 const errorMsg = errorData.error || `HTTP ${response.status}`;
                 
+                // Handle season-locked errors (403)
+                if (response.status === 403 && (errorData.error === 'season-locked' || errorMsg.includes('season-locked'))) {
+                    console.warn('[Polishing] Season locked - cannot complete polishing');
+                    this.showNotification('⏸️ Season is locked. Polishing cannot be completed until the season unlocks.', 'error');
+                    if (claimButton) {
+                        claimButton.disabled = false;
+                        claimButton.innerHTML = '<i class="fas fa-check"></i> Claim';
+                        claimButton.style.opacity = '1';
+                    }
+                    this.pendingCompletionJobs.delete(jobId);
+                    return;
+                }
+                
                 // Realtime: On error, revert optimistic UI and wait for realtime update
                 if (response.status === 404 || response.status === 500 || errorMsg.includes('not found') || errorMsg.includes('already completed')) {
                     console.log('[PolishingAction] Job not found or already completed, reverting optimistic UI');
@@ -1377,6 +1404,12 @@ class PolishingGame extends TSDGEMSGame {
                     this.renderPolishingSlots();
                     this.showNotification('Job already completed or not found. Waiting for realtime update...', 'info');
                 } else {
+                    if (claimButton) {
+                        claimButton.disabled = false;
+                        claimButton.innerHTML = '<i class="fas fa-check"></i> Claim';
+                        claimButton.style.opacity = '1';
+                    }
+                    this.pendingCompletionJobs.delete(jobId);
                     throw new Error(errorMsg);
                 }
                 return;

@@ -24,13 +24,90 @@ class SeasonLockHandler {
                 this.checkSeasonState();
             }, 30000);
             
+            // Listen for season-locked events from backend service
+            window.addEventListener('season-locked', (event) => {
+                console.log('[SeasonLock] Received season-locked event from backend:', event.detail);
+                this.handleSeasonLocked();
+            });
+            
             // Start timer if in lock phase
             if (this.isLocked()) {
                 this.startLockTimer();
+                this.updateButtonStates(true);
+            } else {
+                this.updateButtonStates(false);
             }
         } catch (error) {
             console.error('[SeasonLock] Failed to initialize:', error);
         }
+    }
+    
+    /**
+     * Handle season-locked event
+     */
+    handleSeasonLocked() {
+        console.log('[SeasonLock] Handling season-locked event');
+        this.updateButtonStates(true);
+        // Also check state to ensure overlay is shown
+        this.checkSeasonState();
+    }
+    
+    /**
+     * Update button states based on lock status
+     */
+    updateButtonStates(isLocked) {
+        // Disable/enable action buttons on mining page
+        const miningButtons = document.querySelectorAll('.start-mining-btn, .mining-claim-btn, button[onclick*="startMining"], button[onclick*="completeMining"]');
+        miningButtons.forEach(btn => {
+            if (isLocked) {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+                btn.title = 'Season is locked - actions disabled';
+            } else {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.title = '';
+            }
+        });
+        
+        // Disable/enable action buttons on polishing page
+        const polishingButtons = document.querySelectorAll('button[onclick*="startPolishing"], button[onclick*="completePolishing"], button[onclick*="startPolishingDirect"]');
+        polishingButtons.forEach(btn => {
+            if (isLocked) {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+                btn.title = 'Season is locked - actions disabled';
+            } else {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.title = '';
+            }
+        });
+        
+        // Disable/enable sell button on trading page
+        const tradingButtons = document.querySelectorAll('#matrix-sell-btn, button[onclick*="sellGems"]');
+        tradingButtons.forEach(btn => {
+            if (isLocked) {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+                btn.title = 'Season is locked - trading disabled';
+            } else {
+                // Only re-enable if not already disabled for other reasons
+                if (!btn.hasAttribute('data-disabled-other')) {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.style.cursor = 'pointer';
+                    btn.title = '';
+                }
+            }
+        });
+        
+        console.log(`[SeasonLock] Updated button states - locked: ${isLocked}, mining: ${miningButtons.length}, polishing: ${polishingButtons.length}, trading: ${tradingButtons.length}`);
     }
 
     /**
@@ -67,9 +144,11 @@ class SeasonLockHandler {
                 this.timerEnded = false; // Reset flag for new lock
                 this.showLockOverlay();
                 this.startLockTimer();
+                this.updateButtonStates(true);
             } else {
                 this.hideLockOverlay();
                 this.stopLockTimer();
+                this.updateButtonStates(false);
             }
             
             console.log('[SeasonLock] Season state updated:', state);

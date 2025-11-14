@@ -58,7 +58,7 @@ class TradingGame extends TSDGEMSGame {
         this.onRealtimeLive = (event) => {
             const { actor, live } = event.detail || {};
             if (!this.currentActor || !live || actor !== this.currentActor) return;
-            console.log('[TradingRealtime] live aggregate received, hasGems:', !!live?.gems, 'hasStaking:', !!live?.staking?.gems, 'hasInventory:', !!live?.inventorySummary);
+            console.log('[TradingRealtime] live aggregate received, hasGems:', !!live?.gems, 'hasStaked:', !!live?.staked?.gems, 'hasInventory:', !!live?.inventorySummary);
             // Realtime: Update gem counts from live.gems (for city matrix availability)
             if (live.gems) {
                 this.updatePolishedGemsFromRealtime(live.gems);
@@ -1278,8 +1278,12 @@ class TradingGame extends TSDGEMSGame {
             return;
         }
 
+        // New backend structure: staking data is under live.staked.gems
         let gemsStaking = null;
-        if (liveData?.staking?.gems) {
+        if (liveData?.staked?.gems) {
+            gemsStaking = liveData.staked.gems;
+        } else if (liveData?.staking?.gems) {
+            // Fallback for legacy structure
             gemsStaking = liveData.staking.gems;
         } else if (liveData?.gemStaking) {
             gemsStaking = liveData.gemStaking;
@@ -1734,6 +1738,12 @@ class TradingGame extends TSDGEMSGame {
             try {
                 result = await this.backendService.sellGems(this.currentActor, gemType, amount, cityId, payloadExpected);
             } catch (e) {
+                // Handle 403 season-locked from backend
+                if (e && e.status === 403 && (e.error === 'season-locked' || e.message?.includes('season-locked'))) {
+                    console.warn('[Trading] Season locked - cannot sell gems');
+                    this.showNotification('⏸️ Season is locked. Trading is disabled until the season unlocks.', 'error');
+                    return;
+                }
                 // Handle 409 price_changed from backend
                 if (e && e.status === 409 && e.data?.error === 'price_changed') {
                     const server = e.data.server || {};

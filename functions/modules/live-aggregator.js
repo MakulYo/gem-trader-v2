@@ -3,6 +3,7 @@
 
 const admin = require('firebase-admin');
 const { getFirestore, Timestamp } = require('firebase-admin/firestore');
+const { onRequest } = require('firebase-functions/v2/https');
 
 try { admin.app(); } catch { admin.initializeApp(); }
 const db = getFirestore();
@@ -100,7 +101,7 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       polishingKeys: stakingData.polishing ? Object.keys(stakingData.polishing) : [],
     });
 
-    // 6. Build mining slots from staking + active jobs
+    // 6. Fetch mining active jobs
     const miningSlots = [];
     const miningActiveRef = db.collection('players').doc(actor).collection('mining_active');
     const miningActiveSnap = await miningActiveRef.get();
@@ -636,7 +637,6 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 /**
  * HTTP function to rebuild live data (admin/debug use)
  */
-const { onRequest } = require('firebase-functions/v2/https');
 const rebuildPlayerLive = onRequest({ cors: true, region: 'us-central1' }, async (req, res) => {
   console.log(`[rebuildPlayerLive] 🚀 FUNCTION CALLED with body:`, JSON.stringify(req.body));
   try {
@@ -658,7 +658,67 @@ const rebuildPlayerLive = onRequest({ cors: true, region: 'us-central1' }, async
   }
 });
 
+/**
+ * Scheduled function to refresh balances for active players
+ * Runs every 2 minutes to keep balances up-to-date
+ */
+const refreshActivePlayerBalances = onSchedule('every 2 minutes', async () => {
+  console.log('[LiveAggregator] 🔄 Starting scheduled balance refresh for active players');
+  
+  try {
+    // Find players active in the last 24 hours
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentPlayersQuery = db.collection('players')
+      .where('lastSeenAt', '>', oneDayAgo)
+      .limit(100); // Limit to 100 players per run to avoid timeout
+
+    const recentPlayersSnap = await recentPlayersQuery.get();
+    console.log(`[LiveAggregator] 📊 Found ${recentPlayersSnap.docs.length} active players to refresh balances`);
+
+    if (recentPlayersSnap.docs.length === 0) {
+      console.log('[LiveAggregator] No active players found, skipping balance refresh');
+      return;
+    }
+
+    // Refresh balances for each active player
+    const refreshPromises = recentPlayersSnap.docs.map(async (doc) => {
+      const actor = doc.id;
+      try {
+        // Only rebuild if live doc is older than 1 minute to avoid too frequent updates
+        const liveRef = db.collection('players').doc(actor).collection('runtime').doc('live');
+        const liveSnap = await liveRef.get();
+        
+        if (liveSnap.exists) {
+          const liveData = liveSnap.data() || {};
+          const lastUpdatedAt = liveData.lastUpdatedAt;
+          const lastMs = lastUpdatedAt && typeof lastUpdatedAt.toMillis === 'function'
+            ? lastUpdatedAt.toMillis()
+            : 0;
+          
+          const ageMs = Date.now() - lastMs;
+          const MIN_AGE_MS = 1 * 60 * 1000; // 1 minute minimum between updates
+          
+          if (ageMs < MIN_AGE_MS) {
+            console.log(`[LiveAggregator] Skipping ${actor} - balance refreshed ${Math.floor(ageMs / 1000)}s ago`);
+            return;
+          }
+        }
+        
+        await buildPlayerLiveData(actor, 'scheduled_balance_refresh');
+        console.log(`[LiveAggregator] ✅ Refreshed balance for ${actor}`);
+      } catch (error) {
+        console.error(`[LiveAggregator] ❌ Failed to refresh balance for ${actor}:`, error);
+      }
+    });
+
+    await Promise.all(refreshPromises);
+    console.log(`[LiveAggregator] ✅ Balance refresh completed for ${recentPlayersSnap.docs.length} active players`);
+  } catch (error) {
+    console.error('[LiveAggregator] 💥 Scheduled balance refresh failed:', error);
+  }
+});
+
 module.exports = {
   buildPlayerLiveData,
-  rebuildPlayerLive,
+  rebuildPlayerLive
 };

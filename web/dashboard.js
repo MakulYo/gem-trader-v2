@@ -278,6 +278,8 @@ class DashboardGame extends TSDGEMSGame {
             if (window.TSDRealtime._last && window.TSDRealtime._last.live) {
                 console.log('[Dashboard] Using cached live data for instant load');
                 this.mergeLiveData(window.TSDRealtime._last.live);
+                // Render dashboard immediately to trigger initialization
+                this.renderRealtimeDashboard();
             }
         } else {
             console.log('[Dashboard] Waiting for global TSDRealtime to start (should be started by wallet.js)');
@@ -292,6 +294,8 @@ class DashboardGame extends TSDGEMSGame {
             return;
         }
 
+        console.log('[Dashboard] updateDashboardFromProfile called, profile:', profile, 'balances:', profile.balances);
+
         const rawCurrency = Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0);
         const previousCurrency = Number(this.currentGameDollars ?? 0);
         const sanitizedCurrency = Number.isFinite(rawCurrency) ? rawCurrency : 0;
@@ -301,6 +305,8 @@ class DashboardGame extends TSDGEMSGame {
         // Realtime: Get mining slots unlocked from live.profile.miningSlotsUnlocked only
         const balances = profile.balances || {};
         const unlocked = Number(profile.miningSlotsUnlocked ?? profile.mining_slots_unlocked ?? 0);
+        
+        console.log('[Dashboard] updateDashboardFromProfile: balances object:', balances, 'TSDM:', balances.TSDM ?? balances.tsdm);
 
         this.updateGameDollars(effectiveCurrency, false);
         const displayCurrency = this.currentGameDollars ?? effectiveCurrency;
@@ -324,18 +330,24 @@ class DashboardGame extends TSDGEMSGame {
         const tsdmBalance = document.getElementById('tsdm-balance');
         if (tsdmBalance) {
             const tsdm = Number(balances.TSDM ?? balances.tsdm ?? 0);
+            console.log('[Dashboard] updateDashboardFromProfile: Setting tsdm-balance to:', tsdm, 'from balances:', balances);
             tsdmBalance.textContent = tsdm.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
             });
             console.log('[DashboardRealtime] Updated TSDM balance from live.profile.balances:', tsdm);
+        } else {
+            console.warn('[Dashboard] updateDashboardFromProfile: tsdm-balance element not found!');
         }
 
         const walletBalance = document.getElementById('wallet-balance');
         if (walletBalance) {
             const tsdm = Number(balances.TSDM ?? balances.tsdm ?? 0);
+            console.log('[Dashboard] updateDashboardFromProfile: Setting wallet-balance to:', tsdm);
             walletBalance.textContent = `${tsdm.toFixed(2)} TSDM`;
             walletBalance.classList.remove('hidden');
+        } else {
+            console.warn('[Dashboard] updateDashboardFromProfile: wallet-balance element not found!');
         }
     }
 
@@ -464,6 +476,7 @@ class DashboardGame extends TSDGEMSGame {
             if (!this.isEventForCurrentActor(actor)) {
                 return;
             }
+            console.log('[Dashboard] realtime:profile event received, profile:', profile, 'hasBalances:', !!profile?.balances, 'TSDM:', profile?.balances?.TSDM ?? profile?.balances?.tsdm);
             this.realtimeData.profile = profile || null;
             this.renderRealtimeDashboard();
         };
@@ -625,13 +638,19 @@ class DashboardGame extends TSDGEMSGame {
 
     mergeLiveData(live) {
         if (!live || typeof live !== 'object') {
+            console.log('[Dashboard] mergeLiveData: live data is empty or invalid');
             return;
         }
 
+        console.log('[Dashboard] mergeLiveData: merging live data, hasProfile:', !!live.profile, 'hasGems:', !!live.gems);
+        if (live.profile) {
+            console.log('[Dashboard] mergeLiveData: profile.balances:', live.profile.balances, 'TSDM:', live.profile.balances?.TSDM ?? live.profile.balances?.tsdm);
+        }
         this.realtimeData.live = live;
 
         if (live.profile !== undefined) {
             this.realtimeData.profile = live.profile;
+            console.log('[Dashboard] mergeLiveData: Set realtimeData.profile, balances:', this.realtimeData.profile?.balances);
         }
         if (live.gems !== undefined) {
             this.realtimeData.gems = live.gems;
@@ -659,7 +678,11 @@ class DashboardGame extends TSDGEMSGame {
     renderRealtimeDashboard() {
         const { profile, gems, inventorySummary, miningSlots } = this.realtimeData;
 
+        console.log('[Dashboard] renderRealtimeDashboard: awaitingInitialRealtime:', this.awaitingInitialRealtime, 
+                    'hasProfile:', !!profile, 'hasGems:', !!gems, 'hasSummary:', !!inventorySummary, 'hasMiningSlots:', !!miningSlots);
+
         if (this.awaitingInitialRealtime && (profile || gems || inventorySummary || miningSlots)) {
+            console.log('[Dashboard] renderRealtimeDashboard: Resolving initial realtime promise');
             this.awaitingInitialRealtime = false;
             this.clearInitialRealtimeTimer();
             this.showLoadingState(false);
