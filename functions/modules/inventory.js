@@ -6,7 +6,7 @@
 
 const { onRequest }   = require('firebase-functions/v2/https')
 const admin           = require('firebase-admin')
-const { getFirestore, Timestamp } = require('firebase-admin/firestore')
+const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore')
 const corsLib         = require('cors')
 
 // Node 20+ has native fetch
@@ -32,19 +32,15 @@ const AA_BASE = process.env.ATOMIC_API || ATOMIC_APIS[0]
 // --- Collection & templates mapping ---
 const COLLECTION = 'tsdmediagems'
 
-// Polished gem templates
+// IMPORTANT: put your real template IDs here so we can classify "polished" vs "rough" reliably.
 const TEMPLATES_POLISHED = new Set([
-  894387, 894388, 894389, 894390, 894391,
-  894392, 894393, 894394, 894395, 894396,
+  894387, 894388, 894389, 894390, 894391, 894392, 894393, 894394, 894395, 894396,
 ])
-
-// Rough gem templates
 const TEMPLATES_ROUGH = new Set([
-  894397, 894398, 894399, 894400, 894401,
-  894402, 894403, 894404, 894405, 894406,
+  894397, 894398, 894399, 894400, 894401, 894402, 894403, 894404, 894405, 894406,
 ])
 
-// Equipment categories (for counts/slots)
+// --- Equipment categories (for counts/slots) ---
 const WORKER_IDS = new Set([ 894928, 894929, 894930, 894931, 894932 ]) // Pickaxe..Dump Truck
 const MINE_IDS   = new Set([ 894933, 894934, 894935 ])                  // Small/Medium/Large Mine
 const TABLE_ID   = 896279                                               // Polishing Table
@@ -235,7 +231,7 @@ function classifyAssets(assets) {
         schema: 'gems',
         image: info?.image || null,
         imagePath: info?.imagePath || null,
-        category: 'polished'
+        category: 'gems_polished'
       })
 
     } else if (TEMPLATES_ROUGH.has(tid)) {
@@ -264,7 +260,7 @@ function classifyAssets(assets) {
         schema: 'gems',
         image: info?.image || null,
         imagePath: info?.imagePath || null,
-        category: 'rough'
+        category: 'gems_rough'
       })
 
     } else if (TEMPLATES_EQUIPMENT.has(tid)) {
@@ -288,27 +284,22 @@ function classifyAssets(assets) {
       equipmentDetails[tid].count += 1
       if (assetId) equipmentDetails[tid].assets.push(assetId)
 
-      // 🔧 Polishing tables are treated as equipment for compatibility
-      const isTable = Number(tid) === TABLE_ID
+      // ✅ BACK TO SIMPLE: all equipment (including Polishing Table) uses schema "equipment"
       const schema = 'equipment'
-      const category = isTable ? 'equipment' : 'equipment' // keep simple and compatible
 
       assetsList.push({
         asset_id: assetId,
         template_id: tid,
         template_mint: templateMint,
         name: info?.name || assetName,
-        schema,                // always 'equipment' for workers, mines, tables
+        schema,
         image: info?.image || null,
         imagePath: info?.imagePath || null,
         mp: info.mp,
-        category,              // 'equipment'
-        type: isTable ? 'table' : 'equipment',
-        isPolishingTable: isTable
+        category: schema
       })
 
     } else if (TEMPLATES_SPEEDBOOST.has(tid)) {
-      // Count speedboosts per asset
       speedboosts++
 
       const info = TEMPLATES_SPEEDBOOST.get(tid)
@@ -337,7 +328,6 @@ function classifyAssets(assets) {
         category: 'speedboost'
       })
     }
-    // else ignore other templates
   }
 
   // Create templateCounts structure for compatibility with existing API
@@ -377,24 +367,20 @@ function classifyAssets(assets) {
     uniqueTemplates++
   }
 
-  // equipment (workers / mines / tables) -> templateCounts
+  // equipment (including polishing table) -> templateCounts
   for (const [tid, details] of Object.entries(equipmentDetails)) {
     const key = `${tid}_${details.name}`
     const totalMp = details.mp * details.count
-    const isTable = Number(tid) === TABLE_ID
-    const schema = 'equipment' // ✅ always equipment for compatibility
 
     templateCounts[key] = {
       template_id: Number(tid),
       name: details.name,
-      schema,
+      schema: 'equipment',        // ✅ always equipment
       count: details.count,
       total_mining_power: totalMp,
       image: details.image,
       imagePath: details.imagePath,
-      mp: details.mp,
-      type: isTable ? 'table' : 'equipment',
-      isPolishingTable: isTable
+      mp: details.mp
     }
     total += details.count
     uniqueTemplates++
@@ -434,10 +420,7 @@ function classifyAssets(assets) {
   const polishingTableCount = tablesCount
   const polishingSlots = Math.min(tablesCount, 10)
 
-  console.log(
-    `[Inventory] Workers:${workersCount} Mines:${minesCount} Tables:${tablesCount} -> ` +
-    `miningSlots:${miningSlots} polishingSlots:${polishingSlots}`
-  )
+  console.log(`[Inventory] Workers:${workersCount} Mines:${minesCount} Tables:${tablesCount} -> miningSlots:${miningSlots} polishingSlots:${polishingSlots}`)
   console.log(`[Inventory] Total individual assets with IDs: ${assetsList.length}`)
 
   return {
@@ -497,8 +480,8 @@ const getInventory = onRequest((req, res) =>
     const gemsSnap = await gemsRef.get();
     const gemsData = gemsSnap.exists ? gemsSnap.data() : {};
 
-    // Check TTL (2 minutes = 120 seconds) - automatically refresh if cache is stale
-    const CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
+    // Check TTL (2 minutes) - automatically refresh if cache is stale
+    const CACHE_TTL_MS = 2 * 60 * 1000
     const now = Date.now()
 
     if (!force && snap.exists) {
@@ -508,13 +491,9 @@ const getInventory = onRequest((req, res) =>
         const ageMs = now - updatedAt.toMillis()
         if (ageMs < CACHE_TTL_MS) {
           console.log(`[getInventory] Returning fresh cached data for ${actor} (age: ${Math.floor(ageMs / 1000)}s)`)
-          // Merge gems data
           return res.json({ ok: true, cached: true, actor, ...cachedData, ...gemsData })
         } else {
-          console.log(
-            `[getInventory] Cache stale for ${actor} (age: ${Math.floor(ageMs / 1000)}s > ` +
-            `${CACHE_TTL_MS / 1000}s), refreshing...`
-          )
+          console.log(`[getInventory] Cache stale for ${actor} (age: ${Math.floor(ageMs / 1000)}s > ${CACHE_TTL_MS / 1000}s), refreshing...`)
         }
       } else {
         console.log(`[getInventory] Cache exists but no valid updatedAt for ${actor}, refreshing...`)
@@ -529,12 +508,10 @@ const getInventory = onRequest((req, res) =>
       await writeInventorySummary(actor, summary)
       const fresh = await ref.get()
       console.log(`[getInventory] Successfully fetched and cached inventory for ${actor}`)
-      // Merge gems data with inventory summary
       return res.json({ ok: true, cached: false, actor, ...fresh.data(), ...gemsData })
     } catch (e) {
       console.error('[getInventory] Refresh failed:', e.message, e.stack)
       if (snap.exists) {
-        // fallback to stale cache
         console.log(`[getInventory] Returning stale cache for ${actor}`)
         const staleData = snap.data();
         return res.json({ ok: true, cached: true, stale: true, actor, ...staleData, ...gemsData })
@@ -557,10 +534,7 @@ const refreshInventory = onRequest((req, res) =>
       const summary = classifyAssets(assets)
       const result = await writeInventorySummary(actor, summary)
       console.log(`[refreshInventory] Successfully refreshed inventory for ${actor}`)
-      console.log(
-        `[refreshInventory] Polishing Table count: ${summary.polishingTableCount}, ` +
-        `slots: ${summary.polishingSlots}`
-      )
+      console.log(`[refreshInventory] Polishing Table count: ${summary.polishingTableCount}, slots: ${summary.polishingSlots}`)
       console.log(`[refreshInventory] Summary keys:`, Object.keys(summary))
       res.json({ ok: true, actor, ...summary, updatedAt: result.updatedAt })
     } catch (e) {
