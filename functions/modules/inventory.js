@@ -6,7 +6,7 @@
 
 const { onRequest }   = require('firebase-functions/v2/https')
 const admin           = require('firebase-admin')
-const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore')
+const { getFirestore, Timestamp } = require('firebase-admin/firestore')
 const corsLib         = require('cors')
 
 // Node 20+ has native fetch
@@ -32,18 +32,19 @@ const AA_BASE = process.env.ATOMIC_API || ATOMIC_APIS[0]
 // --- Collection & templates mapping ---
 const COLLECTION = 'tsdmediagems'
 
-// IMPORTANT: put your real template IDs here so we can classify "polished" vs "rough" reliably.
-// You can extend these arrays anytime without code changes elsewhere.
+// Polished gem templates
 const TEMPLATES_POLISHED = new Set([
-  // polished examples from your links:
-  894387, 894388, 894389, 894390, 894391, 894392, 894393, 894394, 894395, 894396,
-])
-const TEMPLATES_ROUGH = new Set([
-  // rough/unpolished examples from your links:
-  894397, 894398, 894399, 894400, 894401, 894402, 894403, 894404, 894405, 894406,
+  894387, 894388, 894389, 894390, 894391,
+  894392, 894393, 894394, 894395, 894396,
 ])
 
-// --- Equipment categories (for counts/slots) ---
+// Rough gem templates
+const TEMPLATES_ROUGH = new Set([
+  894397, 894398, 894399, 894400, 894401,
+  894402, 894403, 894404, 894405, 894406,
+])
+
+// Equipment categories (for counts/slots)
 const WORKER_IDS = new Set([ 894928, 894929, 894930, 894931, 894932 ]) // Pickaxe..Dump Truck
 const MINE_IDS   = new Set([ 894933, 894934, 894935 ])                  // Small/Medium/Large Mine
 const TABLE_ID   = 896279                                               // Polishing Table
@@ -78,7 +79,6 @@ const TEMPLATES_ROUGH_DETAILS = new Map([
 
 // Equipment templates with Mining Power (MP) and images
 const TEMPLATES_EQUIPMENT = new Map([
-  // [template_id, { name: string, mp: number, image: string, imagePath: string }]
   [894928, { name: 'Pickaxe Worker',        mp: 50,    image: '41.png', imagePath: 'assets/gallery_images/41.png' }],
   [894929, { name: 'Hammer Drill Worker',   mp: 110,   image: '42.png', imagePath: 'assets/gallery_images/42.png' }],
   [894930, { name: 'Mini Excavator Worker', mp: 245,   image: '43.jpg', imagePath: 'assets/gallery_images/43.jpg' }],
@@ -272,7 +272,7 @@ function classifyAssets(assets) {
 
       const info = TEMPLATES_EQUIPMENT.get(tid)
 
-      // ✅ Correct: add MP per asset, not per cumulative template count
+      // add MP per asset
       totalMiningPower += info.mp
 
       if (!equipmentDetails[tid]) {
@@ -288,22 +288,27 @@ function classifyAssets(assets) {
       equipmentDetails[tid].count += 1
       if (assetId) equipmentDetails[tid].assets.push(assetId)
 
-      const schema = Number(tid) === TABLE_ID ? 'tools' : 'equipment'
+      // 🔧 Polishing tables are treated as equipment for compatibility
+      const isTable = Number(tid) === TABLE_ID
+      const schema = 'equipment'
+      const category = isTable ? 'equipment' : 'equipment' // keep simple and compatible
 
       assetsList.push({
         asset_id: assetId,
         template_id: tid,
         template_mint: templateMint,
         name: info?.name || assetName,
-        schema,
+        schema,                // always 'equipment' for workers, mines, tables
         image: info?.image || null,
         imagePath: info?.imagePath || null,
         mp: info.mp,
-        category: schema
+        category,              // 'equipment'
+        type: isTable ? 'table' : 'equipment',
+        isPolishingTable: isTable
       })
 
     } else if (TEMPLATES_SPEEDBOOST.has(tid)) {
-      // ✅ Count speedboosts per asset, not cumulative
+      // Count speedboosts per asset
       speedboosts++
 
       const info = TEMPLATES_SPEEDBOOST.get(tid)
@@ -372,12 +377,13 @@ function classifyAssets(assets) {
     uniqueTemplates++
   }
 
-  // equipment -> templateCounts
+  // equipment (workers / mines / tables) -> templateCounts
   for (const [tid, details] of Object.entries(equipmentDetails)) {
     const key = `${tid}_${details.name}`
     const totalMp = details.mp * details.count
-    let schema = 'equipment'
-    if (Number(tid) === TABLE_ID) schema = 'tools'
+    const isTable = Number(tid) === TABLE_ID
+    const schema = 'equipment' // ✅ always equipment for compatibility
+
     templateCounts[key] = {
       template_id: Number(tid),
       name: details.name,
@@ -386,7 +392,9 @@ function classifyAssets(assets) {
       total_mining_power: totalMp,
       image: details.image,
       imagePath: details.imagePath,
-      mp: details.mp
+      mp: details.mp,
+      type: isTable ? 'table' : 'equipment',
+      isPolishingTable: isTable
     }
     total += details.count
     uniqueTemplates++
@@ -426,7 +434,10 @@ function classifyAssets(assets) {
   const polishingTableCount = tablesCount
   const polishingSlots = Math.min(tablesCount, 10)
 
-  console.log(`[Inventory] Workers:${workersCount} Mines:${minesCount} Tables:${tablesCount} -> miningSlots:${miningSlots} polishingSlots:${polishingSlots}`)
+  console.log(
+    `[Inventory] Workers:${workersCount} Mines:${minesCount} Tables:${tablesCount} -> ` +
+    `miningSlots:${miningSlots} polishingSlots:${polishingSlots}`
+  )
   console.log(`[Inventory] Total individual assets with IDs: ${assetsList.length}`)
 
   return {
@@ -500,7 +511,10 @@ const getInventory = onRequest((req, res) =>
           // Merge gems data
           return res.json({ ok: true, cached: true, actor, ...cachedData, ...gemsData })
         } else {
-          console.log(`[getInventory] Cache stale for ${actor} (age: ${Math.floor(ageMs / 1000)}s > ${CACHE_TTL_MS / 1000}s), refreshing...`)
+          console.log(
+            `[getInventory] Cache stale for ${actor} (age: ${Math.floor(ageMs / 1000)}s > ` +
+            `${CACHE_TTL_MS / 1000}s), refreshing...`
+          )
         }
       } else {
         console.log(`[getInventory] Cache exists but no valid updatedAt for ${actor}, refreshing...`)
@@ -543,7 +557,10 @@ const refreshInventory = onRequest((req, res) =>
       const summary = classifyAssets(assets)
       const result = await writeInventorySummary(actor, summary)
       console.log(`[refreshInventory] Successfully refreshed inventory for ${actor}`)
-      console.log(`[refreshInventory] Polishing Table count: ${summary.polishingTableCount}, slots: ${summary.polishingSlots}`)
+      console.log(
+        `[refreshInventory] Polishing Table count: ${summary.polishingTableCount}, ` +
+        `slots: ${summary.polishingSlots}`
+      )
       console.log(`[refreshInventory] Summary keys:`, Object.keys(summary))
       res.json({ ok: true, actor, ...summary, updatedAt: result.updatedAt })
     } catch (e) {
