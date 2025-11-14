@@ -11,7 +11,7 @@ try { admin.app() } catch { admin.initializeApp() }
 // Node 20+ has native fetch
 const fetch = globalThis.fetch || require('node-fetch')
 
-const db = getFirestore();
+const db = getFirestore()
 
 // --- AtomicAssets (public API) with fallbacks ---
 const ATOMIC_APIS = [
@@ -58,7 +58,7 @@ async function fetchAssetsByIds(assetIds) {
 
       if (response.ok) {
         const data = await response.json()
-        const assets = data.data || []
+        const assets = (data && data.data) || []
         console.log(`[Mining] ✅ Success with API: ${apiBase} (${assets.length} assets found)`)
         return assets
       }
@@ -96,7 +96,6 @@ async function validateOwnership(actor, assetIds) {
     // Find missing assets (not owned by actor or not found)
     const missingIds = assetIds.filter(id => !ownedAssetIds.has(id))
     const missingAssets = missingIds.map(id => {
-      // Try to find asset data even if not owned (for error reporting)
       const assetData = assets.find(a => a.asset_id === id) || {}
       return {
         asset_id: id,
@@ -123,35 +122,32 @@ async function validateOwnership(actor, assetIds) {
 
 /**
  * Get staked assets for a mining slot with full details
- * New version: reads from runtime/live.staked.mining instead of global staking/{actor}
+ * Source of truth: /staking/{actor}.mining.slotX
  * @param {string} actor - WAX account name
  * @param {number} slotNum - Slot number
  * @returns {Promise<{assets: any[], totalMP: number, speedboost: any | null}>}
  */
 async function getStakedAssetsForSlot(actor, slotNum) {
-  const runtimeRef = db
-    .collection('players')
-    .doc(actor)
-    .collection('runtime')
-    .doc('live')
+  const stakingRef = db.collection('staking').doc(actor)
+  const stakingSnap = await stakingRef.get()
 
   const assets = []
   let totalMP = 0
   let speedboost = null
 
-  const snap = await runtimeRef.get()
-  if (!snap.exists) {
-    console.log(`[Mining] No runtime/live doc for ${actor}, no staked assets for slot ${slotNum}`)
+  if (!stakingSnap.exists) {
+    console.log(`[Mining] No staking doc for ${actor}, no staked assets for slot ${slotNum}`)
     return { assets, totalMP, speedboost }
   }
 
-  const live = snap.data() || {}
-  const staked = live.staked || {}
-  const miningStaked = staked.mining || {}
+  const stakingData = stakingSnap.data() || {}
+  const mining = stakingData.mining || {}
+  const slotKey1 = `slot${slotNum}`
+  const slotKey2 = `slot_${slotNum}`
 
   const slotData =
-    miningStaked[`slot${slotNum}`] ||
-    miningStaked[`slot_${slotNum}`] ||
+    mining[slotKey1] ||
+    mining[slotKey2] ||
     null
 
   if (!slotData) {
@@ -159,7 +155,7 @@ async function getStakedAssetsForSlot(actor, slotNum) {
     return { assets, totalMP, speedboost }
   }
 
-  // Mine
+  // Add mine if staked
   if (slotData.mine) {
     const mine = slotData.mine
     const mpVal = Number(mine.mp) || 0
@@ -173,8 +169,8 @@ async function getStakedAssetsForSlot(actor, slotNum) {
     totalMP += mpVal
   }
 
-  // Workers
-  if (Array.isArray(slotData.workers)) {
+  // Add workers if staked
+  if (slotData.workers && Array.isArray(slotData.workers)) {
     slotData.workers.forEach(worker => {
       const mpVal = Number(worker.mp) || 0
       assets.push({
@@ -189,37 +185,37 @@ async function getStakedAssetsForSlot(actor, slotNum) {
   }
 
   // Speedboost (single or legacy array)
-  const rawSpeedboost =
+  const slotSpeedboost =
     slotData.speedboost ||
     (Array.isArray(slotData.speedboosts) && slotData.speedboosts.length > 0
       ? slotData.speedboosts[0]
       : null)
 
-  if (rawSpeedboost && rawSpeedboost.asset_id) {
+  if (slotSpeedboost && slotSpeedboost.asset_id) {
     const rawBoost = Number(
-      rawSpeedboost.boost ??
-      (rawSpeedboost.multiplier ? rawSpeedboost.multiplier - 1 : 0)
+      slotSpeedboost.boost ??
+      (slotSpeedboost.multiplier ? slotSpeedboost.multiplier - 1 : 0)
     ) || 0
 
     const boost = Math.max(0, rawBoost)
     const multiplier = Number(
-      rawSpeedboost.multiplier ??
+      slotSpeedboost.multiplier ??
       (1 + boost)
     ) || (1 + boost)
 
     speedboost = {
-      asset_id: rawSpeedboost.asset_id,
-      template_id: rawSpeedboost.template_id,
-      name: rawSpeedboost.name || `Speedboost ${rawSpeedboost.asset_id}`,
+      asset_id: slotSpeedboost.asset_id,
+      template_id: slotSpeedboost.template_id,
+      name: slotSpeedboost.name || `Speedboost ${slotSpeedboost.asset_id}`,
       boost,
       multiplier,
       type: 'speedboost',
       mp: 0
     }
 
-    if (rawSpeedboost.rarity) speedboost.rarity = rawSpeedboost.rarity
-    if (rawSpeedboost.template_mint) speedboost.template_mint = rawSpeedboost.template_mint
-    if (rawSpeedboost.imagePath) speedboost.imagePath = rawSpeedboost.imagePath
+    if (slotSpeedboost.rarity) speedboost.rarity = slotSpeedboost.rarity
+    if (slotSpeedboost.template_mint) speedboost.template_mint = slotSpeedboost.template_mint
+    if (slotSpeedboost.imagePath) speedboost.imagePath = slotSpeedboost.imagePath
 
     assets.push({ ...speedboost })
   }
@@ -228,7 +224,6 @@ async function getStakedAssetsForSlot(actor, slotNum) {
     `[Mining] Slot ${slotNum} staked assets: ${assets.length} assets, ` +
     `total MP: ${totalMP}, speedboost: ${speedboost ? speedboost.asset_id : 'none'}`
   )
-
   return { assets, totalMP, speedboost }
 }
 
@@ -287,56 +282,42 @@ const SPEEDBOOST_RARITIES = {
 }
 
 /**
- * Read the assigned speedboost for a specific slot from runtime/live.staked
- * @param {string} actor
- * @param {number} slotNum
- * @returns {Promise<{boost: number, rarity: string | null, template_id: string | null}>}
+ * Read the assigned speedboost for a specific slot from /staking/{actor}
  */
 async function getSpeedboostForSlot(actor, slotNum) {
   try {
-    const runtimeRef = db
-      .collection('players')
-      .doc(actor)
-      .collection('runtime')
-      .doc('live')
+    const stakingRef = db.collection('staking').doc(actor)
+    const snap = await stakingRef.get()
+    if (!snap.exists) return { boost: 0, rarity: null, template_id: null }
 
-    const snap = await runtimeRef.get()
-    if (!snap.exists) {
-      return { boost: 0, rarity: null, template_id: null }
-    }
-
-    const live = snap.data() || {}
-    const staked = live.staked || {}
-    const miningStaked = staked.mining || {}
+    const data = snap.data() || {}
+    const mining = data.mining || {}
+    const slotKey1 = `slot${slotNum}`
+    const slotKey2 = `slot_${slotNum}`
 
     const slotData =
-      miningStaked[`slot${slotNum}`] ||
-      miningStaked[`slot_${slotNum}`] ||
+      mining[slotKey1] ||
+      mining[slotKey2] ||
       null
 
-    if (!slotData) {
-      return { boost: 0, rarity: null, template_id: null }
-    }
+    if (!slotData) return { boost: 0, rarity: null, template_id: null }
 
-    const rawSpeedboost =
+    const sb =
       slotData.speedboost ||
       (Array.isArray(slotData.speedboosts) && slotData.speedboosts.length > 0
         ? slotData.speedboosts[0]
         : null)
 
-    if (!rawSpeedboost || typeof rawSpeedboost !== 'object') {
-      return { boost: 0, rarity: null, template_id: null }
-    }
+    if (!sb || typeof sb !== 'object') return { boost: 0, rarity: null, template_id: null }
 
     const rawBoost = Number(
-      rawSpeedboost.boost ??
-      (rawSpeedboost.multiplier ? rawSpeedboost.multiplier - 1 : 0)
+      sb.boost ??
+      (sb.multiplier ? sb.multiplier - 1 : 0)
     ) || 0
 
-    const safeBoost = Math.max(0, Math.min(2, rawBoost))
-    const rarity = typeof rawSpeedboost.rarity === 'string' ? rawSpeedboost.rarity : null
-    const template_id = rawSpeedboost.template_id ?? null
-
+    const safeBoost = Math.max(0, Math.min(2, rawBoost)) // cap 200% just in case
+    const rarity = typeof sb.rarity === 'string' ? sb.rarity : null
+    const template_id = sb.template_id ?? null
     return { boost: safeBoost, rarity, template_id }
   } catch (e) {
     console.error('[Speedboost] read error', actor, slotNum, e)
@@ -358,7 +339,6 @@ function refs(actor) {
 }
 
 // --- CRITICAL: slot count is now driven ONLY by profile.miningSlotsUnlocked ---
-// NFTs still gate mining in practice because you must have mine + workers
 async function getEffectiveMiningSlots(actor) {
   const { root } = refs(actor)
   const profSnap = await root.get()
@@ -851,17 +831,11 @@ const getSpeedboost = onRequest((req, res) =>
     if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' })
     const actor = requireActor(req, res); if (!actor) return
     try {
-      // For UI we can still expose the raw staked speedboost info via runtime/live
-      const runtimeRef = db
-        .collection('players')
-        .doc(actor)
-        .collection('runtime')
-        .doc('live')
-      const snap = await runtimeRef.get()
-      const live = snap.exists ? (snap.data() || {}) : {}
-      const staked = live.staked || {}
-      const miningStaked = staked.mining || {}
-      res.json({ ok: true, data: miningStaked })
+      const stakingRef = db.collection('staking').doc(actor)
+      const snap = await stakingRef.get()
+      const data = snap.exists ? (snap.data() || {}) : {}
+      const mining = data.mining || {}
+      res.json({ ok: true, data: mining })
     } catch (e) {
       res.status(500).json({ error: e.message })
     }
