@@ -1,14 +1,15 @@
 // functions/modules/staking.js
-// Staking persistence module for tracking staked NFTs across mining and polishing pages
-// Rewritten to use the new realtime structure under players/{actor}/runtime/live/staked
+// Staking persistence module for tracking staked NFTs across mining and polishing pages.
+// Canonical storage:      staking/{actor}
+// Realtime mirror for UI: players/{actor}/runtime/live.staked
 
 const { onRequest } = require('firebase-functions/v2/https')
 const admin = require('firebase-admin')
 const { getFirestore, FieldValue } = require('firebase-admin/firestore')
 const corsLib = require('cors')
 
-// Node 20+ has native fetch
-const fetch = globalThis.fetch || require('node-fetch')
+// Ensure app initialized (safe even if done in other modules)
+try { admin.app() } catch { admin.initializeApp() }
 
 const db = getFirestore()
 
@@ -61,7 +62,7 @@ const GEM_TYPE_MAP = {
   894406: 'Amethyst',
 }
 
-// Gem Bonus Multipliers from reference.js
+// Gem Bonus Multipliers
 const GEM_BONUS_MULTIPLIERS = {
   Amethyst:   { polished: 0.05,  unpolished: 0.025 },
   Topaz:      { polished: 0.10,  unpolished: 0.05 },
@@ -76,29 +77,19 @@ const GEM_BONUS_MULTIPLIERS = {
 }
 
 /**
- * All realtime player state lives under:
- *   players/{actor}/runtime/live
- * Staking data is stored in the `staked` field of that document:
- *   live.staked = { mining: {...}, polishing: {...}, gems: {...}, ... }
+ * Canonical staking doc + live runtime doc.
+ * Canonical: db.collection('staking').doc(actor)
+ * Mirror:    players/{actor}/runtime/live.staked
  */
 function refs(actor) {
-  const runtimeDoc = db
-    .collection('players')
-    .doc(actor)
-    .collection('runtime')
-    .doc('live')
-
-  return {
-    runtimeDoc,
-  }
+  const stakingDoc = db.collection('staking').doc(actor)
+  const runtimeDoc = db.collection('players').doc(actor).collection('runtime').doc('live')
+  return { stakingDoc, runtimeDoc }
 }
 
 /**
- * Validate asset ownership via AtomicAssets API with fallbacks
- * Tests all APIs in parallel and uses the fastest response
- * @param {string} actor - WAX account name
- * @param {string[]} assetIds - Array of asset IDs to validate
- * @returns {Promise<{valid: boolean, ownedAssets: any[], apiError?: boolean}>}
+ * Validate asset ownership via AtomicAssets API with fallbacks.
+ * Runs all APIs in parallel and uses the first successful response.
  */
 async function validateAssetOwnership(actor, assetIds) {
   if (!assetIds || assetIds.length === 0) {
@@ -115,11 +106,16 @@ async function validateAssetOwnership(actor, assetIds) {
       const startTime = Date.now()
       console.log(`[Staking] Testing API ${index + 1}/${ATOMIC_APIS.length}: ${apiBase}`)
 
-      const response = await fetch(url, {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 5000)
+
+      const response = await (globalThis.fetch || require('node-fetch'))(url, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
-        timeout: 5000,
+        signal: controller.signal,
       })
+
+      clearTimeout(timeout)
 
       const duration = Date.now() - startTime
 
@@ -134,9 +130,8 @@ async function validateAssetOwnership(actor, assetIds) {
       const ownedAssetIds = new Set(ownedAssets.map(asset => asset.asset_id))
       const allOwned = assetIds.every(id => ownedAssetIds.has(id))
 
-      console.log(`[Staking] ✅ Fastest response from API ${index + 1}: ${apiBase} (${duration}ms)`)
       console.log(
-        `[Staking] Validation result: ${allOwned ? 'VALID' : 'INVALID'} (${ownedAssets.length}/${assetIds.length} owned)`
+        `[Staking] ✅ Fastest response from API ${index + 1}: ${apiBase} (${duration}ms) — ${allOwned ? 'VALID' : 'INVALID'}`
       )
 
       return {
@@ -171,7 +166,7 @@ async function validateAssetOwnership(actor, assetIds) {
 }
 
 /**
- * Normalize a raw speedboost entry into the canonical single-slot structure.
+ * Normalize a raw speedboost entry into canonical structure.
  */
 function normalizeSpeedboostEntry(entry) {
   if (!entry || typeof entry !== 'object') return null
@@ -194,7 +189,6 @@ function normalizeSpeedboostEntry(entry) {
   if (boost === null && multiplier !== null) {
     boost = multiplier - 1
   }
-
   if (multiplier === null && boost !== null) {
     multiplier = 1 + boost
   }
@@ -202,7 +196,6 @@ function normalizeSpeedboostEntry(entry) {
   if (!Number.isFinite(boost) || boost < 0) {
     boost = Math.max(0, boost || 0)
   }
-
   if (!Number.isFinite(multiplier) || multiplier <= 0) {
     multiplier = 1 + boost
   }
@@ -258,9 +251,7 @@ function normalizeSlotSpeedboost(slotData) {
 }
 
 /**
- * Normalize staking data structure for backward compatibility.
- * We keep the same internal structure as before, but it's now stored
- * under live.staked instead of a separate /staking collection.
+ * Normalize staking data structure.
  */
 function normalizeStakingData(stakingData) {
   if (!stakingData || typeof stakingData !== 'object') {
@@ -283,45 +274,41 @@ function normalizeStakingData(stakingData) {
 }
 
 /**
- * Get current staking data for an actor from runtime/live.staked
+ * Get current staking data for an actor from /staking/{actor}
  */
 async function getStakingData(actor) {
-  const { runtimeDoc } = refs(actor)
-  const snap = await runtimeDoc.get()
+  const { stakingDoc } = refs(actor)
+  const snap = await stakingDoc.get()
 
   if (!snap.exists) {
-    const empty = normalizeStakingData({
-      mining: {},
-      polishing: {},
-      gems: {},
-    })
-    console.log(`[Staking] No runtime doc for ${actor}, returning empty staking`)
+    const empty = normalizeStakingData({ mining: {}, polishing: {}, gems: {} })
+    console.log(`[Staking] No staking doc for ${actor}, returning empty staking`)
     return empty
   }
 
-  const live = snap.data() || {}
-  const staked = normalizeStakingData(live.staked || {})
-
-  return staked
+  const data = snap.data() || {}
+  return normalizeStakingData(data)
 }
 
 /**
- * Update staking data in runtime/live.staked
+ * Update staking data in /staking/{actor} and mirror to runtime/live.staked.
  */
 async function updateStakingData(actor, stakingData) {
-  const { runtimeDoc } = refs(actor)
-
+  const { stakingDoc, runtimeDoc } = refs(actor)
   const normalized = normalizeStakingData(stakingData)
-  normalized.updatedAt = FieldValue.serverTimestamp()
+  const payload = { ...normalized, updatedAt: FieldValue.serverTimestamp() }
 
+  await stakingDoc.set(payload, { merge: true })
+
+  // Mirror to live runtime doc for UI
   await runtimeDoc.set(
     {
-      staked: normalized,
+      staked: payload,
     },
     { merge: true }
   )
 
-  console.log(`[Staking] Updated realtime staking data for ${actor}`)
+  console.log(`[Staking] Updated canonical staking + realtime mirror for ${actor}`)
 }
 
 /**
@@ -508,7 +495,7 @@ async function stakeAssetToSlot(actor, page, slotNum, assetType, assetData) {
 /**
  * Batch stake multiple workers to a slot
  */
-async function stakeWorkersBatch(actor, page, slotNum, workers) {
+async function stakeWorkersBatchInternal(actor, page, slotNum, workers) {
   console.log(`[Staking] Batch staking ${workers.length} workers to ${page} slot ${slotNum} for ${actor}`)
 
   const assetIds = workers.map(w => w.asset_id)
@@ -554,23 +541,22 @@ async function stakeWorkersBatch(actor, page, slotNum, workers) {
 }
 
 /**
- * Unstake an asset from a specific slot
- * Uses a transaction on runtime/live to keep consistency.
+ * Unstake an asset from a specific slot.
+ * Uses transaction on canonical /staking doc and mirrors the result.
  */
 async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
   console.log(`[Staking] Unstaking ${assetType} ${assetId} from ${page} slot ${slotNum} for ${actor}`)
 
-  const { runtimeDoc } = refs(actor)
+  const { stakingDoc, runtimeDoc } = refs(actor)
 
   return await db.runTransaction(async transaction => {
-    const snap = await transaction.get(runtimeDoc)
+    const snap = await transaction.get(stakingDoc)
 
     if (!snap.exists) {
-      throw new Error(`No runtime data found for ${actor}`)
+      throw new Error(`No staking data found for ${actor}`)
     }
 
-    const live = snap.data() || {}
-    const stakingData = normalizeStakingData(live.staked || {})
+    const stakingData = normalizeStakingData(snap.data() || {})
 
     if (!stakingData[page]) {
       throw new Error(`No ${page} staking data found`)
@@ -633,12 +619,16 @@ async function unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId) {
       delete stakingData[page]
     }
 
-    stakingData.updatedAt = FieldValue.serverTimestamp()
+    const payload = { ...stakingData, updatedAt: FieldValue.serverTimestamp() }
 
+    // Write canonical
+    transaction.set(stakingDoc, payload, { merge: true })
+
+    // Mirror to runtime
     transaction.set(
       runtimeDoc,
       {
-        staked: stakingData,
+        staked: payload,
       },
       { merge: true }
     )
@@ -698,7 +688,7 @@ async function autoUnstakeMissingAssets(actor, page, slotNum, missingAssets) {
 }
 
 // ========================================
-// CLOUD FUNCTIONS
+// HTTP HELPERS
 // ========================================
 
 function requireActor(req, res) {
@@ -714,8 +704,9 @@ function requireActor(req, res) {
 
 /**
  * POST /stakeAsset
+ * Body: { actor, page, slotNum, assetType, assetData }
  */
-exports.stakeAsset = onRequest((req, res) =>
+const stakeAsset = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'POST only' })
@@ -724,14 +715,14 @@ exports.stakeAsset = onRequest((req, res) =>
     const actor = requireActor(req, res)
     if (!actor) return
 
-    const { page, slotNum, assetType, assetData } = req.body
+    const { page, slotNum, assetType, assetData } = req.body || {}
 
     if (!page || !slotNum || !assetType || !assetData || !assetData.asset_id) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
 
     try {
-      const stakingData = await stakeAssetToSlot(actor, page, slotNum, assetType, assetData)
+      const stakingData = await stakeAssetToSlot(actor, page, Number(slotNum), assetType, assetData)
       return res.status(200).json({
         success: true,
         stakingData,
@@ -745,8 +736,9 @@ exports.stakeAsset = onRequest((req, res) =>
 
 /**
  * POST /stakeWorkersBatch
+ * Body: { actor, page, slotNum, workers: [] }
  */
-exports.stakeWorkersBatch = onRequest((req, res) =>
+const stakeWorkersBatch = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'POST only' })
@@ -755,14 +747,14 @@ exports.stakeWorkersBatch = onRequest((req, res) =>
     const actor = requireActor(req, res)
     if (!actor) return
 
-    const { page, slotNum, workers } = req.body
+    const { page, slotNum, workers } = req.body || {}
 
     if (!page || !slotNum || !workers || !Array.isArray(workers) || workers.length === 0) {
       return res.status(400).json({ error: 'Missing required fields or empty workers array' })
     }
 
     try {
-      const stakingData = await stakeWorkersBatch(actor, page, slotNum, workers)
+      const stakingData = await stakeWorkersBatchInternal(actor, page, Number(slotNum), workers)
       return res.status(200).json({
         success: true,
         stakingData,
@@ -776,8 +768,9 @@ exports.stakeWorkersBatch = onRequest((req, res) =>
 
 /**
  * POST /unstakeAsset
+ * Body: { actor, page, slotNum, assetType, assetId }
  */
-exports.unstakeAsset = onRequest((req, res) =>
+const unstakeAsset = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'POST only' })
@@ -786,14 +779,14 @@ exports.unstakeAsset = onRequest((req, res) =>
     const actor = requireActor(req, res)
     if (!actor) return
 
-    const { page, slotNum, assetType, assetId } = req.body
+    const { page, slotNum, assetType, assetId } = req.body || {}
 
     if (!page || !slotNum || !assetType || !assetId) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
 
     try {
-      const stakingData = await unstakeAssetFromSlot(actor, page, slotNum, assetType, assetId)
+      const stakingData = await unstakeAssetFromSlot(actor, page, Number(slotNum), assetType, assetId)
       return res.status(200).json({
         success: true,
         stakingData,
@@ -807,9 +800,9 @@ exports.unstakeAsset = onRequest((req, res) =>
 
 /**
  * GET /getStakedAssets?actor={actor}
- * Returns the staked section of runtime/live
+ * Returns canonical staking data (and by extension reflects the mirror)
  */
-exports.getStakedAssets = onRequest((req, res) =>
+const getStakedAssets = onRequest((req, res) =>
   cors(req, res, async () => {
     if (req.method !== 'GET') {
       return res.status(405).json({ error: 'GET only' })
@@ -840,7 +833,7 @@ async function getGemsBoostForType(actor, gemType) {
   const stakingData = await getStakingData(actor)
   if (!stakingData.gems) return 0
 
-  for (const [slotKey, slotData] of Object.entries(stakingData.gems)) {
+  for (const [, slotData] of Object.entries(stakingData.gems)) {
     if (slotData.gem && slotData.gem.gemType === gemType) {
       const bonus = slotData.gem.bonus || 0
       console.log(`[Staking] Found staked ${gemType} gem with ${(bonus * 100).toFixed(2)}% boost`)
@@ -852,4 +845,14 @@ async function getGemsBoostForType(actor, gemType) {
   return 0
 }
 
-module.exports.getGemsBoostForType = getGemsBoostForType
+module.exports = {
+  stakeAsset,
+  stakeWorkersBatch,
+  unstakeAsset,
+  getStakedAssets,
+  // helpers for other modules
+  getStakingData,
+  getAllStakedAssetIds,
+  autoUnstakeMissingAssets,
+  getGemsBoostForType,
+}
