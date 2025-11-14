@@ -1,3 +1,4 @@
+// functions/modules/live-aggregator.js
 'use strict';
 
 const admin = require('firebase-admin');
@@ -25,14 +26,34 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
     const profile = profileSnap.exists ? profileSnap.data() : null;
 
     if (!profile) {
-      console.log(`[LiveAggregator] ⚠️ No profile found for ${actor}, creating minimal profile structure`);
-      // we'll still build a live doc for new accounts
+      console.log(
+        `[LiveAggregator] ⚠️ No profile found for ${actor}, will still create a minimal live doc`
+      );
     }
 
-    // 2. Fetch gems inventory
+    // 2. Fetch existing runtime/live, mainly to read current `staked`
+    const liveRef = profileRef.collection('runtime').doc('live');
+    const liveSnap = await liveRef.get();
+    const existingLive = liveSnap.exists ? (liveSnap.data() || {}) : {};
+
+    // All staking data is now stored under runtime/live.staked by the staking module
+    const stakingData = existingLive.staked || {
+      mining: {},
+      polishing: {},
+      gems: {},
+    };
+
+    console.log(`[LiveAggregator] 🔍 Staking snapshot for ${actor}:`, {
+      hasStaked: !!existingLive.staked,
+      miningKeys: stakingData.mining ? Object.keys(stakingData.mining) : [],
+      polishingKeys: stakingData.polishing ? Object.keys(stakingData.polishing) : [],
+      gemsKeys: stakingData.gems ? Object.keys(stakingData.gems) : [],
+    });
+
+    // 3. Fetch gems inventory
     const gemsRef = profileRef.collection('inventory').doc('gems');
     const gemsSnap = await gemsRef.get();
-    const rawGems = gemsSnap.exists ? gemsSnap.data() : {};
+    const rawGems = gemsSnap.exists ? (gemsSnap.data() || {}) : {};
 
     const gems = {
       rough: rawGems.rough || {},
@@ -41,67 +62,74 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       ...rawGems,
     };
 
-    // 3. Fetch inventory summary
+    // 4. Fetch inventory summary
     const summaryRef = profileRef.collection('meta').doc('inventory_summary');
     const summarySnap = await summaryRef.get();
-    const rawSummary = summarySnap.exists ? summarySnap.data() : null;
+    const rawSummary = summarySnap.exists ? (summarySnap.data() || {}) : null;
 
-    const inventorySummary = rawSummary || {
-      total: 0,
-      totalNFTs: 0,
-      polished: 0,
-      rough: 0,
-      equipment: 0,
-      miningSlots: 0,
-      polishingSlots: 0,
-      uniqueTemplates: 0,
-      templateCounts: {},
-    };
+    const inventorySummary =
+      rawSummary || {
+        total: 0,
+        totalNFTs: 0,
+        polished: 0,
+        rough: 0,
+        equipment: 0,
+        miningSlots: 0,
+        polishingSlots: 0,
+        uniqueTemplates: 0,
+        templateCounts: {},
+      };
 
-    // 4. Fetch speedboost inventory doc (per-slot assignments live here)
+    // 5. Fetch speedboost inventory doc (per-slot assignments live here)
     const speedboostRef = profileRef.collection('inventory').doc('speedboost');
     const speedboostSnap = await speedboostRef.get();
-    const speedboost = speedboostSnap.exists ? speedboostSnap.data() : {};
+    const speedboost = speedboostSnap.exists ? (speedboostSnap.data() || {}) : {};
 
-    // 5. Fetch staked assets from global staking collection
-    const stakingRef = db.collection('staking').doc(actor);
-    const stakingSnap = await stakingRef.get();
-    const stakingData = stakingSnap.exists ? stakingSnap.data() : { mining: {}, polishing: {} };
-
-    console.log(`[LiveAggregator] 🔍 Staking data for ${actor}:`, {
-      exists: stakingSnap.exists,
-      hasMining: !!stakingData.mining,
-      miningKeys: stakingData.mining ? Object.keys(stakingData.mining) : [],
-      hasPolishing: !!stakingData.polishing,
-      polishingKeys: stakingData.polishing ? Object.keys(stakingData.polishing) : [],
-    });
-
-    // 6. Build minimal profile & unlocked slot counts EARLY
-
+    // 6. Build minimal profile & unlocked slot counts
     const balances = profile?.balances || {};
     const miningSlotsUnlockedFromProfile =
-      profile ? (Number(profile.miningSlotsUnlocked ?? profile.mining_slots_unlocked ?? 0) || 0) : 0;
+      profile
+        ? Number(
+            profile.miningSlotsUnlocked ?? profile.mining_slots_unlocked ?? 0
+          ) || 0
+        : 0;
     const polishingSlotsUnlockedFromProfile =
-      profile ? (Number(profile.polishingSlotsUnlocked ?? profile.polishing_slots_unlocked ?? 0) || 0) : 0;
+      profile
+        ? Number(
+            profile.polishingSlotsUnlocked ??
+              profile.polishing_slots_unlocked ??
+              0
+          ) || 0
+        : 0;
 
     const hasManualMiningOverride =
-      profile && profile.miningSlotsUnlockedManual !== undefined && profile.miningSlotsUnlockedManual !== null;
+      profile &&
+      profile.miningSlotsUnlockedManual !== undefined &&
+      profile.miningSlotsUnlockedManual !== null;
     const hasManualPolishingOverride =
-      profile && profile.polishingSlotsUnlockedManual !== undefined && profile.polishingSlotsUnlockedManual !== null;
+      profile &&
+      profile.polishingSlotsUnlockedManual !== undefined &&
+      profile.polishingSlotsUnlockedManual !== null;
 
     const defaultMiningSlots = 1;
     const defaultPolishingSlots = 1;
 
     const miningSlotsUnlocked = hasManualMiningOverride
       ? Number(profile.miningSlotsUnlockedManual)
-      : (miningSlotsUnlockedFromProfile > 0 ? miningSlotsUnlockedFromProfile : defaultMiningSlots);
+      : miningSlotsUnlockedFromProfile > 0
+      ? miningSlotsUnlockedFromProfile
+      : defaultMiningSlots;
 
     const polishingSlotsUnlocked = hasManualPolishingOverride
       ? Number(profile.polishingSlotsUnlockedManual)
-      : (polishingSlotsUnlockedFromProfile > 0 ? polishingSlotsUnlockedFromProfile : defaultPolishingSlots);
+      : polishingSlotsUnlockedFromProfile > 0
+      ? polishingSlotsUnlockedFromProfile
+      : defaultPolishingSlots;
 
     const liveProfile = {
-      ingameCurrency: profile ? (Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0) || 0) : 0,
+      ingameCurrency: profile
+        ? Number(profile.ingameCurrency ?? profile.ingame_currency ?? 0) || 0
+        : 0,
       level: profile?.level || 1,
       name: profile?.account || actor,
       balances: {
@@ -116,32 +144,43 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
     const miningSlots = [];
     const miningActiveRef = profileRef.collection('mining_active');
     const miningActiveSnap = await miningActiveRef.get();
-    console.log(`[LiveAggregator] 📊 Found ${miningActiveSnap.docs.length} mining active jobs for ${actor}`);
+    console.log(
+      `[LiveAggregator] 📊 Found ${miningActiveSnap.docs.length} mining active jobs for ${actor}`
+    );
 
     const activeJobsBySlot = new Map();
-    miningActiveSnap.docs.forEach((doc) => {
-      const jobData = doc.data();
-      const slotId = jobData.slotId ? parseInt(jobData.slotId.replace('slot_', ''), 10) : 1;
+    miningActiveSnap.docs.forEach(doc => {
+      const jobData = doc.data() || {};
+      const slotId = jobData.slotId
+        ? parseInt(String(jobData.slotId).replace('slot_', ''), 10)
+        : Number(jobData.slotNum || 1);
       const jobId = doc.id;
+
+      const power = jobData.power || jobData.slotMiningPower || 0;
+      const slotSpeedBoostPct = Number(jobData.slotSpeedBoostPct || 0);
+      const slotSpeedBoostMultiplier =
+        Number(jobData.slotSpeedBoostMultiplier || 1) || 1;
+
       console.log(
-        `[LiveAggregator] 📊 Mining job: jobId=${jobId}, slotId=${slotId}, power=${jobData.power}, startedAt=${jobData.startedAt}, boost=${jobData.slotSpeedBoostPct ?? 0}`,
+        `[LiveAggregator] 📊 Mining job: jobId=${jobId}, slotId=${slotId}, power=${power}, startedAt=${jobData.startedAt}, boost=${slotSpeedBoostPct}`
       );
+
       activeJobsBySlot.set(slotId, {
         jobId,
         startedAt: jobData.startedAt || null,
         finishAt: jobData.finishAt || null,
-        power: jobData.power || jobData.slotMiningPower || 0,
+        power,
         effectiveDurationMs: jobData.effectiveDurationMs || null,
         baseDurationMs: jobData.baseDurationMs || null,
-        slotSpeedBoostPct: jobData.slotSpeedBoostPct || 0,
-        slotSpeedBoostMultiplier: jobData.slotSpeedBoostMultiplier || 1,
+        slotSpeedBoostPct,
+        slotSpeedBoostMultiplier,
         slotSpeedBoostAssetId: jobData.slotSpeedBoostAssetId || null,
       });
     });
 
-    if (stakingData.mining) {
+    if (stakingData.mining && typeof stakingData.mining === 'object') {
       Object.entries(stakingData.mining).forEach(([slotKey, slotData]) => {
-        const slotNum = parseInt(slotKey.replace(/slot[_]?/, ''), 10);
+        const slotNum = parseInt(String(slotKey).replace(/slot[_]?/, ''), 10);
         if (Number.isNaN(slotNum)) return;
 
         if (slotNum <= miningSlotsUnlocked) {
@@ -158,11 +197,11 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
             slotSpeedBoostPct: activeJob?.slotSpeedBoostPct || 0,
             slotSpeedBoostMultiplier: activeJob?.slotSpeedBoostMultiplier || 1,
             slotSpeedBoostAssetId: activeJob?.slotSpeedBoostAssetId || null,
-            staked: [],
+            staked: [], // will be filled below
           });
         } else {
           console.warn(
-            `[LiveAggregator] ⚠️ Mining slot ${slotNum} exists in staking data but user only has ${miningSlotsUnlocked} slots unlocked. Skipping.`,
+            `[LiveAggregator] ⚠️ Mining slot ${slotNum} exists in staking data but user only has ${miningSlotsUnlocked} slots unlocked. Skipping.`
           );
         }
       });
@@ -170,10 +209,10 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 
     // Ensure active jobs with no staking entry are still represented
     activeJobsBySlot.forEach((jobData, slotNum) => {
-      const alreadyExists = miningSlots.some((slot) => slot.id === slotNum);
+      const alreadyExists = miningSlots.some(slot => slot.id === slotNum);
       if (!alreadyExists && slotNum <= miningSlotsUnlocked) {
         console.warn(
-          `[LiveAggregator] ⚠️ Mining slot ${slotNum} has an active job but no staking data. Creating fallback entry.`,
+          `[LiveAggregator] ⚠️ Mining slot ${slotNum} has an active job but no staking data. Creating fallback entry.`
         );
         miningSlots.push({
           id: slotNum,
@@ -191,38 +230,46 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
         });
       } else if (!alreadyExists && slotNum > miningSlotsUnlocked) {
         console.warn(
-          `[LiveAggregator] ⚠️ Mining slot ${slotNum} has an active job but exceeds unlock limit (${miningSlotsUnlocked}). Skipping.`,
+          `[LiveAggregator] ⚠️ Mining slot ${slotNum} has an active job but exceeds unlock limit (${miningSlotsUnlocked}). Skipping.`
         );
       }
     });
 
-    console.log(`[LiveAggregator] 📊 Created ${miningSlots.length} mining slots from staking data`);
+    console.log(
+      `[LiveAggregator] 📊 Created ${miningSlots.length} mining slots from staking + active jobs`
+    );
 
     // 8. Build polishing slots
     const polishingSlots = [];
     const polishingActiveRef = profileRef.collection('polishing_active');
     const polishingActiveSnap = await polishingActiveRef.get();
-    console.log(`[LiveAggregator] 📊 Found ${polishingActiveSnap.docs.length} polishing active jobs for ${actor}`);
+    console.log(
+      `[LiveAggregator] 📊 Found ${polishingActiveSnap.docs.length} polishing active jobs for ${actor}`
+    );
 
     const activePolishingJobsBySlot = new Map();
-    polishingActiveSnap.docs.forEach((doc) => {
-      const jobData = doc.data();
-      const slotId = jobData.slotId ? parseInt(jobData.slotId.replace('slot_', ''), 10) : 1;
+    polishingActiveSnap.docs.forEach(doc => {
+      const jobData = doc.data() || {};
+      const slotId = jobData.slotId
+        ? parseInt(String(jobData.slotId).replace('slot_', ''), 10)
+        : Number(jobData.slotNum || 1);
       const jobId = doc.id;
+
       console.log(
-        `[LiveAggregator] 📊 Polishing job: jobId=${jobId}, slotId=${slotId}, power=${jobData.power}, startedAt=${jobData.startedAt}`,
+        `[LiveAggregator] 📊 Polishing job: jobId=${jobId}, slotId=${slotId}, amountIn=${jobData.amountIn}, startedAt=${jobData.startedAt}`
       );
+
       activePolishingJobsBySlot.set(slotId, {
         jobId,
         startedAt: jobData.startedAt || null,
         finishAt: jobData.finishAt || null,
-        power: jobData.power || 0,
+        power: jobData.amountIn || jobData.power || 0,
       });
     });
 
-    if (stakingData.polishing) {
+    if (stakingData.polishing && typeof stakingData.polishing === 'object') {
       Object.entries(stakingData.polishing).forEach(([slotKey, slotData]) => {
-        const slotNum = parseInt(slotKey.replace(/slot[_]?/, ''), 10);
+        const slotNum = parseInt(String(slotKey).replace(/slot[_]?/, ''), 10);
         if (Number.isNaN(slotNum)) return;
 
         if (slotNum <= polishingSlotsUnlocked) {
@@ -234,11 +281,11 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
             startedAt: activeJob?.startedAt || null,
             finishAt: activeJob?.finishAt || null,
             power: activeJob?.power || 0,
-            staked: [],
+            staked: [], // filled below
           });
         } else {
           console.warn(
-            `[LiveAggregator] ⚠️ Polishing slot ${slotNum} exists in staking data but user only has ${polishingSlotsUnlocked} slots unlocked. Skipping.`,
+            `[LiveAggregator] ⚠️ Polishing slot ${slotNum} exists in staking data but user only has ${polishingSlotsUnlocked} slots unlocked. Skipping.`
           );
         }
       });
@@ -246,10 +293,10 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 
     // Active polishing jobs without staking entries
     activePolishingJobsBySlot.forEach((jobData, slotNum) => {
-      const alreadyExists = polishingSlots.some((slot) => slot.id === slotNum);
+      const alreadyExists = polishingSlots.some(slot => slot.id === slotNum);
       if (!alreadyExists && slotNum <= polishingSlotsUnlocked) {
         console.warn(
-          `[LiveAggregator] ⚠️ Polishing slot ${slotNum} has an active job but no staking data. Creating fallback entry.`,
+          `[LiveAggregator] ⚠️ Polishing slot ${slotNum} has an active job but no staking data. Creating fallback entry.`
         );
         polishingSlots.push({
           id: slotNum,
@@ -262,18 +309,20 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
         });
       } else if (!alreadyExists && slotNum > polishingSlotsUnlocked) {
         console.warn(
-          `[LiveAggregator] ⚠️ Polishing slot ${slotNum} has an active job but exceeds unlock limit (${polishingSlotsUnlocked}). Skipping.`,
+          `[LiveAggregator] ⚠️ Polishing slot ${slotNum} has an active job but exceeds unlock limit (${polishingSlotsUnlocked}). Skipping.`
         );
       }
     });
 
     // ---- Speedboost helpers (used when populating staked assets) ----
-    const computeSpeedboostBoost = (asset) => {
+    const computeSpeedboostBoost = asset => {
       if (!asset) return 0;
       const rawBoost = Number(asset.boost);
       if (Number.isFinite(rawBoost) && rawBoost > 0) return rawBoost;
       const rawMultiplier = Number(asset.multiplier);
-      if (Number.isFinite(rawMultiplier) && rawMultiplier > 0) return Math.max(0, rawMultiplier - 1);
+      if (Number.isFinite(rawMultiplier) && rawMultiplier > 0) {
+        return Math.max(0, rawMultiplier - 1);
+      }
       return 0;
     };
 
@@ -281,24 +330,28 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       if (!asset) return 1;
       const rawMultiplier = Number(asset.multiplier);
       if (Number.isFinite(rawMultiplier) && rawMultiplier > 0) return rawMultiplier;
-      const boost = boostHint !== null ? boostHint : computeSpeedboostBoost(asset);
+      const boost =
+        boostHint !== null ? boostHint : computeSpeedboostBoost(asset);
       return 1 + boost;
     };
 
-    const pickSpeedboost = (slotData) => {
+    const pickSpeedboost = slotData => {
       if (!slotData || typeof slotData !== 'object') return null;
       if (slotData.speedboost) return slotData.speedboost;
       if (Array.isArray(slotData.speedboosts) && slotData.speedboosts.length > 0) {
         return slotData.speedboosts.reduce((best, candidate) => {
           if (!best) return candidate;
-          return computeSpeedboostBoost(candidate) > computeSpeedboostBoost(best) ? candidate : best;
+          return computeSpeedboostBoost(candidate) >
+            computeSpeedboostBoost(best)
+            ? candidate
+            : best;
         }, null);
       }
       return null;
     };
 
     const normalizeAsset = (asset, type) => {
-      if (!asset) return null;
+      if (!asset || typeof asset !== 'object') return null;
 
       const assetId = asset.asset_id || asset.assetId;
       if (!assetId) return null;
@@ -314,6 +367,12 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       const name = asset.name || asset.display_name || `${type} ${assetId}`;
       if (name) normalized.name = name;
 
+      const templateMint = asset.template_mint || asset.templateMint;
+      if (templateMint) normalized.template_mint = templateMint;
+
+      const imagePath = asset.imagePath || asset.image_url;
+      if (imagePath) normalized.imagePath = imagePath;
+
       if (normalized.type === 'speedboost') {
         const boost = computeSpeedboostBoost(asset);
         const multiplier = computeSpeedboostMultiplier(asset, boost);
@@ -323,12 +382,6 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 
         const rarity = asset.rarity;
         if (rarity) normalized.rarity = rarity;
-
-        const templateMint = asset.template_mint || asset.templateMint;
-        if (templateMint) normalized.template_mint = templateMint;
-
-        const imagePath = asset.imagePath || asset.image_url;
-        if (imagePath) normalized.imagePath = imagePath;
       } else {
         const mpValue = Number(asset.mp ?? asset.miningPower ?? 0);
         normalized.mp = Number.isFinite(mpValue) ? mpValue : 0;
@@ -337,12 +390,6 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
         if (Number.isFinite(multiplier) && multiplier !== 1) {
           normalized.multiplier = multiplier;
         }
-
-        const templateMint = asset.template_mint || asset.templateMint;
-        if (templateMint) normalized.template_mint = templateMint;
-
-        const imagePath = asset.imagePath || asset.image_url;
-        if (imagePath) normalized.imagePath = imagePath;
 
         if (type === 'gem') {
           const gemType = asset.gemType || asset.gem_type || asset.typeName;
@@ -364,17 +411,23 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       return normalized;
     };
 
-    // Populate mining slot staked assets
-    miningSlots.forEach((slot) => {
+    // Populate mining slot staked assets from stakingData.mining
+    miningSlots.forEach(slot => {
       const slotData =
-        stakingData.mining?.[`slot${slot.id}`] || stakingData.mining?.[`slot_${slot.id}`];
+        stakingData.mining?.[`slot${slot.id}`] ||
+        stakingData.mining?.[`slot_${slot.id}`];
 
       if (slotData) {
         console.log(`[LiveAggregator] 🎯 Populating mining slot ${slot.id}:`, {
           hasMine: !!slotData.mine,
           workersCount: slotData.workers?.length || 0,
-          speedboostAsset: slotData.speedboost?.asset_id || pickSpeedboost(slotData)?.asset_id || null,
-          legacySpeedboostCount: Array.isArray(slotData.speedboosts) ? slotData.speedboosts.length : 0,
+          speedboostAsset:
+            slotData.speedboost?.asset_id ||
+            pickSpeedboost(slotData)?.asset_id ||
+            null,
+          legacySpeedboostCount: Array.isArray(slotData.speedboosts)
+            ? slotData.speedboosts.length
+            : 0,
           slotDataKeys: Object.keys(slotData),
         });
 
@@ -385,8 +438,8 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
           if (normalizedMine) slot.staked.push(normalizedMine);
         }
 
-        if (slotData.workers && Array.isArray(slotData.workers)) {
-          slotData.workers.forEach((worker) => {
+        if (Array.isArray(slotData.workers)) {
+          slotData.workers.forEach(worker => {
             const normalizedWorker = normalizeAsset(worker, 'worker');
             if (normalizedWorker) slot.staked.push(normalizedWorker);
           });
@@ -394,7 +447,10 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 
         const rawSpeedboost = pickSpeedboost(slotData);
         if (rawSpeedboost) {
-          const normalizedSpeedboost = normalizeAsset(rawSpeedboost, 'speedboost');
+          const normalizedSpeedboost = normalizeAsset(
+            rawSpeedboost,
+            'speedboost'
+          );
           if (normalizedSpeedboost) {
             slot.speedBoost = normalizedSpeedboost;
             slot.speedBoostPct = normalizedSpeedboost.boost;
@@ -411,34 +467,41 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 
         console.log(
           `[LiveAggregator] ✅ Populated mining slot ${slot.id} with ${slot.staked.length} assets:`,
-          slot.staked.map((s) => ({ type: s.type, asset_id: s.asset_id, boost: s.boost ?? null })),
+          slot.staked.map(s => ({
+            type: s.type,
+            asset_id: s.asset_id,
+            boost: s.boost ?? null,
+          }))
         );
       } else {
-        console.log(`[LiveAggregator] ⚠️ No staking data found for mining slot ${slot.id}`);
+        console.log(
+          `[LiveAggregator] ⚠️ No staking data found for mining slot ${slot.id}`
+        );
         slot.staked = [];
       }
     });
 
     console.log(
       `[LiveAggregator] 📊 Mining slots summary:`,
-      miningSlots.map((s) => ({
+      miningSlots.map(s => ({
         id: s.id,
         state: s.state,
         stakedCount: s.staked.length,
-        stakedTypes: s.staked.map((asset) => asset.type),
+        stakedTypes: s.staked.map(asset => asset.type),
         speedBoostPct: s.speedBoostPct || 0,
-      })),
+      }))
     );
 
-    // Populate polishing slot staked assets
-    polishingSlots.forEach((slot) => {
+    // Populate polishing slot staked assets from stakingData.polishing
+    polishingSlots.forEach(slot => {
       const slotData =
-        stakingData.polishing?.[`slot${slot.id}`] || stakingData.polishing?.[`slot_${slot.id}`];
+        stakingData.polishing?.[`slot${slot.id}`] ||
+        stakingData.polishing?.[`slot_${slot.id}`];
 
       if (slotData) {
         console.log(`[LiveAggregator] 🎨 Populating polishing slot ${slot.id}:`, {
           hasTable: !!slotData.table,
-          gemsCount: slotData.gems?.length || 0,
+          gemsCount: Array.isArray(slotData.gems) ? slotData.gems.length : 0,
           slotDataKeys: Object.keys(slotData),
         });
 
@@ -449,8 +512,8 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
           if (normalizedTable) slot.staked.push(normalizedTable);
         }
 
-        if (slotData.gems && Array.isArray(slotData.gems)) {
-          slotData.gems.forEach((gem) => {
+        if (Array.isArray(slotData.gems)) {
+          slotData.gems.forEach(gem => {
             const normalizedGem = normalizeAsset(gem, 'gem');
             if (normalizedGem) slot.staked.push(normalizedGem);
           });
@@ -458,37 +521,39 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 
         console.log(
           `[LiveAggregator] ✅ Populated polishing slot ${slot.id} with ${slot.staked.length} assets:`,
-          slot.staked.map((s) => ({ type: s.type, asset_id: s.asset_id })),
+          slot.staked.map(s => ({ type: s.type, asset_id: s.asset_id }))
         );
       } else {
-        console.log(`[LiveAggregator] ⚠️ No staking data found for polishing slot ${slot.id}`);
+        console.log(
+          `[LiveAggregator] ⚠️ No staking data found for polishing slot ${slot.id}`
+        );
         slot.staked = [];
       }
     });
 
     console.log(
       `[LiveAggregator] 📊 Polishing slots summary:`,
-      polishingSlots.map((s) => ({
+      polishingSlots.map(s => ({
         id: s.id,
         state: s.state,
         stakedCount: s.staked.length,
-        stakedTypes: s.staked.map((asset) => asset.type),
-      })),
+        stakedTypes: s.staked.map(asset => asset.type),
+      }))
     );
 
     // 9. Fetch global runtime data (pricing, city boosts)
     const pricingRef = db.collection('runtime').doc('pricing');
     const pricingSnap = await pricingRef.get();
-    const pricing = pricingSnap.exists ? pricingSnap.data() : {};
+    const pricing = pricingSnap.exists ? pricingSnap.data() || {} : {};
 
     const boostsRef = db.collection('city_boosts');
     const boostsSnap = await boostsRef.get();
-    const boosts = boostsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const boosts = boostsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // 10. Ensure at least 1 slot exists if unlocked
     if (liveProfile.miningSlotsUnlocked >= 1 && miningSlots.length === 0) {
       console.log(
-        `[LiveAggregator] ⚠️ New account: miningSlotsUnlocked=${liveProfile.miningSlotsUnlocked} but no slots exist. Creating default slot 1.`,
+        `[LiveAggregator] ⚠️ New account: miningSlotsUnlocked=${liveProfile.miningSlotsUnlocked} but no slots exist. Creating default slot 1.`
       );
       miningSlots.push({
         id: 1,
@@ -508,7 +573,7 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
 
     if (liveProfile.polishingSlotsUnlocked >= 1 && polishingSlots.length === 0) {
       console.log(
-        `[LiveAggregator] ⚠️ New account: polishingSlotsUnlocked=${liveProfile.polishingSlotsUnlocked} but no slots exist. Creating default slot 1.`,
+        `[LiveAggregator] ⚠️ New account: polishingSlotsUnlocked=${liveProfile.polishingSlotsUnlocked} but no slots exist. Creating default slot 1.`
       );
       polishingSlots.push({
         id: 1,
@@ -533,10 +598,12 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       boosts: boosts || [],
       serverTime,
       lastUpdatedAt: serverTime,
+      // IMPORTANT: we DO NOT write `staked` here – we leave it to the staking module.
+      // We only *read* existingLive.staked above to build these aggregates.
     };
 
-    const liveRef = profileRef.collection('runtime').doc('live');
-    await liveRef.set(liveData);
+    // Write live data, MERGING so we don't wipe staked or other fields
+    await liveRef.set(liveData, { merge: true });
 
     console.log(`[LiveAggregator] ✅ Live data structure for ${actor}:`, {
       hasProfile: !!liveData.profile,
@@ -544,27 +611,25 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
       polishingSlotsUnlocked: liveData.profile.polishingSlotsUnlocked,
       miningSlotsCount: liveData.miningSlots.length,
       polishingSlotsCount: liveData.polishingSlots.length,
-      miningSlotsEmptyVsUnlocked:
-        liveData.miningSlots.length === 0 && liveData.profile.miningSlotsUnlocked > 0
-          ? '❌ EMPTY but unlocked!'
-          : '✅ OK',
-      polishingSlotsEmptyVsUnlocked:
-        liveData.polishingSlots.length === 0 && liveData.profile.polishingSlotsUnlocked > 0
-          ? '❌ EMPTY but unlocked!'
-          : '✅ OK',
       hasGems:
         !!liveData.gems &&
         (Object.keys(liveData.gems.rough || {}).length > 0 ||
           Object.keys(liveData.gems.polished || {}).length > 0),
       hasInventorySummary: !!liveData.inventorySummary,
       hasBoosts: Array.isArray(liveData.boosts) && liveData.boosts.length > 0,
-      hasPricing: !!liveData.pricing && Object.keys(liveData.pricing).length > 0,
+      hasPricing:
+        !!liveData.pricing && Object.keys(liveData.pricing).length > 0,
     });
 
     const duration = Date.now() - startTime;
-    console.log(`[LiveAggregator] ✅ Built and wrote live data for ${actor} in ${duration}ms`);
+    console.log(
+      `[LiveAggregator] ✅ Built and wrote live data for ${actor} in ${duration}ms`
+    );
   } catch (error) {
-    console.error(`[LiveAggregator] ❌ Failed to build live data for ${actor}:`, error);
+    console.error(
+      `[LiveAggregator] ❌ Failed to build live data for ${actor}:`,
+      error
+    );
     throw error;
   }
 }
@@ -573,26 +638,42 @@ async function buildPlayerLiveData(actor, cause = 'unknown') {
  * HTTP function to rebuild live data (admin/debug use)
  */
 const { onRequest } = require('firebase-functions/v2/https');
-const rebuildPlayerLive = onRequest({ cors: true, region: 'us-central1' }, async (req, res) => {
-  console.log(`[rebuildPlayerLive] 🚀 FUNCTION CALLED with body:`, JSON.stringify(req.body));
-  try {
-    const { actor } = req.body.data || req.body;
-    console.log(`[rebuildPlayerLive] 📝 Extracted actor: ${actor}`);
-    if (!actor) {
-      console.log(`[rebuildPlayerLive] ❌ No actor provided`);
-      return res.status(400).json({ error: 'actor parameter required' });
-    }
+const rebuildPlayerLive = onRequest(
+  { cors: true, region: 'us-central1' },
+  async (req, res) => {
+    console.log(
+      `[rebuildPlayerLive] 🚀 FUNCTION CALLED with body:`,
+      JSON.stringify(req.body)
+    );
+    try {
+      const body = req.body || {};
+      const actor =
+        (body.data && body.data.actor) ||
+        body.actor ||
+        (body.params && body.params.actor);
 
-    console.log(`[rebuildPlayerLive] 🔄 Starting manual rebuild for ${actor}`);
-    await buildPlayerLiveData(actor, 'manual_rebuild');
-    console.log(`[rebuildPlayerLive] ✅ Rebuild completed for ${actor}`);
-    return res.json({ success: true, message: `Rebuilt live data for ${actor}` });
-  } catch (error) {
-    console.error('[rebuildPlayerLive] 💥 Error during rebuild:', error);
-    console.error('[rebuildPlayerLive] Stack:', error.stack);
-    return res.status(500).json({ error: error.message, stack: error.stack });
+      console.log(`[rebuildPlayerLive] 📝 Extracted actor: ${actor}`);
+      if (!actor) {
+        console.log(`[rebuildPlayerLive] ❌ No actor provided`);
+        return res.status(400).json({ error: 'actor parameter required' });
+      }
+
+      console.log(
+        `[rebuildPlayerLive] 🔄 Starting manual rebuild for ${actor}`
+      );
+      await buildPlayerLiveData(actor, 'manual_rebuild');
+      console.log(`[rebuildPlayerLive] ✅ Rebuild completed for ${actor}`);
+      return res.json({
+        success: true,
+        message: `Rebuilt live data for ${actor}`,
+      });
+    } catch (error) {
+      console.error('[rebuildPlayerLive] 💥 Error during rebuild:', error);
+      console.error('[rebuildPlayerLive] Stack:', error.stack);
+      return res.status(500).json({ error: error.message, stack: error.stack });
+    }
   }
-});
+);
 
 module.exports = {
   buildPlayerLiveData,
