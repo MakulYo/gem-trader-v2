@@ -506,6 +506,8 @@ class MiningGame extends TSDGEMSGame {
         this.updateStakedAssetsFromLive(slots);
         this.updateMiningStats();
         this.startTimerUpdates();
+        // Immediately update timers after applying realtime data
+        this.updateTimersImmediately();
         // Realtime: Mark as initialized even if slots array is empty (for new accounts)
         this.markRealtimeInitialized();
     }
@@ -527,7 +529,7 @@ class MiningGame extends TSDGEMSGame {
         this.realtimeData.inventory = merged;
         this.inventoryData = merged;
         this.updateInventoryStructures(merged);
-        this.renderMiningSlots();
+        this.renderMiningSlots(true);
         this.updateMiningStats();
     }
 
@@ -607,7 +609,8 @@ class MiningGame extends TSDGEMSGame {
         // Note: Asset updates are handled separately by updateStakedAssetsFromLive
         // Only re-render if we have valid data
         if (this.stakedMines !== undefined && this.stakedWorkers !== undefined) {
-            this.renderMiningSlots();
+            // Force immediate render when slots change from realtime
+            this.renderMiningSlots(true);
         }
     }
 
@@ -682,8 +685,8 @@ class MiningGame extends TSDGEMSGame {
             speedboosts: Object.keys(this.stakedSpeedboosts)
         });
 
-        // Re-render to show updated staked assets
-        this.renderMiningSlots();
+        // Re-render to show updated staked assets (force immediate update)
+        this.renderMiningSlots(true);
     }
 
     init() {
@@ -983,17 +986,19 @@ class MiningGame extends TSDGEMSGame {
         return stakedAssetIds;
     }
 
-    renderMiningSlots() {
-        // Use a more aggressive debouncing to prevent rapid re-renders
+    renderMiningSlots(forceImmediate = false) {
+        // Use debouncing to prevent rapid re-renders, but allow forcing immediate updates
         const now = Date.now();
-        if (this._lastRenderTime && (now - this._lastRenderTime) < 200) {
-            // Skip render if last render was less than 200ms ago
+        if (!forceImmediate && this._lastRenderTime && (now - this._lastRenderTime) < 200) {
+            // Skip render if last render was less than 200ms ago (unless forced)
             console.log('[Mining] Skipping rapid render');
             return;
         }
         this._lastRenderTime = now;
 
         this._doRenderMiningSlots();
+        // Immediately update timers after rendering
+        this.updateTimersImmediately();
     }
 
     renderSpeedboostSlots() {
@@ -1981,8 +1986,8 @@ class MiningGame extends TSDGEMSGame {
                     console.log('[MiningAction] Job not found or already completed, reverting optimistic UI');
                     // Remove from pending - realtime will update the actual state
                     this.pendingCompletionJobs.delete(jobId);
-                    // Re-render to show actual state from live.miningSlots
-                    this.renderMiningSlots();
+                    // Re-render to show actual state from live.miningSlots (force immediate update)
+                    this.renderMiningSlots(true);
                     this.showNotification('Job already completed or not found. Waiting for realtime update...', 'info');
                 } else {
                     if (claimButton) {
@@ -2787,8 +2792,8 @@ class MiningGame extends TSDGEMSGame {
                 // Hide loading state
                 this.showLoadingState(false);
 
-                // Re-render to show updated state
-                this.renderMiningSlots();
+                // Re-render to show updated state (force immediate update)
+                this.renderMiningSlots(true);
                 this.renderSpeedboostSlots();
 
                 this.showNotification(`✅ Staked ${speedboostNFT ? speedboostNFT.name : 'Speedboost'} to Slot ${slotNum}!`, 'success');
@@ -2852,8 +2857,8 @@ class MiningGame extends TSDGEMSGame {
                 // Optimistic update: remove from local state immediately
                 delete this.stakedSpeedboosts[slotNum];
 
-                // Re-render to show updated state
-                this.renderMiningSlots();
+                // Re-render to show updated state (force immediate update)
+                this.renderMiningSlots(true);
                 this.renderSpeedboostSlots();
 
                 this.showNotification(`✅ Unstaked ${stakedSpeedboost.name || 'Speedboost'} from Slot ${slotNum}!`, 'success');
@@ -3029,10 +3034,10 @@ class MiningGame extends TSDGEMSGame {
             const workerLimit = this.getWorkerLimit(stakedMine.name);
             const totalWorkers = this.stakedWorkers[slotNum] ? this.stakedWorkers[slotNum].length : 0;
             
-            // Close modal and update UI
+            // Close modal and update UI (force immediate update)
             this.selectedWorkers = [];
             this.closeStakeModal();
-            this.renderMiningSlots();
+            this.renderMiningSlots(true);
             
             this.showNotification(`✅ Staked ${count} worker${count > 1 ? 's' : ''} to Slot ${slotNum}! (${totalWorkers}/${workerLimit})`, 'success');
             
@@ -3080,7 +3085,7 @@ class MiningGame extends TSDGEMSGame {
         
         this.showNotification(`✅ Staked ${name} to Slot ${slotNum}! (${currentWorkers + 1}/${workerLimit})`, 'success');
         this.closeStakeModal();
-        this.renderMiningSlots();
+        this.renderMiningSlots(true);
     }
 
     toggleWorkersList(slotNum) {
@@ -3353,6 +3358,33 @@ class MiningGame extends TSDGEMSGame {
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
 
+    updateTimersImmediately() {
+        // Update all timers immediately without waiting for interval
+        const timers = document.querySelectorAll('.timer');
+        let shouldRerender = false;
+        
+        timers.forEach(timer => {
+            const finishAt = parseInt(timer.dataset.finish);
+            const jobId = timer.dataset.jobId;
+            if (!finishAt || isNaN(finishAt)) return;
+            
+            const now = Date.now();
+            const remaining = Math.max(0, finishAt - now);
+            
+            timer.textContent = this.formatTime(remaining);
+            
+            if (remaining === 0 && jobId && !this.completedJobsRendered.has(jobId)) {
+                this.completedJobsRendered.add(jobId);
+                shouldRerender = true; // Trigger a single re-render on first completion
+            }
+        });
+        
+        if (shouldRerender) {
+            // Use setTimeout to avoid re-render during current render cycle
+            setTimeout(() => this.renderMiningSlots(true), 0);
+        }
+    }
+
     startTimerUpdates() {
         // Update timers every second
         if (this.timerInterval) {
@@ -3366,6 +3398,8 @@ class MiningGame extends TSDGEMSGame {
             timers.forEach(timer => {
                 const finishAt = parseInt(timer.dataset.finish);
                 const jobId = timer.dataset.jobId;
+                if (!finishAt || isNaN(finishAt)) return;
+                
                 const now = Date.now();
                 const remaining = Math.max(0, finishAt - now);
                 
@@ -3378,7 +3412,7 @@ class MiningGame extends TSDGEMSGame {
             });
             
             if (shouldRerender) {
-                this.renderMiningSlots();
+                this.renderMiningSlots(true);
             }
         }, 1000);
     }
