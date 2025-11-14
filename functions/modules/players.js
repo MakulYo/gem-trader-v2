@@ -3,7 +3,7 @@
 
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
-const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 
 try { admin.app(); } catch { admin.initializeApp(); }
 const db = getFirestore();
@@ -13,8 +13,6 @@ const { buildPlayerLiveData } = require('./live-aggregator');
 
 // Built-in CORS from v2 (no external 'cors' lib)
 const CORS = { cors: true, region: 'us-central1' };
-
-function monthKey(d = new Date()) { return d.toISOString().slice(0,7).replace('-', ''); }
 
 function requireActor(req, res) {
   const { actor } = req.method === 'GET' ? req.query : (req.body || {});
@@ -28,30 +26,46 @@ function requireActor(req, res) {
 // --- Helper: ensure runtime/live is present and not too stale ---
 async function ensureLiveUpToDate(actor, cause = 'players_init') {
   try {
-    const liveRef = db.collection('players').doc(actor).collection('runtime').doc('live');
+    const liveRef = db
+      .collection('players')
+      .doc(actor)
+      .collection('runtime')
+      .doc('live');
+
     const snap = await liveRef.get();
 
     // If no live doc -> build immediately
     if (!snap.exists) {
-      console.log(`[ensureLiveUpToDate] No live doc for ${actor}, rebuilding (cause: ${cause}_missing)`);
+      console.log(
+        `[ensureLiveUpToDate] No live doc for ${actor}, rebuilding (cause: ${cause}_missing)`
+      );
       await buildPlayerLiveData(actor, `${cause}_missing`);
       return;
     }
 
     const data = snap.data() || {};
     const lastUpdatedAt = data.lastUpdatedAt;
-    const lastMs = lastUpdatedAt && typeof lastUpdatedAt.toMillis === 'function'
-      ? lastUpdatedAt.toMillis()
-      : 0;
+    const lastMs =
+      lastUpdatedAt && typeof lastUpdatedAt.toMillis === 'function'
+        ? lastUpdatedAt.toMillis()
+        : 0;
 
     const ageMs = Date.now() - lastMs;
     const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
     if (!lastMs || ageMs > MAX_AGE_MS) {
-      console.log(`[ensureLiveUpToDate] Live doc stale for ${actor} (age: ${Math.floor(ageMs / 1000)}s), rebuilding (cause: ${cause}_stale)`);
+      console.log(
+        `[ensureLiveUpToDate] Live doc stale for ${actor} (age: ${Math.floor(
+          ageMs / 1000
+        )}s), rebuilding (cause: ${cause}_stale)`
+      );
       await buildPlayerLiveData(actor, `${cause}_stale`);
     } else {
-      console.log(`[ensureLiveUpToDate] Live doc fresh for ${actor} (age: ${Math.floor(ageMs / 1000)}s), no rebuild needed`);
+      console.log(
+        `[ensureLiveUpToDate] Live doc fresh for ${actor} (age: ${Math.floor(
+          ageMs / 1000
+        )}s), no rebuild needed`
+      );
     }
   } catch (e) {
     console.error('[ensureLiveUpToDate] Failed to ensure live data for', actor, e);
@@ -64,7 +78,8 @@ const initPlayer = onRequest(CORS, async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const actor = requireActor(req, res); if (!actor) return;
+  const actor = requireActor(req, res);
+  if (!actor) return;
 
   const now = Timestamp.now();
   const ref = db.collection('players').doc(actor);
@@ -74,40 +89,55 @@ const initPlayer = onRequest(CORS, async (req, res) => {
     account: actor,
     ingameCurrency: 0,
     tsdmBalance: 0,
-    miningSlotsUnlocked: 1,  // First slot is free and auto-unlocked
-    polishingSlotsUnlocked: 1,  // First slot is free and auto-unlocked
+    miningSlotsUnlocked: 1, // First slot is free and auto-unlocked
+    polishingSlotsUnlocked: 1, // First slot is free and auto-unlocked
     monthlyScore: 0,
     nfts: { count: 0, lastSyncAt: now },
-    balances: { WAX: 0, TSDM: 0 }
+    balances: { WAX: 0, TSDM: 0 },
   };
 
   if (!snap.exists) {
     console.log(`[initPlayer] 🆕 Creating new player for actor: ${actor}`);
     await ref.set({ ...base, createdAt: now, lastSeenAt: now });
+
     // Create live doc synchronously for new players to ensure immediate availability
-    console.log(`[initPlayer] Creating runtime/live doc synchronously for new player ${actor}`);
+    console.log(
+      `[initPlayer] Creating runtime/live doc synchronously for new player ${actor}`
+    );
     await buildPlayerLiveData(actor, 'initPlayer_new');
-    console.log(`[initPlayer] ✅ Player and runtime/live created successfully for ${actor}`);
+    console.log(
+      `[initPlayer] ✅ Player and runtime/live created successfully for ${actor}`
+    );
+
     // Return with profile data
     res.json({ ok: true, profile: { id: actor, ...base } });
+
     // Sync inventory in background (don't await)
-    syncNowInternal(actor).catch(e => console.error('[initPlayer] Background sync failed:', e));
+    syncNowInternal(actor).catch(e =>
+      console.error('[initPlayer] Background sync failed:', e)
+    );
     return;
   } else {
     // Ensure existing players have at least 1 mining slot and 1 polishing slot
     const existingData = snap.data();
     const updates = { lastSeenAt: now };
     let needsUpdate = false;
-    
-    if (!existingData.miningSlotsUnlocked || existingData.miningSlotsUnlocked < 1) {
+
+    if (
+      !existingData.miningSlotsUnlocked ||
+      existingData.miningSlotsUnlocked < 1
+    ) {
       updates.miningSlotsUnlocked = 1;
       needsUpdate = true;
     }
-    if (!existingData.polishingSlotsUnlocked || existingData.polishingSlotsUnlocked < 1) {
+    if (
+      !existingData.polishingSlotsUnlocked ||
+      existingData.polishingSlotsUnlocked < 1
+    ) {
       updates.polishingSlotsUnlocked = 1;
       needsUpdate = true;
     }
-    
+
     if (needsUpdate) {
       await ref.update(updates);
     } else {
@@ -117,12 +147,18 @@ const initPlayer = onRequest(CORS, async (req, res) => {
 
   // For existing players: check if last sync was recent
   const existingData = snap.data();
-  const lastSync = existingData.nfts?.lastSyncAt?.toMillis ? existingData.nfts.lastSyncAt.toMillis() : 0;
+  const lastSync = existingData.nfts?.lastSyncAt?.toMillis
+    ? existingData.nfts.lastSyncAt.toMillis()
+    : 0;
   const syncAge = Date.now() - lastSync;
-  
+
   // If synced within last 15 minutes, skip sync and return cached data
   if (syncAge < 15 * 60 * 1000) {
-    console.log(`[initPlayer] Using cached data for ${actor} (synced ${Math.floor(syncAge / 1000)}s ago)`);
+    console.log(
+      `[initPlayer] Using cached data for ${actor} (synced ${Math.floor(
+        syncAge / 1000
+      )}s ago)`
+    );
     // Make sure live runtime doc is fresh enough
     await ensureLiveUpToDate(actor, 'initPlayer_cached');
     res.json({ ok: true, profile: { id: snap.id, ...existingData } });
@@ -142,12 +178,13 @@ const getDashboard = onRequest(CORS, async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
 
-  const actor = requireActor(req, res); if (!actor) return;
+  const actor = requireActor(req, res);
+  if (!actor) return;
 
   const ref = db.collection('players').doc(actor);
   const snap = await ref.get();
   if (!snap.exists) return res.json({ profile: null, inventory: [] });
-  
+
   const data = snap.data() || {};
   // Make sure these exist even if missing in Firestore
   if (!data.balances) data.balances = { WAX: 0, TSDM: 0 };
@@ -156,11 +193,11 @@ const getDashboard = onRequest(CORS, async (req, res) => {
   // Load gems from inventory/gems subcollection
   const gemsSnap = await ref.collection('inventory').doc('gems').get();
   const gemsData = gemsSnap.exists ? gemsSnap.data() : {};
-  
+
   // Separate rough and polished gems
   data.roughGems = {};
   data.polishedGems = {};
-  
+
   Object.entries(gemsData).forEach(([key, value]) => {
     if (key.startsWith('rough_') || key === 'rough_gems') {
       data.roughGems[key] = value;
@@ -169,7 +206,7 @@ const getDashboard = onRequest(CORS, async (req, res) => {
     }
   });
 
-  res.json({ profile: snap.exists ? { id: snap.id, ...data } : null });
+  res.json({ profile: { id: snap.id, ...data } });
 });
 
 // POST /syncNow { actor } (manual re-sync)
@@ -177,7 +214,9 @@ const syncNow = onRequest(CORS, async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const actor = requireActor(req, res); if (!actor) return;
+  const actor = requireActor(req, res);
+  if (!actor) return;
+
   await syncNowInternal(actor);
   await ensureLiveUpToDate(actor, 'syncNow_manual');
   res.json({ ok: true });
@@ -187,14 +226,20 @@ async function syncNowInternal(actor) {
   const [wax, tsdm, nfts] = await Promise.all([
     getWaxBalance(actor).catch(() => 0),
     getTsdmBalance(actor).catch(() => 0),
-    getOwnedNfts(actor, process.env.ATOMIC_COLLECTION).catch(() => [])
+    getOwnedNfts(actor, process.env.ATOMIC_COLLECTION).catch(() => []),
   ]);
   const now = Timestamp.now();
-  await db.collection('players').doc(actor).set({
-    balances: { WAX: wax, TSDM: tsdm },
-    nfts: { count: Number(nfts.length || 0), lastSyncAt: now },
-    lastSeenAt: now,
-  }, { merge: true });
+  await db
+    .collection('players')
+    .doc(actor)
+    .set(
+      {
+        balances: { WAX: wax, TSDM: tsdm },
+        nfts: { count: Number(nfts.length || 0), lastSyncAt: now },
+        lastSeenAt: now,
+      },
+      { merge: true }
+    );
 }
 
 // ========================================
@@ -206,20 +251,20 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 // Shared logic for refreshing leaderboard
 async function refreshLeaderboardLogic() {
   console.log('[Leaderboard] Starting refresh...');
-  
+
   const playersRef = db.collection('players');
   const snapshot = await playersRef.get();
-  
+
   const entries = [];
   snapshot.forEach(doc => {
     const data = doc.data();
     entries.push({
       actor: doc.id,
       ingameCurrency: Number(data.ingameCurrency || 0),
-      createdAt: data.createdAt // For tie-breaking
+      createdAt: data.createdAt, // For tie-breaking
     });
   });
-  
+
   // Sort by ingameCurrency DESC, then by createdAt ASC (earlier = better)
   entries.sort((a, b) => {
     if (b.ingameCurrency !== a.ingameCurrency) {
@@ -230,65 +275,70 @@ async function refreshLeaderboardLogic() {
     const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
     return aTime - bTime;
   });
-  
+
   // Assign ranks
   entries.forEach((entry, index) => {
     entry.rank = index + 1;
   });
-  
+
   // Store in Firestore
   await db.collection('global').doc('leaderboard').set({
-    entries: entries,
+    entries,
     totalPlayers: entries.length,
     lastUpdated: Timestamp.now(),
-    version: 1
+    version: 1,
   });
-  
+
   console.log(`[Leaderboard] Updated with ${entries.length} players`);
   return entries.length;
 }
 
 // Scheduled function - runs every hour
-const refreshLeaderboard = onSchedule({
-  schedule: '0 * * * *',
-  timeZone: 'UTC',
-  region: 'us-central1'
-}, async (event) => {
-  try {
-    const count = await refreshLeaderboardLogic();
-    console.log(`[Leaderboard] Scheduled refresh completed: ${count} players`);
-  } catch (error) {
-    console.error('[Leaderboard] Scheduled refresh failed:', error);
-    throw error;
+const refreshLeaderboard = onSchedule(
+  {
+    schedule: '0 * * * *',
+    timeZone: 'UTC',
+    region: 'us-central1',
+  },
+  async event => {
+    try {
+      const count = await refreshLeaderboardLogic();
+      console.log(
+        `[Leaderboard] Scheduled refresh completed: ${count} players`
+      );
+    } catch (error) {
+      console.error('[Leaderboard] Scheduled refresh failed:', error);
+      throw error;
+    }
   }
-});
+);
 
 // GET /getLeaderboard?actor=xxx&limit=100
 const getLeaderboard = onRequest(CORS, async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
-  
+
   try {
     const { actor, limit = '100' } = req.query;
     const limitNum = Math.min(parseInt(limit) || 100, 100);
-    
+
     const leaderboardDoc = await db.collection('global').doc('leaderboard').get();
-    
+
     if (!leaderboardDoc.exists) {
       return res.json({
         topPlayers: [],
         currentPlayer: null,
         totalPlayers: 0,
-        lastUpdated: null
+        lastUpdated: null,
       });
     }
-    
+
     const data = leaderboardDoc.data();
     const allEntries = data.entries || [];
-    
+
     // Get top N players
     const topPlayers = allEntries.slice(0, limitNum);
-    
+
     // Find current player
     let currentPlayer = null;
     if (actor) {
@@ -296,18 +346,17 @@ const getLeaderboard = onRequest(CORS, async (req, res) => {
       if (playerEntry) {
         currentPlayer = {
           ...playerEntry,
-          isInTop: playerEntry.rank <= limitNum
+          isInTop: playerEntry.rank <= limitNum,
         };
       }
     }
-    
+
     res.json({
       topPlayers,
       currentPlayer,
       totalPlayers: data.totalPlayers || 0,
-      lastUpdated: data.lastUpdated
+      lastUpdated: data.lastUpdated,
     });
-    
   } catch (error) {
     console.error('[getLeaderboard]', error);
     res.status(500).json({ error: error.message });
@@ -318,13 +367,13 @@ const getLeaderboard = onRequest(CORS, async (req, res) => {
 const triggerLeaderboardRefresh = onRequest(CORS, async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  
+
   try {
     const count = await refreshLeaderboardLogic();
-    res.json({ 
-      ok: true, 
-      message: 'Leaderboard refreshed', 
-      playersCount: count 
+    res.json({
+      ok: true,
+      message: 'Leaderboard refreshed',
+      playersCount: count,
     });
   } catch (error) {
     console.error('[triggerLeaderboardRefresh]', error);
@@ -332,11 +381,11 @@ const triggerLeaderboardRefresh = onRequest(CORS, async (req, res) => {
   }
 });
 
-module.exports = { 
-  initPlayer, 
-  getDashboard, 
+module.exports = {
+  initPlayer,
+  getDashboard,
   syncNow,
   refreshLeaderboard,
   getLeaderboard,
-  triggerLeaderboardRefresh
+  triggerLeaderboardRefresh,
 };
