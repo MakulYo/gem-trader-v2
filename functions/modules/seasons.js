@@ -7,9 +7,12 @@
 const { onRequest }  = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin          = require('firebase-admin');
-const { getFirestore } = require('firebase-admin/firestore');
 const corsLib        = require('cors');
 
+// Ensure Firebase app is initialized (safe even if other modules do the same)
+try { admin.app(); } catch { admin.initializeApp(); }
+
+const { getFirestore } = require('firebase-admin/firestore');
 const db = getFirestore(); // 🔒 default DB for this Firebase project (dev and prod are isolated)
 
 const RAW_ALLOW  = process.env.CORS_ALLOW || '';
@@ -35,8 +38,8 @@ function computeScheduleNow() {
 
   const startAt = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0);
 
-  const eom = endOfMonthUTC(now);                    // e.g., 2025-10-31T23:59:59.999Z
-  const lockStartDay = eom.getUTCDate() - OFF_DAYS + 1; // inclusive 5 full days
+  const eom = endOfMonthUTC(now);                        // e.g., 2025-10-31T23:59:59.999Z
+  const lockStartDay = eom.getUTCDate() - OFF_DAYS + 1;  // inclusive 5 full days
   const lockStartAt  = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), lockStartDay, 0, 0, 0);
 
   // Season opens at 00:05 on the 1st of the next month
@@ -67,6 +70,25 @@ async function setState(patch) {
   );
   const s = await STATE_DOC.get();
   return s.data() || patch;
+}
+
+// ----- core logic for opening a new season (shared by HTTP + cron) -----
+async function openNewSeasonCore() {
+  // Lazy require to avoid circular imports on cold start
+  const { snapshotSeason } = require('./leaderboard');
+
+  const now = new Date();
+  // the month we just finished is "now at 1st 00:00 UTC minus 1 minute"
+  const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  prev.setUTCMinutes(prev.getUTCMinutes() - 1);
+  const seasonToClose = monthKey(prev);
+
+  await snapshotSeason(seasonToClose, null);
+
+  const newSeason = monthKey();
+  const out = await setState({ season: newSeason, phase: 'active', lockEndsAt: null });
+
+  return { state: out, closed: seasonToClose, opened: newSeason };
 }
 
 // ----- public endpoints -----
@@ -128,20 +150,8 @@ const openNewSeason = onRequest((req, res) =>
     if ((req.query.token || '') !== SEED_TOKEN) return res.status(403).json({ error: 'Forbidden' });
 
     try {
-      // Lazy require to avoid circular imports on cold start
-      const { snapshotSeason } = require('./leaderboard');
-
-      const now = new Date();
-      // the month we just finished is "now at 1st 00:00 UTC minus 1 minute"
-      const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-      prev.setUTCMinutes(prev.getUTCMinutes() - 1);
-      const seasonToClose = monthKey(prev);
-
-      await snapshotSeason(seasonToClose, null);
-
-      const newSeason = monthKey();
-      const out = await setState({ season: newSeason, phase: 'active', lockEndsAt: null });
-      res.json({ ok: true, state: out, closed: seasonToClose, opened: newSeason });
+      const result = await openNewSeasonCore();
+      res.json({ ok: true, ...result });
     } catch (e) {
       res.status(500).json({ error: e.message || String(e) });
     }
@@ -158,8 +168,8 @@ const openNewSeasonNow = onRequest((req, res) =>
     if ((req.query.token || '') !== SEED_TOKEN) return res.status(403).json({ error: 'Forbidden' });
 
     try {
-      await openNewSeason.run({});
-      res.json({ ok: true, message: 'openNewSeason executed' });
+      const result = await openNewSeasonCore();
+      res.json({ ok: true, message: 'openNewSeason executed', ...result });
     } catch (e) {
       res.status(500).json({ error: e.message || String(e) });
     }
@@ -195,21 +205,27 @@ const resetSeason = onRequest((req, res) =>
 // ----- schedulers -----
 // Enter LOCK automatically at 00:05 UTC on the correct day (5 days before month end).
 const autoLockCron = onSchedule('5 0 * * *', async () => {
-  const { lockStartAt, lockEndAt } = computeScheduleNow();
-  const now = Date.now();
+  try {
+    const { lockStartAt, lockEndAt } = computeScheduleNow();
+    const now = Date.now();
 
-  // Within 10 minutes after intended lock start? Enter lock once.
-  if (now >= lockStartAt && now < lockStartAt + 10 * 60 * 1000) {
-    await setState({ phase: 'lock', lockEndsAt: lockEndAt, season: monthKey() });
-    console.log('autoLockCron: entered lock window until', new Date(lockEndAt).toISOString());
+    // Within 10 minutes after intended lock start? Enter lock once.
+    if (now >= lockStartAt && now < lockStartAt + 10 * 60 * 1000) {
+      await setState({ phase: 'lock', lockEndsAt: lockEndAt, season: monthKey() });
+      console.log('autoLockCron: entered lock window until', new Date(lockEndAt).toISOString());
+    } else {
+      console.log('autoLockCron: not in lock window, no change');
+    }
+  } catch (e) {
+    console.error('autoLockCron failed', e);
   }
 });
 
 // Open the new season at 00:05 UTC on the 1st
 const autoOpenCron = onSchedule('5 0 1 * *', async () => {
   try {
-    await openNewSeason.run({});
-    console.log('autoOpenCron: new season opened');
+    const result = await openNewSeasonCore();
+    console.log('autoOpenCron: new season opened', result);
   } catch (e) {
     console.error('autoOpenCron failed', e);
   }
@@ -221,8 +237,8 @@ module.exports = {
   getSeasonSchedule,
   enterLockWindow,
   openNewSeason,
-  openNewSeasonNow, // 👈 new
-  resetSeason,      // 👈 new
+  openNewSeasonNow, // 👈 manual trigger
+  resetSeason,      // 👈 manual override
   autoLockCron,
   autoOpenCron,
 };
